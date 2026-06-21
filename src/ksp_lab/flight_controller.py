@@ -305,24 +305,27 @@ class KrpcFlightController:
         return seated
 
     def _bridge_transfer_crew(self, to_vessel: str) -> bool:
-        """Ask the KspAutomationBridge to move a kerbal into the docked target vessel. Best-effort:
-        returns False if the (rebuilt) /transfer-crew endpoint isn't available."""
+        """Move a kerbal across the dock via the bridge. Tries the target vessel first; if it has no
+        free crewable seat (e.g. a probe lander), falls back to moving a kerbal to any free seat in
+        the now-merged docked stack. Best-effort; False if the endpoint is unavailable."""
         import json as _json
-        import urllib.error
         import urllib.request
 
         host = self.config.get("bridge_host", "127.0.0.1")
         port = int(self.config.get("bridge_port", 48500))
-        body = _json.dumps({"toVessel": to_vessel}).encode("utf-8")
-        try:
-            req = urllib.request.Request(
-                f"http://{host}:{port}/transfer-crew", data=body,
-                headers={"content-type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                payload = _json.loads(resp.read().decode("utf-8"))
-            return bool(payload.get("ok"))
-        except Exception:
-            return False
+
+        def attempt(payload: dict) -> bool:
+            try:
+                req = urllib.request.Request(
+                    f"http://{host}:{port}/transfer-crew",
+                    data=_json.dumps(payload).encode("utf-8"),
+                    headers={"content-type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return bool(_json.loads(resp.read().decode("utf-8")).get("ok"))
+            except Exception:
+                return False
+
+        return attempt({"toVessel": to_vessel}) or attempt({})
 
     @staticmethod
     def _relative_distance_m(chaser, target) -> float:
