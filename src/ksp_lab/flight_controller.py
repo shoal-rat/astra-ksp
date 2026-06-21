@@ -259,9 +259,12 @@ class KrpcFlightController:
             self._record_live_sample(chaser, recorder, start, "dock_rendezvous_start",
                                      {"target": target_name, "crew_seated": seated})
             # Rendezvous-from-far: close an arbitrary co-body orbit down to RCS range before the
-            # proximity dock. Skipped automatically if already close.
+            # proximity dock, using closest-approach maneuver optimization. Skipped if already close.
             if self._relative_distance_m(chaser, target) > 2500.0:
-                self._rendezvous_from_far(conn, chaser, target, recorder, start, timeout_s)
+                self._rendezvous_intercept(conn, chaser, target, recorder, start, timeout_s)
+            # Close the bulk gap (km-scale) with the main engine before fine RCS proximity ops.
+            if self._relative_distance_m(chaser, target) > 250.0:
+                self._translate_to_target(conn, chaser, target, recorder, start, timeout_s)
             docked = self._approach_and_dock(conn, chaser, target, recorder, start, timeout_s)
             if not docked:
                 self._record_live_sample(chaser, recorder, start, "dock_not_completed")
@@ -529,6 +532,166 @@ class KrpcFlightController:
         self._set_physics_warp(conn, 0)
         return self._relative_distance_m(chaser, target) < 5_000.0
 
+    def _closest_approach_m(self, orbit, target_orbit) -> float:
+        """Best (minimum) closest-approach distance between two orbits over the next several orbits,
+        using kRPC's built-in predictor."""
+        try:
+            la = orbit.list_closest_approaches(target_orbit, 5)
+            return min(float(x) for x in la[1]) if la and la[1] else float(
+                orbit.distance_at_closest_approach(target_orbit))
+        except Exception:
+            try:
+                return float(orbit.distance_at_closest_approach(target_orbit))
+            except Exception:
+                return 1.0e18
+
+    def _optimize_intercept_node(self, conn, chaser, target, *, max_dv: float = 350.0):
+        """Grid-search + refine a single burn (time, prograde, radial) that minimises the predicted
+        closest approach to the target. Returns (closest_m, node_ut, prograde, radial)."""
+        sc = conn.space_center
+        torbit = target.orbit
+        period = max(60.0, float(chaser.orbit.period))
+
+        def evaluate(node_ut, pg, rd):
+            try:
+                node = chaser.control.add_node(float(node_ut), prograde=float(pg), radial=float(rd))
+            except Exception:
+                return 1.0e18
+            d = self._closest_approach_m(node.orbit, torbit)
+            try:
+                node.remove()
+            except Exception:
+                pass
+            return d
+
+        best_d = 1.0e18
+        but, bpg, brd = sc.ut + period * 0.25, 0.0, 0.0
+        # Coarse: burn time over one orbit x prograde dv.
+        step = max(20, int(max_dv / 12))
+        for tf in range(0, 12):
+            node_ut = sc.ut + 45.0 + period * tf / 12.0
+            for pg in range(int(-max_dv), int(max_dv) + 1, step):
+                d = evaluate(node_ut, pg, 0.0)
+                if d < best_d:
+                    best_d, but, bpg, brd = d, node_ut, float(pg), 0.0
+        # Refine: shrink steps around the best (time, prograde, radial).
+        st, sp, sr = period * 0.06, float(step), float(step)
+        for _ in range(6):
+            improved = False
+            for dut in (-st, 0.0, st):
+                for dpg in (-sp, 0.0, sp):
+                    for drd in (-sr, 0.0, sr):
+                        if dut == 0.0 and dpg == 0.0 and drd == 0.0:
+                            continue
+                        d = evaluate(but + dut, bpg + dpg, brd + drd)
+                        if d < best_d:
+                            best_d, but, bpg, brd = d, but + dut, bpg + dpg, brd + drd
+                            improved = True
+            st *= 0.55 if improved else 0.5
+            sp *= 0.55 if improved else 0.5
+            sr *= 0.55 if improved else 0.5
+            if sp < 1.0:
+                break
+        return best_d, but, bpg, brd
+
+    def _execute_simple_node(self, conn, chaser, node, recorder, start, timeout_s, phase) -> None:
+        """Point-and-burn a maneuver node with no staging/reacquire — for small in-orbit correction
+        burns where _execute_node's TMI staging logic doesn't apply (and crashes on a single-stage
+        craft)."""
+        sc = conn.space_center
+        ap = chaser.auto_pilot
+        frame = chaser.orbital_reference_frame
+        try:
+            ap.reference_frame = frame
+            ap.target_direction = node.burn_vector(frame)
+            ap.engage()
+        except Exception:
+            return
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 30.0:
+            try:
+                if float(ap.error) < 5.0:
+                    break
+            except Exception:
+                break
+            time.sleep(0.3)
+        try:
+            if float(node.ut) - sc.ut > 25.0:
+                sc.warp_to(float(node.ut) - 5.0, max_rails_rate=100_000.0, max_physics_rate=4.0)
+        except Exception:
+            pass
+        self._set_physics_warp(conn, 0)
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < min(timeout_s, 200.0):
+            try:
+                rem = float(node.remaining_delta_v)
+            except Exception:
+                break
+            if rem < 0.4:
+                break
+            try:
+                ap.target_direction = node.remaining_burn_vector(frame)
+                ap.engage()
+            except Exception:
+                pass
+            chaser.control.throttle = max(0.05, min(1.0, rem / 15.0))
+            self._record_live_sample(chaser, recorder, start, phase, {"remaining_dv": rem})
+            time.sleep(0.1)
+        chaser.control.throttle = 0.0
+
+    def _rendezvous_intercept(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
+        """Proper rendezvous: match plane, then iteratively plan+burn a maneuver that minimises the
+        predicted closest approach (kRPC's built-in predictor), warp to that closest approach, and
+        null the relative velocity. Deterministic — no drift-and-hope phasing."""
+        sc = conn.space_center
+        self._match_orbital_plane(conn, chaser, target, recorder, start, timeout_s)
+        self._record_live_sample(chaser, recorder, start, "rendezvous_intercept_begin",
+                                 {"distance_m": self._relative_distance_m(chaser, target),
+                                  "closest_now_m": self._closest_approach_m(chaser.orbit, target.orbit)})
+        for attempt in range(5):
+            if time.monotonic() - start > timeout_s:
+                break
+            cur = self._closest_approach_m(chaser.orbit, target.orbit)
+            # Stop optimising once the predicted closest approach is within ~5 km: the velocity-match
+            # + proximity ops take over from there. Re-optimising a correction once close risks
+            # warping past the (now-loaded) encounter, which KSP blocks.
+            if cur < 5_000.0:
+                break
+            bd, but, bpg, brd = self._optimize_intercept_node(
+                conn, chaser, target, max_dv=(350.0 if attempt == 0 else 120.0))
+            self._record_live_sample(chaser, recorder, start, "rendezvous_intercept_planned",
+                                     {"closest_m": bd, "prograde_dv": bpg, "radial_dv": brd,
+                                      "attempt": attempt})
+            if bd > cur - 40.0 or (abs(bpg) < 1.2 and abs(brd) < 1.2):
+                break  # the plan can't meaningfully improve on the current trajectory
+            try:
+                node = chaser.control.add_node(float(but), prograde=float(bpg), radial=float(brd))
+            except Exception:
+                break
+            self._execute_simple_node(conn, chaser, node, recorder, start, timeout_s,
+                                      "rendezvous_intercept_burn")
+            try:
+                node.remove()
+            except Exception:
+                pass
+            newca = self._closest_approach_m(chaser.orbit, target.orbit)
+            self._record_live_sample(chaser, recorder, start, "rendezvous_intercept_burned",
+                                     {"closest_m": newca, "attempt": attempt})
+            if newca < 5_000.0:
+                break
+        # Warp to the predicted closest approach, then null the relative velocity.
+        try:
+            ca_ut = float(chaser.orbit.time_of_closest_approach(target.orbit))
+            if ca_ut - sc.ut > 50.0:
+                sc.warp_to(ca_ut - 25.0, max_rails_rate=100_000.0, max_physics_rate=4.0)
+        except Exception:
+            pass
+        self._set_physics_warp(conn, 0)
+        self._null_relative_velocity(conn, chaser, target, recorder, start, max_s=150.0)
+        self._record_live_sample(chaser, recorder, start, "rendezvous_close_approach",
+                                 {"distance_m": self._relative_distance_m(chaser, target)})
+        return self._relative_distance_m(chaser, target) < 10_000.0
+
     def _null_relative_velocity(self, conn, chaser, target, recorder, start, max_s: float = 90.0) -> None:
         """Burn the main engine to null the chaser's velocity relative to the target. Point along the
         target's relative-velocity vector (= match the target's velocity) and burn until the relative
@@ -561,6 +724,42 @@ class KrpcFlightController:
     @staticmethod
     def _dock_deadline(start: float) -> float:
         return 1.0e9  # rendezvous uses its own per-step timeout; this guard is effectively off
+
+    def _translate_to_target(self, conn, chaser, target, recorder, start, timeout_s,
+                             stop_m: float = 150.0, max_s: float = 600.0) -> None:
+        """Close the bulk gap to the target with the MAIN engine (RCS is far too weak over km).
+        Hold the chaser's velocity-relative-to-target pointed at the target, with a closing speed
+        that scales with distance and eases to zero near it; hand off at ``stop_m`` for RCS."""
+        ofr = chaser.orbital_reference_frame  # centred on the chaser; target.position = vector to it
+        ap = chaser.auto_pilot
+        chaser.control.rcs = True
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < max_s and time.monotonic() - start < timeout_s:
+            try:
+                to_t = target.position(ofr)
+                dist = self._norm(to_t)
+                tvel = target.velocity(ofr)
+            except Exception:
+                break
+            if dist < stop_m:
+                break
+            unit = (to_t[0] / dist, to_t[1] / dist, to_t[2] / dist)
+            v_des = max(3.0, min(35.0, dist * 0.06))
+            # Accelerate so the chaser's closing velocity points at the target at v_des: the chaser's
+            # velocity rel. to the target is -tvel, so burn toward (unit*v_des + tvel).
+            burn = (unit[0] * v_des + tvel[0], unit[1] * v_des + tvel[1], unit[2] * v_des + tvel[2])
+            mag = self._norm(burn)
+            try:
+                ap.reference_frame = ofr
+                ap.target_direction = burn
+                ap.engage()
+            except Exception:
+                pass
+            chaser.control.throttle = max(0.0, min(1.0, mag / 12.0))
+            self._record_live_sample(chaser, recorder, start, "dock_translate",
+                                     {"distance_m": dist, "closing_cmd_mps": v_des})
+            time.sleep(0.3)
+        chaser.control.throttle = 0.0
 
     def _approach_and_dock(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
         """Proximity ops: point at the target, translate in with RCS, null lateral drift, mate ports."""
