@@ -131,6 +131,7 @@ class CraftWriter:
         names.add("mk1pod.v2" if design.crewed else "probeCoreOcto.v2")
         if design.crewed:
             names.add("probeCoreOcto.v2")  # inline control source for headless crewed launch
+            names.add("crewCabin")  # extra seats so astronauts can be transferred between modules
         if design.crewed or design.heatshield:
             names.add("HeatShield1")
         # Avionics/power/comms bus + aero fins added by _build_nodes; harvest their real
@@ -309,6 +310,13 @@ class CraftWriter:
             self._attach(current, probe, "bottom", "top")
             nodes.append(probe)
             current = probe
+            # A crew cabin gives extra seats so astronauts can be transferred between modules (and
+            # across a dock) — the 1-seat command pod alone leaves nowhere to move them.
+            if part_bodies is None or "crewCabin" in part_bodies:
+                cabin = new_node("crewCabin", 0)
+                self._attach(current, cabin, "bottom", "top")
+                nodes.append(cabin)
+                current = cabin
 
         # Payload service bays model payload mass. Only emit them when a real serialization is
         # available (or when running with no part-body library at all, i.e. offline/minimal),

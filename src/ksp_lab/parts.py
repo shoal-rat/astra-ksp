@@ -34,6 +34,7 @@ STOCK_PARTS: dict[str, StockPart] = {
     "probeCoreOcto.v2": StockPart("probeCoreOcto.v2", "Probodobodyne OKTO", 0.1, 0.1, 450, 0.25),
     "parachuteSingle": StockPart("parachuteSingle", "Mk16 Parachute", 0.1, 0.1, 422, 0.35),
     "dockingPort2": StockPart("dockingPort2", "Clamp-O-Tron Docking Port", 0.05, 0.05, 280, 0.28),
+    "crewCabin": StockPart("crewCabin", "Mk1 Crew Cabin", 1.0, 1.0, 600, 1.275),
     "RCSBlock": StockPart("RCSBlock", "RV-105 RCS Thruster Block", 0.04, 0.04, 620, 0.2),
     "rcsTankRadialLong": StockPart("rcsTankRadialLong", "FL-R25 RCS Fuel Tank", 0.1, 0.4, 330, 0.9),
     "HeatShield1": StockPart("HeatShield1", "Heat Shield 1.25m", 0.3, 0.3, 300, 0.2),

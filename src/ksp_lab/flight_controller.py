@@ -253,8 +253,11 @@ class KrpcFlightController:
                 pass
             chaser.control.rcs = True
             chaser.control.sas = False
+            # Seat real astronauts in the (headless-launched, empty) chaser pod before the dock, so
+            # there are actual crew to transfer to the target afterwards.
+            seated = self._bridge_spawn_crew(count=2)
             self._record_live_sample(chaser, recorder, start, "dock_rendezvous_start",
-                                     {"target": target_name})
+                                     {"target": target_name, "crew_seated": seated})
             # Rendezvous-from-far: close an arbitrary co-body orbit down to RCS range before the
             # proximity dock. Skipped automatically if already close.
             if self._relative_distance_m(chaser, target) > 2500.0:
@@ -277,6 +280,29 @@ class KrpcFlightController:
             except Exception:
                 pass
         return recorder.summarize()
+
+    def _bridge_spawn_crew(self, count: int = 2) -> int:
+        """Seat up to ``count`` roster kerbals into the active vessel via the bridge (a headless
+        launch leaves crewed pods empty). Returns how many were seated. Best-effort."""
+        import json as _json
+        import urllib.request
+
+        host = self.config.get("bridge_host", "127.0.0.1")
+        port = int(self.config.get("bridge_port", 48500))
+        seated = 0
+        for _ in range(max(0, count)):
+            try:
+                req = urllib.request.Request(
+                    f"http://{host}:{port}/spawn-crew", data=b"{}",
+                    headers={"content-type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    if _json.loads(resp.read().decode("utf-8")).get("ok"):
+                        seated += 1
+                    else:
+                        break
+            except Exception:
+                break
+        return seated
 
     def _bridge_transfer_crew(self, to_vessel: str) -> bool:
         """Ask the KspAutomationBridge to move a kerbal into the docked target vessel. Best-effort:
