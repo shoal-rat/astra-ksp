@@ -245,12 +245,12 @@ PYTHONPATH=src python tools/fly_orion.py         configs/local-ksp.yaml
 
 This project values ruthless honesty over polish. The real state of things:
 
-- **Crew transfer: real machinery, not yet a single end-to-end live run.** The Orion is genuinely
-  crewed, the bridge can seat roster kerbals (`/spawn-crew`) and move them between docked parts
-  (`/transfer-crew`), and the dock routine calls the transfer once ports mate. What's missing is one
-  clean live run that chains *prograde-coplanar capture → dock → crew transfer* — the latest mod
-  endpoints also need a KSP reload to be live. So "crew transfer" today is a complete, reviewable
-  mechanism that has not yet been demonstrated in one unbroken live flight.
+- **Crew add + transfer: verified live; the two-ships-via-rendezvous version is the open piece.**
+  `tools/crew_demo.py` launched a crewed craft, **added three astronauts** to it with `/spawn-crew`
+  (one in the command pod, two in the crew cabin) and **transferred one between modules** with
+  `/transfer-crew` — confirmed in the running game. The *mechanic* is done. What remains is chaining
+  it to a successful two-vehicle dock (`prograde-coplanar capture → dock → transfer to the other
+  ship`), which is gated on the autonomous-rendezvous work above.
 - **"Mission complete" was a chain of four separately-driven phases.** ASTRA now orchestrates those
   drivers behind one command, but the phases were validated independently. Run-to-run variance —
   especially the trans-Munar injection — is **absorbed by retries, not eliminated.**
