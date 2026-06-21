@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#070A16"/>
+    </linearGradient>
+    <linearGradient id="st" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13233C"/>
+      <stop offset="1" stop-color="#0D1A30"/>
+    </linearGradient>
+    <linearGradient id="stHot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A2A0E"/>
+      <stop offset="1" stop-color="#2C1F07"/>
+    </linearGradient>
+    <linearGradient id="track" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="0.5" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+    <filter id="g3" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft3" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2.5" stdDeviation="4" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <marker id="a3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg3)"/>
+  <g fill="#94A3B8" opacity="0.45">
+    <circle cx="120" cy="70" r="1"/><circle cx="420" cy="48" r="1.1"/><circle cx="760" cy="64" r="0.9"/>
+    <circle cx="1060" cy="52" r="1.2"/><circle cx="60" cy="360" r="1"/><circle cx="1150" cy="380" r="1"/>
+    <circle cx="220" cy="660" r="0.9"/><circle cx="980" cy="662" r="1.1"/>
+  </g>
+
+  <text x="48" y="54" fill="#E2E8F0" font-size="29" font-weight="700">ASTRA — Flight State Machine</text>
+  <text x="48" y="82" fill="#7DD3FC" font-size="14.5">live phases left → right · each advances only when its success gate is met · the agent re-enters a phase on failure</text>
+
+  <!-- track line behind nodes -->
+  <line x1="80" y1="250" x2="1120" y2="250" stroke="url(#track)" stroke-width="3" opacity="0.35"/>
+  <line x1="80" y1="470" x2="1120" y2="470" stroke="url(#track)" stroke-width="3" opacity="0.35"/>
+
+  <!-- ===== ROW 1 (top, ascent → descent) ===== -->
+  <!-- helper: each node is 150 wide -->
+  <!-- positions for 6 nodes row1 -->
+  <!-- Ascent -->
+  <g filter="url(#soft3)"><rect x="70" y="214" width="142" height="72" rx="13" fill="url(#st)" stroke="#38BDF8" stroke-width="1.6"/></g>
+  <text x="141" y="244" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">Ascent</text>
+  <text x="141" y="263" text-anchor="middle" fill="#7DD3FC" font-size="10">gravity turn</text>
+  <text x="141" y="306" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ apoapsis &gt; target</text>
+
+  <!-- Circularize -->
+  <g filter="url(#soft3)"><rect x="252" y="214" width="142" height="72" rx="13" fill="url(#st)" stroke="#38BDF8" stroke-width="1.6"/></g>
+  <text x="323" y="244" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">Circularize</text>
+  <text x="323" y="263" text-anchor="middle" fill="#7DD3FC" font-size="10">burn at Ap</text>
+  <text x="323" y="306" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ ecc &lt; 0.02</text>
+
+  <!-- TMI -->
+  <g filter="url(#soft3)"><rect x="434" y="214" width="142" height="72" rx="13" fill="url(#st)" stroke="#A78BFA" stroke-width="1.6"/></g>
+  <text x="505" y="240" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Trans-Munar</text>
+  <text x="505" y="257" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Injection</text>
+  <text x="505" y="306" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ Mun intercept</text>
+
+  <!-- Mun SOI Capture -->
+  <g filter="url(#soft3)"><rect x="616" y="214" width="142" height="72" rx="13" fill="url(#st)" stroke="#A78BFA" stroke-width="1.6"/></g>
+  <text x="687" y="240" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Mun SOI</text>
+  <text x="687" y="257" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Capture</text>
+  <text x="687" y="306" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ orbit at Mun</text>
+
+  <!-- Deorbit -->
+  <g filter="url(#soft3)"><rect x="798" y="214" width="142" height="72" rx="13" fill="url(#st)" stroke="#A78BFA" stroke-width="1.6"/></g>
+  <text x="869" y="244" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">Deorbit</text>
+  <text x="869" y="263" text-anchor="middle" fill="#7DD3FC" font-size="10">lower periapsis</text>
+  <text x="869" y="306" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ Pe below surface</text>
+
+  <!-- Hoverslam (HIGHLIGHT) -->
+  <g filter="url(#g3)"><rect x="980" y="206" width="150" height="88" rx="14" fill="url(#stHot)" stroke="#FBBF24" stroke-width="2.6"/></g>
+  <text x="1055" y="232" text-anchor="middle" fill="#FDE68A" font-size="11" font-weight="700">★ HOVERSLAM</text>
+  <text x="1055" y="252" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Falcon-9</text>
+  <text x="1055" y="270" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Suicide Burn</text>
+  <text x="1055" y="288" text-anchor="middle" fill="#FCD34D" font-size="9.5">descent</text>
+  <text x="1055" y="314" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ v→0 at h→0</text>
+
+  <!-- ===== ROW 2 (touchdown → recovery) ===== -->
+  <!-- Touchdown -->
+  <g filter="url(#soft3)"><rect x="70" y="434" width="142" height="72" rx="13" fill="url(#st)" stroke="#FBBF24" stroke-width="1.6"/></g>
+  <text x="141" y="464" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">Touchdown</text>
+  <text x="141" y="483" text-anchor="middle" fill="#FCD34D" font-size="10">soft contact</text>
+  <text x="141" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ landed · stable</text>
+
+  <!-- Surface Science -->
+  <g filter="url(#soft3)"><rect x="252" y="434" width="142" height="72" rx="13" fill="url(#st)" stroke="#38BDF8" stroke-width="1.6"/></g>
+  <text x="323" y="460" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Surface</text>
+  <text x="323" y="477" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Science</text>
+  <text x="323" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ data collected</text>
+
+  <!-- Ascent-to-orbit -->
+  <g filter="url(#soft3)"><rect x="434" y="434" width="142" height="72" rx="13" fill="url(#st)" stroke="#38BDF8" stroke-width="1.6"/></g>
+  <text x="505" y="460" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Ascent-to-</text>
+  <text x="505" y="477" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">orbit</text>
+  <text x="505" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ stable Mun orbit</text>
+
+  <!-- TKI -->
+  <g filter="url(#soft3)"><rect x="616" y="434" width="142" height="72" rx="13" fill="url(#st)" stroke="#A78BFA" stroke-width="1.6"/></g>
+  <text x="687" y="460" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Trans-Kerbin</text>
+  <text x="687" y="477" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Injection</text>
+  <text x="687" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ Kerbin intercept</text>
+
+  <!-- Reentry -->
+  <g filter="url(#soft3)"><rect x="798" y="434" width="142" height="72" rx="13" fill="url(#stHot)" stroke="#FB923C" stroke-width="1.8"/></g>
+  <text x="869" y="460" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Reentry</text>
+  <text x="869" y="477" text-anchor="middle" fill="#FDBA74" font-size="10">heat shield</text>
+  <text x="869" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ survives heating</text>
+
+  <!-- Parachute Recovery -->
+  <g filter="url(#soft3)"><rect x="980" y="434" width="150" height="72" rx="13" fill="url(#st)" stroke="#22D3A0" stroke-width="2"/></g>
+  <text x="1055" y="460" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Parachute</text>
+  <text x="1055" y="477" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Recovery</text>
+  <text x="1055" y="526" text-anchor="middle" fill="#86EFAC" font-size="9.5">✓ crew recovered ✅</text>
+
+  <!-- ===== transitions row1 ===== -->
+  <g stroke="#94A3B8" stroke-width="2" marker-end="url(#a3)">
+    <line x1="212" y1="250" x2="248" y2="250"/>
+    <line x1="394" y1="250" x2="430" y2="250"/>
+    <line x1="576" y1="250" x2="612" y2="250"/>
+    <line x1="758" y1="250" x2="794" y2="250"/>
+    <line x1="940" y1="250" x2="976" y2="250"/>
+  </g>
+
+  <!-- wrap row1 -> row2 -->
+  <path d="M1055,294 Q1055,360 1055,360 Q1055,372 1040,372 L160,372 Q141,372 141,388 L141,430" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#a3)"/>
+  <text x="600" y="364" text-anchor="middle" fill="#CBD5E1" font-size="11">…descent complete → surface operations &amp; return…</text>
+
+  <!-- ===== transitions row2 ===== -->
+  <g stroke="#94A3B8" stroke-width="2" marker-end="url(#a3)">
+    <line x1="212" y1="470" x2="248" y2="470"/>
+    <line x1="394" y1="470" x2="430" y2="470"/>
+    <line x1="576" y1="470" x2="612" y2="470"/>
+    <line x1="758" y1="470" x2="794" y2="470"/>
+    <line x1="940" y1="470" x2="976" y2="470"/>
+  </g>
+
+  <!-- gate legend -->
+  <g transform="translate(48,600)">
+    <text x="0" y="0" fill="#94A3B8" font-size="13" font-weight="600" letter-spacing="1">SUCCESS GATE</text>
+    <text x="0" y="24" fill="#86EFAC" font-size="12">✓ shown under each node — must pass before the next phase begins</text>
+    <text x="0" y="48" fill="#CBD5E1" font-size="12">On a failed gate, the Flight Controller halts the phase, the agent diagnoses one root cause, and re-flies.</text>
+  </g>
+  <g transform="translate(720,600)">
+    <rect x="0" y="-12" width="14" height="14" rx="3" fill="url(#stHot)" stroke="#FBBF24"/>
+    <text x="22" y="0" fill="#CBD5E1" font-size="12">★ Hoverslam — the critical suicide-burn phase</text>
+    <rect x="0" y="24" width="14" height="14" rx="3" fill="url(#stHot)" stroke="#FB923C"/>
+    <text x="22" y="36" fill="#CBD5E1" font-size="12">thermal phase — heat-shield protected reentry</text>
+  </g>
+</svg>

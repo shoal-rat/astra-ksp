@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#070A16"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#11304A"/>
+      <stop offset="1" stop-color="#0A1A2C"/>
+    </radialGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#152038"/>
+      <stop offset="1" stop-color="#0E1830"/>
+    </linearGradient>
+    <filter id="g2" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft2" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <marker id="loopArr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="loopArrMag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#F472B6"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg2)"/>
+  <g fill="#94A3B8" opacity="0.5">
+    <circle cx="90" cy="120" r="1"/><circle cx="240" cy="70" r="1.2"/><circle cx="1080" cy="90" r="1.1"/>
+    <circle cx="1140" cy="240" r="0.9"/><circle cx="70" cy="500" r="1.1"/><circle cx="1130" cy="560" r="1"/>
+    <circle cx="300" cy="640" r="0.9"/><circle cx="900" cy="650" r="1.2"/><circle cx="620" cy="40" r="1"/>
+  </g>
+
+  <text x="600" y="52" text-anchor="middle" fill="#E2E8F0" font-size="30" font-weight="700">ASTRA — Autonomous Loop</text>
+  <text x="600" y="80" text-anchor="middle" fill="#7DD3FC" font-size="14.5">record experience every attempt · fix one root cause per retry · keep flying until the goal is met</text>
+
+  <!-- guide circle -->
+  <circle cx="600" cy="400" r="232" fill="none" stroke="#1E2A44" stroke-width="2" stroke-dasharray="3 7"/>
+
+  <!-- center core / goal -->
+  <g filter="url(#g2)">
+    <circle cx="600" cy="400" r="92" fill="url(#core)" stroke="#22D3A0" stroke-width="2.5"/>
+  </g>
+  <text x="600" y="384" text-anchor="middle" fill="#86EFAC" font-size="40">✅</text>
+  <text x="600" y="420" text-anchor="middle" fill="#E2E8F0" font-size="20" font-weight="700">GOAL</text>
+  <text x="600" y="444" text-anchor="middle" fill="#A7F3D0" font-size="12">mission succeeds</text>
+
+  <!-- nodes positioned around the circle (6 around top arc, loop back at bottom) -->
+  <!-- angles: start top, clockwise -->
+  <!-- INTERPRET (top) -->
+  <g filter="url(#soft2)"><rect x="510" y="120" width="180" height="64" rx="14" fill="url(#node)" stroke="#38BDF8" stroke-width="1.8"/></g>
+  <text x="600" y="148" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">1 · INTERPRET</text>
+  <text x="600" y="168" text-anchor="middle" fill="#7DD3FC" font-size="10.5">parse the one-line command</text>
+
+  <!-- RESEARCH (top-right) -->
+  <g filter="url(#soft2)"><rect x="840" y="206" width="186" height="64" rx="14" fill="url(#node)" stroke="#38BDF8" stroke-width="1.8"/></g>
+  <text x="933" y="234" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">2 · RESEARCH</text>
+  <text x="933" y="254" text-anchor="middle" fill="#7DD3FC" font-size="10.5">web lookup (optional)</text>
+
+  <!-- DESIGN (right) -->
+  <g filter="url(#soft2)"><rect x="900" y="368" width="186" height="64" rx="14" fill="url(#node)" stroke="#F472B6" stroke-width="1.8"/></g>
+  <text x="993" y="396" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">3 · DESIGN</text>
+  <text x="993" y="416" text-anchor="middle" fill="#F9A8D4" font-size="10.5">build the .craft + plan</text>
+
+  <!-- FLY (bottom-right) -->
+  <g filter="url(#soft2)"><rect x="820" y="520" width="186" height="64" rx="14" fill="url(#node)" stroke="#FBBF24" stroke-width="1.8"/></g>
+  <text x="913" y="548" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">4 · FLY</text>
+  <text x="913" y="568" text-anchor="middle" fill="#FCD34D" font-size="10.5">execute one phase live</text>
+
+  <!-- DIAGNOSE (bottom-left) -->
+  <g filter="url(#soft2)"><rect x="194" y="520" width="186" height="64" rx="14" fill="url(#node)" stroke="#F472B6" stroke-width="1.8"/></g>
+  <text x="287" y="548" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">5 · DIAGNOSE</text>
+  <text x="287" y="568" text-anchor="middle" fill="#F9A8D4" font-size="10.5">one root cause per retry</text>
+
+  <!-- RECORD (left) -->
+  <g filter="url(#soft2)"><rect x="114" y="368" width="186" height="64" rx="14" fill="url(#node)" stroke="#38BDF8" stroke-width="1.8"/></g>
+  <text x="207" y="396" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">6 · RECORD</text>
+  <text x="207" y="416" text-anchor="middle" fill="#7DD3FC" font-size="10.5">append to experience ledger</text>
+
+  <!-- arcs connecting nodes (clockwise) -->
+  <!-- INTERPRET -> RESEARCH -->
+  <path d="M690,158 Q820,170 905,206" fill="none" stroke="#38BDF8" stroke-width="2.4" marker-end="url(#loopArr)"/>
+  <!-- RESEARCH -> DESIGN -->
+  <path d="M970,270 Q1010,318 1000,366" fill="none" stroke="#38BDF8" stroke-width="2.4" marker-end="url(#loopArr)"/>
+  <!-- DESIGN -> FLY -->
+  <path d="M980,432 Q955,486 935,518" fill="none" stroke="#FBBF24" stroke-width="2.4" marker-end="url(#loopArr)"/>
+  <!-- FLY -> DIAGNOSE (across the bottom) -->
+  <path d="M820,558 Q555,628 382,558" fill="none" stroke="#FBBF24" stroke-width="2.6" stroke-dasharray="9 5" marker-end="url(#loopArrMag)"/>
+  <text x="600" y="628" text-anchor="middle" fill="#FCD34D" font-size="11.5">if a phase fails →</text>
+  <!-- DIAGNOSE -> RECORD -->
+  <path d="M232,518 Q198,486 205,434" fill="none" stroke="#F472B6" stroke-width="2.4" marker-end="url(#loopArrMag)"/>
+  <!-- RECORD -> back to DESIGN (retry) -->
+  <path d="M222,366 Q190,250 360,200 Q520,160 540,142" fill="none" stroke="#38BDF8" stroke-width="2.4" stroke-dasharray="8 5" marker-end="url(#loopArr)"/>
+  <text x="300" y="250" text-anchor="middle" fill="#7DD3FC" font-size="11.5" transform="rotate(-40 300 250)">RETRY → redesign &amp; refly</text>
+
+  <!-- success spokes from FLY -> GOAL -->
+  <path d="M866,520 Q740,470 680,440" fill="none" stroke="#22D3A0" stroke-width="2.2" marker-end="url(#loopArr)" opacity="0.0"/>
+  <path d="M860,524 Q730,476 686,446" fill="none" stroke="#22D3A0" stroke-width="2.4" stroke-dasharray="2 6"/>
+  <text x="770" y="476" text-anchor="middle" fill="#86EFAC" font-size="11" transform="rotate(-22 770 476)">phase passes →</text>
+
+  <!-- caption strip -->
+  <g transform="translate(0,672)">
+    <text x="600" y="0" text-anchor="middle" fill="#94A3B8" font-size="12.5">Every pass through the loop writes an experience entry; each retry changes exactly one thing.</text>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+mission: "deliver payload to 80 km Kerbin orbit"
+recommended_command: "ksp-lab run --mission \"deliver payload to 80 km Kerbin orbit\" --max-trials 25"
+success:
+  apoapsis_m: 80000
+  periapsis_m: 70000
+notes:
+  - "Use a two-stage stack with launch TWR above 1.1."
+  - "The built-in controller targets an eastward gravity turn and circularization."
+

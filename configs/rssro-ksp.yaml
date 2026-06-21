@@ -1,0 +1,38 @@
+bridge:
+  base_url: "http://127.0.0.1:48500"
+  timeout_s: 30
+
+krpc:
+  name: "ksp1-automation-lab-rssro"
+  host: "127.0.0.1"
+  rpc_port: 50000
+  stream_port: 50001
+  physics_warp_factor: 3
+  min_autostage_stage: 2
+
+paths:
+  run_dir: "runs-rssro"
+  database: "runs-rssro/trials.sqlite3"
+  knowledge_base: "data/knowledge_base"
+  ksp_save_ships_vab: "C:/Users/Weike_Zhang/Documents/Codex/2026-06-19/new-chat/outputs/ksp1-automation-lab/work/KSP_RSSRO/saves/AutomationRSSRO/Ships/VAB"
+
+runner:
+  max_trials: 25
+  success_streak_required: 1
+  revert_after_trial: false
+  flight_timeout_s: 7200
+  post_load_settle_s: 15
+  scene_transition_timeout_s: 90
+
+optimizer:
+  external_command: ""
+  external_timeout_s: 120
+
+craft_writer:
+  template_path: ""
+
+mod_profile:
+  ksp_root: "C:/Users/Weike_Zhang/Documents/Codex/2026-06-19/new-chat/outputs/ksp1-automation-lab/work/KSP_RSSRO"
+  ckan_instance: "KSP_RSSRO"
+  installed_stack: "RP-1 Express v2.0, RP-1 v4.4.0.0, RealismOverhaul v18.0.0.0, RealSolarSystem v20.1.3.0, kRPC v0.5.4"
+  warning: "Do not run stock Kerbin/Mun guidance against this profile. RSS/RO/RP-1 needs Earth/Moon constants, RO engines, ullage/ignition handling, and inclination-aware launch guidance."

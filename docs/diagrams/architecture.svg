@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#070A16"/>
+    </linearGradient>
+    <linearGradient id="cyanCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#103048"/>
+      <stop offset="1" stop-color="#0C2236"/>
+    </linearGradient>
+    <linearGradient id="magCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A1430"/>
+      <stop offset="1" stop-color="#2A0E24"/>
+    </linearGradient>
+    <linearGradient id="amberCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A2C10"/>
+      <stop offset="1" stop-color="#2A2009"/>
+    </linearGradient>
+    <linearGradient id="slateCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A2236"/>
+      <stop offset="1" stop-color="#121A2C"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <marker id="arrCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="arrMag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#F472B6"/>
+    </marker>
+    <marker id="arrAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#FBBF24"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <!-- stars -->
+  <g fill="#94A3B8" opacity="0.5">
+    <circle cx="120" cy="80" r="1.1"/><circle cx="300" cy="50" r="0.9"/><circle cx="520" cy="95" r="1.3"/>
+    <circle cx="760" cy="60" r="0.9"/><circle cx="980" cy="100" r="1.1"/><circle cx="1100" cy="55" r="1.2"/>
+    <circle cx="60" cy="360" r="1"/><circle cx="1140" cy="320" r="1.1"/><circle cx="200" cy="660" r="0.9"/>
+    <circle cx="640" cy="650" r="1.2"/><circle cx="1050" cy="640" r="1"/><circle cx="420" cy="640" r="0.8"/>
+    <circle cx="880" cy="660" r="1"/>
+  </g>
+
+  <!-- title -->
+  <text x="48" y="56" fill="#E2E8F0" font-size="30" font-weight="700">ASTRA — System Architecture</text>
+  <text x="48" y="84" fill="#7DD3FC" font-size="15">Autonomous Spaceflight Trial &amp; Research Agent · one line of language → a flown mission</text>
+
+  <!-- ============ MAIN PIPELINE ============ -->
+  <!-- NL command -->
+  <g filter="url(#soft)">
+    <rect x="48" y="150" width="200" height="78" rx="14" fill="url(#cyanCard)" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+  <text x="148" y="183" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">Natural-language</text>
+  <text x="148" y="203" text-anchor="middle" fill="#E2E8F0" font-size="14" font-weight="700">command</text>
+  <text x="148" y="221" text-anchor="middle" fill="#7DD3FC" font-size="11">"land a relay…"</text>
+
+  <!-- Interpreter -->
+  <g filter="url(#soft)">
+    <rect x="296" y="142" width="216" height="94" rx="14" fill="url(#cyanCard)" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+  <text x="404" y="173" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">ASTRA Interpreter</text>
+  <text x="404" y="196" text-anchor="middle" fill="#7DD3FC" font-size="11.5">Claude API</text>
+  <text x="404" y="214" text-anchor="middle" fill="#7DD3FC" font-size="11.5">+ heuristic fallback</text>
+
+  <!-- Mission Spec -->
+  <g filter="url(#soft)">
+    <rect x="560" y="150" width="170" height="78" rx="14" fill="url(#slateCard)" stroke="#94A3B8" stroke-width="1.3"/>
+  </g>
+  <text x="645" y="184" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">Mission Spec</text>
+  <text x="645" y="205" text-anchor="middle" fill="#CBD5E1" font-size="11">goals · Δv budget · phases</text>
+
+  <!-- Architect -->
+  <g filter="url(#soft)">
+    <rect x="778" y="142" width="222" height="94" rx="14" fill="url(#magCard)" stroke="#F472B6" stroke-width="1.5"/>
+  </g>
+  <text x="889" y="172" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">Architect</text>
+  <text x="889" y="195" text-anchor="middle" fill="#F9A8D4" font-size="11.5">craft_writer.render()</text>
+  <text x="889" y="213" text-anchor="middle" fill="#F9A8D4" font-size="11.5">generates .craft</text>
+
+  <!-- Flight Controller -->
+  <g filter="url(#soft)">
+    <rect x="430" y="340" width="280" height="108" rx="16" fill="url(#cyanCard)" stroke="#38BDF8" stroke-width="2"/>
+  </g>
+  <text x="570" y="376" text-anchor="middle" fill="#E2E8F0" font-size="17" font-weight="700">Flight Controller</text>
+  <text x="570" y="400" text-anchor="middle" fill="#7DD3FC" font-size="12.5">kRPC live brain — phase loop</text>
+  <text x="570" y="422" text-anchor="middle" fill="#7DD3FC" font-size="12.5">staging · guidance · throttle</text>
+
+  <!-- KSP1 game -->
+  <g filter="url(#soft)">
+    <rect x="800" y="338" width="350" height="112" rx="16" fill="url(#amberCard)" stroke="#FBBF24" stroke-width="2"/>
+  </g>
+  <text x="975" y="372" text-anchor="middle" fill="#E2E8F0" font-size="17" font-weight="700">KSP1 game</text>
+  <text x="975" y="397" text-anchor="middle" fill="#FCD34D" font-size="12.5">kRPC server :50000</text>
+  <text x="975" y="417" text-anchor="middle" fill="#FCD34D" font-size="12.5">+ C# HTTP bridge :48500</text>
+  <text x="975" y="436" text-anchor="middle" fill="#FDE68A" font-size="11" opacity="0.85">live telemetry · craft load · controls</text>
+
+  <!-- ============ SIDE COMPONENTS ============ -->
+  <text x="48" y="300" fill="#94A3B8" font-size="13" font-weight="600" letter-spacing="1.5">KNOWLEDGE &amp; MATH FEEDING THE LOOP</text>
+
+  <g filter="url(#soft)">
+    <rect x="48" y="320" width="200" height="76" rx="13" fill="url(#slateCard)" stroke="#38BDF8" stroke-width="1.3"/>
+  </g>
+  <text x="148" y="350" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Experience Ledger</text>
+  <text x="148" y="371" text-anchor="middle" fill="#7DD3FC" font-size="11">append-only attempts</text>
+
+  <g filter="url(#soft)">
+    <rect x="48" y="412" width="200" height="76" rx="13" fill="url(#slateCard)" stroke="#F472B6" stroke-width="1.3"/>
+  </g>
+  <text x="148" y="442" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Methodology KB</text>
+  <text x="148" y="463" text-anchor="middle" fill="#F9A8D4" font-size="11">generalized know-how</text>
+
+  <g filter="url(#soft)">
+    <rect x="48" y="504" width="200" height="76" rx="13" fill="url(#slateCard)" stroke="#FBBF24" stroke-width="1.3"/>
+  </g>
+  <text x="148" y="534" text-anchor="middle" fill="#E2E8F0" font-size="13.5" font-weight="700">Guidance Math</text>
+  <text x="148" y="555" text-anchor="middle" fill="#FCD34D" font-size="11">Δv · TWR · hoverslam</text>
+
+  <!-- Diagnose node (retry loop) -->
+  <g filter="url(#soft)">
+    <rect x="430" y="520" width="280" height="74" rx="14" fill="url(#magCard)" stroke="#F472B6" stroke-width="1.6"/>
+  </g>
+  <text x="570" y="550" text-anchor="middle" fill="#E2E8F0" font-size="15" font-weight="700">Diagnose</text>
+  <text x="570" y="572" text-anchor="middle" fill="#F9A8D4" font-size="11.5">root-cause from telemetry → one fix</text>
+
+  <!-- ============ FLOWS ============ -->
+  <!-- main pipeline -->
+  <line x1="248" y1="189" x2="290" y2="189" stroke="#38BDF8" stroke-width="2.4" marker-end="url(#arrCyan)"/>
+  <line x1="512" y1="189" x2="554" y2="189" stroke="#38BDF8" stroke-width="2.4" marker-end="url(#arrCyan)"/>
+  <line x1="730" y1="189" x2="772" y2="189" stroke="#38BDF8" stroke-width="2.4" marker-end="url(#arrCyan)"/>
+
+  <!-- Architect -> Flight Controller -->
+  <path d="M889,236 L889,300 Q889,316 873,316 L600,316 Q585,316 585,332 L585,334" fill="none" stroke="#F472B6" stroke-width="2.4" marker-end="url(#arrMag)"/>
+  <text x="700" y="308" text-anchor="middle" fill="#F9A8D4" font-size="11">.craft loaded</text>
+
+  <!-- Flight Controller <-> KSP1 (bidirectional) -->
+  <line x1="710" y1="378" x2="794" y2="378" stroke="#FBBF24" stroke-width="2.6" marker-end="url(#arrAmber)"/>
+  <line x1="794" y1="410" x2="710" y2="410" stroke="#FBBF24" stroke-width="2.6" marker-end="url(#arrAmber)"/>
+  <text x="752" y="370" text-anchor="middle" fill="#FCD34D" font-size="10.5">commands</text>
+  <text x="752" y="426" text-anchor="middle" fill="#FCD34D" font-size="10.5">telemetry</text>
+
+  <!-- Flight Controller -> Diagnose -->
+  <line x1="570" y1="448" x2="570" y2="514" stroke="#F472B6" stroke-width="2.4" marker-end="url(#arrMag)"/>
+  <text x="582" y="486" fill="#F9A8D4" font-size="11">on failure</text>
+
+  <!-- Diagnose -> Architect (retry loop, big sweep) -->
+  <path d="M710,545 Q940,545 1075,520 Q1130,508 1130,360 L1130,300 Q1130,250 1080,250 L1012,250"
+        fill="none" stroke="#F472B6" stroke-width="2.4" stroke-dasharray="8 5" marker-end="url(#arrMag)"/>
+  <text x="1115" y="290" text-anchor="middle" fill="#F472B6" font-size="12" font-weight="700" transform="rotate(90 1115 290)">RETRY · redesign &amp; refly</text>
+
+  <!-- side components into the loop -->
+  <path d="M248,358 Q330,358 360,400 Q380,428 426,434" fill="none" stroke="#38BDF8" stroke-width="1.8" opacity="0.85" marker-end="url(#arrCyan)"/>
+  <path d="M248,450 L426,420" fill="none" stroke="#F472B6" stroke-width="1.8" opacity="0.85" marker-end="url(#arrMag)"/>
+  <path d="M248,542 Q330,542 380,500 Q400,478 426,460" fill="none" stroke="#FBBF24" stroke-width="1.8" opacity="0.85" marker-end="url(#arrAmber)"/>
+
+  <!-- record back to ledger -->
+  <path d="M430,557 Q300,560 250,520" fill="none" stroke="#38BDF8" stroke-width="1.8" stroke-dasharray="6 4" opacity="0.9" marker-end="url(#arrCyan)"/>
+  <text x="320" y="600" text-anchor="middle" fill="#7DD3FC" font-size="10.5">record every attempt →</text>
+
+  <!-- legend -->
+  <g transform="translate(48,648)" font-size="12">
+    <rect x="0" y="-12" width="14" height="14" rx="3" fill="url(#cyanCard)" stroke="#38BDF8"/>
+    <text x="22" y="0" fill="#CBD5E1">Reason / interpret</text>
+    <rect x="170" y="-12" width="14" height="14" rx="3" fill="url(#magCard)" stroke="#F472B6"/>
+    <text x="192" y="0" fill="#CBD5E1">Design / diagnose</text>
+    <rect x="350" y="-12" width="14" height="14" rx="3" fill="url(#amberCard)" stroke="#FBBF24"/>
+    <text x="372" y="0" fill="#CBD5E1">Live game I/O</text>
+    <text x="520" y="0" fill="#94A3B8">— — — retry / record loop</text>
+  </g>
+</svg>

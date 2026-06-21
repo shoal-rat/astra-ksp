@@ -1,0 +1,47 @@
+bridge:
+  base_url: "http://127.0.0.1:48500"
+  timeout_s: 30
+
+krpc:
+  name: "ksp1-automation-lab"
+  host: "127.0.0.1"
+  rpc_port: 50000
+  stream_port: 50001
+  # KSP physics warp factor: 0=1x, 1=2x, 2=3x, 3=4x.
+  physics_warp_factor: 3
+  # Allows custom craft with empty prelaunch stages: empty stage, engine ignition, clamp release.
+  max_launch_start_stages: 6
+  node_alignment_timeout_s: 20
+  node_alignment_error_deg: 6
+  model_orbital_refueling: false
+  bridge_base_url: "http://127.0.0.1:48500"
+  bridge_timeout_s: 30
+  orbital_refuel_fraction: 1.0
+  orbital_refuel_resources: "LiquidFuel,Oxidizer,MonoPropellant,ElectricCharge,LqdHydrogen,LqdMethane,Methane,LqdOxygen"
+
+paths:
+  run_dir: "runs"
+  database: "runs/trials.sqlite3"
+  knowledge_base: "data/knowledge_base"
+  # For live KSP runs, set this to:
+  # "<KSP root>/saves/<save name>/Ships/VAB"
+  ksp_save_ships_vab: ""
+
+runner:
+  max_trials: 25
+  success_streak_required: 1
+  revert_after_trial: true
+  flight_timeout_s: 2400
+  post_load_settle_s: 6
+  scene_transition_timeout_s: 60
+
+optimizer:
+  # Optional command that reads a JSON request from stdin and returns RocketDesign JSON on stdout.
+  # Example: "python external_ai_design_server.py"
+  external_command: ""
+  external_timeout_s: 120
+
+craft_writer:
+  # Optional known-good KSP craft file used as a physical template during live integration debugging.
+  # Leave empty to use the generated stock stack serializer.
+  template_path: ""

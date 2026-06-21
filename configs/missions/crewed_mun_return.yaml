@@ -1,0 +1,9 @@
+mission: "crewed Mun landing and safe return"
+recommended_command: "ksp-lab run --mission \"crewed Mun landing and safe return\" --max-trials 100"
+success:
+  landed_on: "Mun"
+  recovered_on: "Kerbin"
+notes:
+  - "Initial generated craft is a simple stacked launcher, transfer stage, and Terrier lander-return stage."
+  - "Mun landing guidance is scaffolded; extend KrpcFlightController for full transfer, landing, and return automation."
+

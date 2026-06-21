@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ksp1-automation-lab"
+version = "0.1.0"
+description = "Closed-loop KSP1 rocket design, launch, telemetry, scoring, and optimization lab."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "KSP1 Automation Lab" }]
+dependencies = [
+  "PyYAML>=6.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+ksp = ["krpc>=0.5.4"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ksp-lab = "ksp_lab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
