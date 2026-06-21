@@ -360,15 +360,22 @@ class KrpcFlightController:
         rel, nc, nt = rel_incl_deg()
         self._record_live_sample(chaser, recorder, start, "rendezvous_plane_relincl",
                                  {"rel_incl_deg": rel})
-        if rel < 1.5:
+        # Only do a plane change for a LARGE mismatch (e.g. a retrograde capture). For a small
+        # relative inclination the orbits cross near the nodes, so the phasing-drift + RCS proximity
+        # ops can close the residual cross-track — and a precise node burn isn't worth the risk/time.
+        if rel < 6.0:
             return True
         # The two planes intersect along node = nc x nt; the chaser is at the node when its position
-        # lies along +/- that line. Warp there so a normal burn rotates its plane toward the target.
+        # lies along +/- that line. Warp there (with a HARD cap so this can never stall) so a normal
+        # burn rotates its plane toward the target.
         node = unit(self._cross(nc, nt))
-        deadline = time.monotonic() + min(timeout_s, 900)
+        deadline = time.monotonic() + 150.0
         while time.monotonic() < deadline:
             pos = unit(chaser.position(ref))
-            if abs(pos[0] * node[0] + pos[1] * node[1] + pos[2] * node[2]) > 0.985:
+            align = abs(pos[0] * node[0] + pos[1] * node[1] + pos[2] * node[2])
+            self._record_live_sample(chaser, recorder, start, "rendezvous_plane_seek_node",
+                                     {"align": align, "rel_incl_deg": rel_incl_deg()[0]})
+            if align > 0.97:
                 break
             try:
                 sc.warp_to(sc.ut + max(8.0, float(chaser.orbit.period) / 96.0),
