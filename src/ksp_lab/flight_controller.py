@@ -262,10 +262,18 @@ class KrpcFlightController:
             # proximity dock, using closest-approach maneuver optimization. Skipped if already close.
             if self._relative_distance_m(chaser, target) > 2500.0:
                 self._rendezvous_intercept(conn, chaser, target, recorder, start, timeout_s)
-            # Close the bulk gap (km-scale) with the main engine before fine RCS proximity ops.
-            if self._relative_distance_m(chaser, target) > 250.0:
-                self._translate_to_target(conn, chaser, target, recorder, start, timeout_s)
-            docked = self._approach_and_dock(conn, chaser, target, recorder, start, timeout_s)
+            # Re-close + dock, retried: at close range the two slightly-different orbits drift the
+            # craft apart faster than the weak RCS can fight, so if a proximity pass loses the target
+            # we re-close the bulk gap with the main engine and try the dock again.
+            docked = False
+            for _attempt in range(8):
+                if time.monotonic() - start > timeout_s:
+                    break
+                if self._relative_distance_m(chaser, target) > 70.0:
+                    self._translate_to_target(conn, chaser, target, recorder, start, timeout_s)
+                docked = self._approach_and_dock(conn, chaser, target, recorder, start, timeout_s)
+                if docked:
+                    break
             if not docked:
                 self._record_live_sample(chaser, recorder, start, "dock_not_completed")
                 return recorder.summarize()
@@ -652,10 +660,11 @@ class KrpcFlightController:
             if time.monotonic() - start > timeout_s:
                 break
             cur = self._closest_approach_m(chaser.orbit, target.orbit)
-            # Stop optimising once the predicted closest approach is within ~5 km: the velocity-match
-            # + proximity ops take over from there. Re-optimising a correction once close risks
-            # warping past the (now-loaded) encounter, which KSP blocks.
-            if cur < 5_000.0:
+            # Stop optimising once the predicted closest approach is within ~15 km: the main-engine
+            # velocity-match + translate take over from there. Re-optimising imprecise corrections
+            # made the closest approach WORSE and lowered the periapsis into the atmosphere, so one
+            # good intercept burn is enough — the proximity phase closes the rest.
+            if cur < 15_000.0:
                 break
             bd, but, bpg, brd = self._optimize_intercept_node(
                 conn, chaser, target, max_dv=(350.0 if attempt == 0 else 120.0))
@@ -677,7 +686,7 @@ class KrpcFlightController:
             newca = self._closest_approach_m(chaser.orbit, target.orbit)
             self._record_live_sample(chaser, recorder, start, "rendezvous_intercept_burned",
                                      {"closest_m": newca, "attempt": attempt})
-            if newca < 5_000.0:
+            if newca < 15_000.0:
                 break
         # Warp to the predicted closest approach, then null the relative velocity.
         try:
@@ -726,10 +735,11 @@ class KrpcFlightController:
         return 1.0e9  # rendezvous uses its own per-step timeout; this guard is effectively off
 
     def _translate_to_target(self, conn, chaser, target, recorder, start, timeout_s,
-                             stop_m: float = 150.0, max_s: float = 600.0) -> None:
+                             stop_m: float = 55.0, max_s: float = 700.0) -> None:
         """Close the bulk gap to the target with the MAIN engine (RCS is far too weak over km).
         Hold the chaser's velocity-relative-to-target pointed at the target, with a closing speed
-        that scales with distance and eases to zero near it; hand off at ``stop_m`` for RCS."""
+        that scales with distance and EASES to ~1.5 m/s near the target so the RCS hand-off is gentle
+        (a fast hand-off overshoots — the weak RCS can't decelerate it). Hands off at ``stop_m``."""
         ofr = chaser.orbital_reference_frame  # centred on the chaser; target.position = vector to it
         ap = chaser.auto_pilot
         chaser.control.rcs = True
@@ -744,7 +754,9 @@ class KrpcFlightController:
             if dist < stop_m:
                 break
             unit = (to_t[0] / dist, to_t[1] / dist, to_t[2] / dist)
-            v_des = max(3.0, min(35.0, dist * 0.06))
+            # Closing speed scales with distance but eases low near the target (sqrt-ish) for a soft
+            # hand-off: ~30 m/s far out, ~3 m/s at 100 m, ~1.5 m/s at the stop distance.
+            v_des = max(1.2, min(30.0, (dist ** 0.5) * 0.45))
             # Accelerate so the chaser's closing velocity points at the target at v_des: the chaser's
             # velocity rel. to the target is -tvel, so burn toward (unit*v_des + tvel).
             burn = (unit[0] * v_des + tvel[0], unit[1] * v_des + tvel[1], unit[2] * v_des + tvel[2])
@@ -762,58 +774,179 @@ class KrpcFlightController:
         chaser.control.throttle = 0.0
 
     def _approach_and_dock(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
-        """Proximity ops: point at the target, translate in with RCS, null lateral drift, mate ports."""
+        """Proximity ops: control FROM the chaser's docking port, aim at the TARGET'S port, creep in
+        slowly with RCS while nulling lateral drift, and let the ports magnetically capture."""
         sc = conn.space_center
         try:
             chaser_port = self._first_docking_port(chaser)
             target_port = self._first_docking_port(target)
         except Exception:
             chaser_port = target_port = None
+        # Control from the docking port so "forward" is along the port axis, and orient the passive
+        # target so its port faces the chaser (otherwise the ports can never mate).
+        try:
+            if chaser_port is not None:
+                chaser.parts.controlling = chaser_port.part
+        except Exception:
+            pass
+        # Hold station, then point the PASSIVE target's port at the chaser. Its port otherwise faces
+        # an arbitrary direction (lateral≈distance in the telemetry) and the two ports can never mate.
+        self._null_relative_velocity(conn, chaser, target, recorder, start, max_s=35)
+        # Wait for the target's parts/port to finish loading (None for a beat after the scene loads).
+        for _ in range(16):
+            if target_port is not None:
+                break
+            try:
+                target_port = self._first_docking_port(target)
+            except Exception:
+                pass
+            time.sleep(0.5)
+        self._orient_target_port_to_chaser(conn, chaser, target, target_port, recorder, start)
+        try:
+            chaser_port = self._first_docking_port(chaser)
+            target_port = self._first_docking_port(target)
+            if chaser_port is not None:
+                chaser.parts.controlling = chaser_port.part
+        except Exception:
+            pass
         ap = chaser.auto_pilot
+        chaser.control.rcs = True
         last_phase = ""
         while time.monotonic() - start < timeout_s:
-            # Docked? (the chaser's port reports docked, or the vessel gained the target's parts)
+            # Re-acquire ports once the target loads (its parts/ports are unavailable while it is
+            # unloaded beyond physics range), and lock control to the chaser's port.
+            if chaser_port is None:
+                try:
+                    chaser_port = self._first_docking_port(chaser)
+                    if chaser_port is not None:
+                        chaser.parts.controlling = chaser_port.part
+                except Exception:
+                    pass
+            if target_port is None:
+                try:
+                    target_port = self._first_docking_port(target)
+                except Exception:
+                    pass
             try:
                 if chaser_port is not None and str(chaser_port.state).lower().endswith("docked"):
                     self._record_live_sample(chaser, recorder, start, "dock_ports_mated")
                     return True
             except Exception:
                 pass
-            # Relative position/velocity of the target in the chaser's reference frame.
-            ref = chaser.reference_frame
+            ref = chaser.reference_frame  # centred on the control point (the docking port)
             try:
-                rel_pos = target.position(ref)
+                if target_port is not None:
+                    tpos = target_port.position(ref)
+                    tdir = target_port.direction(ref)  # the way the target port faces (outward)
+                else:
+                    tpos = target.position(ref)
+                    tdir = None
                 rel_vel = target.velocity(ref)
             except Exception:
                 return False
-            distance = (rel_pos[0] ** 2 + rel_pos[1] ** 2 + rel_pos[2] ** 2) ** 0.5
-            # Point the chaser docking axis at the target.
+            distance = self._norm(tpos)
+            # Drifted out of fine-RCS range: bail so the outer loop re-closes with the main engine.
+            if distance > 130.0:
+                chaser.control.right = chaser.control.up = chaser.control.forward = 0.0
+                return False
+            # Face the chaser port at the target port (anti-parallel to its outward facing). The
+            # autopilot rejects the body frame, so point in the non-rotating ORBITAL frame.
             try:
-                ap.reference_frame = ref
-                ap.target_direction = rel_pos
+                oref = chaser.orbital_reference_frame
+                if target_port is not None:
+                    tdir_o = target_port.direction(oref)
+                    aim = (-tdir_o[0], -tdir_o[1], -tdir_o[2])
+                else:
+                    aim = target.position(oref)
+                ap.reference_frame = oref
+                ap.target_direction = aim
                 ap.engage()
             except Exception:
                 pass
-            # Desired closing speed: slow when near, faster when far (cap ~3 m/s).
-            v_des = max(0.3, min(3.0, distance * 0.08))
-            unit = [c / distance for c in rel_pos] if distance > 1e-3 else [0.0, 0.0, 0.0]
-            # Command translation = drive relative velocity toward (unit * v_des). control axes:
-            # forward=+y(nose), right=+x, up=+z in the vessel frame; gains kept gentle.
+            # Approach ALONG the target port's axis: aim at a point a standoff in front of the port,
+            # and shrink the standoff as the lateral offset goes to zero so we arrive head-on. This
+            # is what lets the magnets capture — coming at the target's centre never lines the ports up.
+            lat = 0.0
+            if tdir is not None:
+                along = -(tpos[0] * tdir[0] + tpos[1] * tdir[1] + tpos[2] * tdir[2])  # +ve = in front
+                lateral = [(-tpos[i]) - along * tdir[i] for i in range(3)]
+                lat = self._norm(lateral)
+                if distance < 3.0 and lat < 0.8:
+                    goal = list(tpos)  # lined up and close: drive straight into the port
+                else:
+                    # Aim at a point in front of the port; standoff shrinks with the lateral offset
+                    # so the chaser spirals onto the axis instead of parking at a fixed standoff.
+                    standoff = max(0.25, min(distance * 0.9, lat * 1.1))
+                    goal = [tpos[i] + tdir[i] * standoff for i in range(3)]
+            else:
+                goal = list(tpos)
+            gdist = self._norm(goal)
+            unit = [g / gdist for g in goal] if gdist > 1e-3 else [0.0, 0.0, 0.0]
+            v_des = max(0.35, min(1.5, gdist * 0.08))
             err = [unit[i] * v_des - rel_vel[i] for i in range(3)]
-            chaser.control.right = max(-1.0, min(1.0, err[0] * 0.5))
-            chaser.control.up = max(-1.0, min(1.0, err[2] * 0.5))
-            chaser.control.forward = max(-1.0, min(1.0, err[1] * 0.5))
-            phase = "dock_final_approach" if distance < 50 else "dock_closing"
+            chaser.control.right = max(-1.0, min(1.0, err[0] * 1.0))
+            chaser.control.up = max(-1.0, min(1.0, err[2] * 1.0))
+            chaser.control.forward = max(-1.0, min(1.0, err[1] * 1.0))
+            phase = "dock_final_approach" if distance < 40 else "dock_closing"
             if phase != last_phase:
                 last_phase = phase
-            self._record_live_sample(
-                chaser, recorder, start, phase,
-                {"distance_m": distance, "closing_speed_mps": v_des},
-            )
-            if distance < 0.4:
+            self._record_live_sample(chaser, recorder, start, phase,
+                                     {"distance_m": distance, "closing_speed_mps": v_des,
+                                      "lateral_m": lat})
+            if distance < 0.35:
                 return True
-            time.sleep(0.25)
+            time.sleep(0.2)
         return False
+
+    def _orient_target_port_to_chaser(self, conn, chaser, target, target_port, recorder, start) -> None:
+        """Point the passive target so its docking port faces the chaser, then return control to the
+        chaser. Without this the two ports rarely line up and can't capture."""
+        if target_port is None:
+            return
+        sc = conn.space_center
+        try:
+            chaser_name = chaser.name
+            sc.active_vessel = target
+            time.sleep(2.5)
+            try:
+                target.parts.controlling = target_port.part  # so "forward" is the port axis
+            except Exception:
+                pass
+            tap = target.auto_pilot
+            ref = target.orbital_reference_frame  # non-rotating: the autopilot rejects the body frame
+            # Aim the target's port at the chaser: port should point along (chaser - target).
+            to_chaser = chaser.position(ref)
+            tap.reference_frame = ref
+            tap.target_direction = to_chaser
+            tap.engage()
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 60.0:
+                try:
+                    if float(tap.error) < 10.0:
+                        break
+                except Exception:
+                    break
+                time.sleep(0.4)
+            self._record_live_sample(target, recorder, start, "dock_target_oriented",
+                                     {"error_deg": float(getattr(tap, "error", 0.0))})
+            try:
+                tap.disengage()
+            except Exception:
+                pass
+            # Return control to the chaser.
+            for v in sc.vessels:
+                if v.name == chaser_name:
+                    sc.active_vessel = v
+                    break
+            time.sleep(2.5)
+        except Exception:
+            try:
+                for v in sc.vessels:
+                    if v.name == chaser.name:
+                        sc.active_vessel = v
+                        break
+            except Exception:
+                pass
 
     @staticmethod
     def _first_docking_port(vessel):

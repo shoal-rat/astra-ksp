@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using KSP.UI.Screens;
+using MuMech;
 using UnityEngine;
 
 namespace KspAutomationBridge
@@ -475,6 +476,32 @@ namespace KspAutomationBridge
             {
                 Dictionary<string, string> fields = JsonObject.Parse(request.Body);
                 return RunOnMainThread(() => SpawnCrewCommand(fields), 30000);
+            }
+
+            // ---- MechJeb autopilots: delegate the HARD control (rendezvous, docking) to MechJeb
+            // instead of hand-rolling guidance. All touch the KSP + MechJeb API -> main thread. The
+            // enable handlers return immediately; the agent polls GET /mj-status for completion.
+            if (request.Method == "POST" && request.Path == "/mj-rendezvous")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjRendezvousCommand(fields), 30000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/mj-dock")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjDockCommand(fields), 30000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/mj-disable")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjDisableCommand(fields), 30000);
+            }
+
+            if (request.Method == "GET" && request.Path == "/mj-status")
+            {
+                return RunOnMainThread(() => MjStatusCommand(), 15000);
             }
 
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
@@ -1336,6 +1363,272 @@ namespace KspAutomationBridge
                 throw new ArgumentException("Missing required field: " + key);
             }
             return value;
+        }
+
+        // ================= MechJeb integration =================
+        // We drive MechJeb 2's own Rendezvous + Docking autopilots (compiled against the installed
+        // MechJeb2.dll) rather than reinventing guidance. MechJeb must be present on the craft: ship
+        // the "MechJeb for all command pods" ModuleManager patch (GameData) so GetMasterMechJeb() is
+        // non-null. Member casing is for the installed dev build (Users PascalCase; lowercase params).
+
+        private static MechJebCore GetMasterCore(Vessel vessel)
+        {
+            return vessel == null ? null : vessel.GetMasterMechJeb();
+        }
+
+        private static Vessel FindVesselByName(string name)
+        {
+            if (FlightGlobals.Vessels == null || string.IsNullOrEmpty(name))
+            {
+                return null;
+            }
+            foreach (Vessel v in FlightGlobals.Vessels)
+            {
+                if (v != null && string.Equals(v.vesselName, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return v;
+                }
+            }
+            return null;
+        }
+
+        private static ModuleDockingNode FindDockingPort(Vessel vessel, bool freeOnly)
+        {
+            if (vessel == null || vessel.parts == null)
+            {
+                return null;
+            }
+            foreach (Part p in vessel.parts)
+            {
+                ModuleDockingNode node = p.FindModuleImplementing<ModuleDockingNode>();
+                if (node == null)
+                {
+                    continue;
+                }
+                if (freeOnly && node.state != null && node.state.IndexOf("Docked", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    continue;
+                }
+                return node;
+            }
+            return null;
+        }
+
+        private static bool GetOptionalBool(Dictionary<string, string> fields, string key, bool fallback)
+        {
+            string s;
+            if (fields.TryGetValue(key, out s))
+            {
+                return string.Equals(s, "true", StringComparison.OrdinalIgnoreCase) || s == "1";
+            }
+            return fallback;
+        }
+
+        private static double GetOptionalDouble(Dictionary<string, string> fields, string key, double fallback)
+        {
+            string s;
+            double d;
+            if (fields.TryGetValue(key, out s) && double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out d))
+            {
+                return d;
+            }
+            return fallback;
+        }
+
+        private CommandResult MjRendezvousCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("MechJeb rendezvous requires an active vessel in flight.");
+            }
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+            {
+                return CommandResult.Fail("No MechJeb core on the active vessel (install the MechJeb-for-all patch and reload).");
+            }
+
+            string targetName = GetOptional(fields, "target", "").Trim();
+            if (targetName.Length > 0)
+            {
+                Vessel tv = FindVesselByName(targetName);
+                if (tv == null)
+                {
+                    return CommandResult.Fail("Target vessel not found: " + targetName);
+                }
+                FlightGlobals.fetch.SetVesselTarget(tv);
+            }
+            if (core.Target == null || !core.Target.NormalTargetExists)
+            {
+                return CommandResult.Fail("No valid target set for rendezvous.");
+            }
+
+            MechJebModuleRendezvousAutopilot ap = core.GetComputerModule<MechJebModuleRendezvousAutopilot>();
+            if (ap == null)
+            {
+                return CommandResult.Fail("MechJebModuleRendezvousAutopilot not present in this MechJeb build.");
+            }
+            ap.desiredDistance.Val = GetOptionalDouble(fields, "desiredDistance", 100.0);
+            ap.maxPhasingOrbits.Val = GetOptionalDouble(fields, "maxPhasingOrbits", 5.0);
+            ap.maxClosingSpeed.Val = GetOptionalDouble(fields, "maxClosingSpeed", 100.0);
+
+            vessel.ActionGroups.SetGroup(KSPActionGroup.RCS, true);
+            ap.Users.Add(core);
+
+            Dictionary<string, object> data = new Dictionary<string, object>
+            {
+                { "enabled", true },
+                { "target", targetName },
+                { "status", ap.status ?? "" }
+            };
+            return CommandResult.Ok(data);
+        }
+
+        private CommandResult MjDockCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("MechJeb dock requires an active vessel in flight.");
+            }
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+            {
+                return CommandResult.Fail("No MechJeb core on the active vessel (install the MechJeb-for-all patch and reload).");
+            }
+
+            // Resolve and set the TARGET docking port (a ModuleDockingNode gives MechJeb the dock axis).
+            string targetName = GetOptional(fields, "target", "").Trim();
+            ModuleDockingNode targetPort = null;
+            if (targetName.Length > 0)
+            {
+                Vessel tv = FindVesselByName(targetName);
+                if (tv == null)
+                {
+                    return CommandResult.Fail("Target vessel not found: " + targetName);
+                }
+                targetPort = FindDockingPort(tv, true);
+                if (targetPort == null)
+                {
+                    return CommandResult.Fail("No free docking port on target: " + targetName);
+                }
+                FlightGlobals.fetch.SetVesselTarget(targetPort);
+            }
+            else
+            {
+                ITargetable cur = FlightGlobals.fetch.VesselTarget;
+                if (cur is ModuleDockingNode)
+                {
+                    targetPort = (ModuleDockingNode)cur;
+                }
+                else if (cur != null && cur.GetVessel() != null)
+                {
+                    targetPort = FindDockingPort(cur.GetVessel(), true);
+                    if (targetPort != null)
+                    {
+                        FlightGlobals.fetch.SetVesselTarget(targetPort);
+                    }
+                }
+            }
+
+            // Set OUR control reference to the docking port we dock WITH (correct relative geometry).
+            ModuleDockingNode myPort = FindDockingPort(vessel, true);
+            if (myPort != null)
+            {
+                myPort.MakeReferenceTransform();
+                vessel.SetReferenceTransform(myPort.part);
+            }
+
+            MechJebModuleDockingAutopilot dock = core.GetComputerModule<MechJebModuleDockingAutopilot>();
+            if (dock == null)
+            {
+                return CommandResult.Fail("MechJebModuleDockingAutopilot not present in this MechJeb build.");
+            }
+            dock.speedLimit = GetOptionalDouble(fields, "speedLimit", 1.0);
+            dock.forceRol = GetOptionalBool(fields, "forceRol", false);
+            dock.overrideSafeDistance = GetOptionalBool(fields, "overrideSafeDistance", false);
+            dock.overrideTargetSize = false;
+            dock.drawBoundingBox = false;
+
+            if (core.Target == null || !core.Target.NormalTargetExists)
+            {
+                return CommandResult.Fail("No valid target docking port set; aborting before enable.");
+            }
+            vessel.ActionGroups.SetGroup(KSPActionGroup.RCS, true);
+            dock.Users.Add(core);
+
+            Dictionary<string, object> data = new Dictionary<string, object>
+            {
+                { "enabled", true },
+                { "target", targetName },
+                { "chaserPartCount", vessel.parts.Count },
+                { "status", dock.status ?? "" }
+            };
+            return CommandResult.Ok(data);
+        }
+
+        private CommandResult MjDisableCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("Requires an active vessel in flight.");
+            }
+            MechJebCore core = GetMasterCore(FlightGlobals.ActiveVessel);
+            if (core == null)
+            {
+                return CommandResult.Fail("No MechJeb core on the active vessel.");
+            }
+            string which = GetOptional(fields, "which", "all").Trim().ToLowerInvariant();
+            if (which == "dock" || which == "all")
+            {
+                MechJebModuleDockingAutopilot m = core.GetComputerModule<MechJebModuleDockingAutopilot>();
+                if (m != null) { m.Users.Remove(core); }
+            }
+            if (which == "rendezvous" || which == "all")
+            {
+                MechJebModuleRendezvousAutopilot m = core.GetComputerModule<MechJebModuleRendezvousAutopilot>();
+                if (m != null) { m.Users.Remove(core); }
+            }
+            return CommandResult.Ok(new Dictionary<string, object> { { "disabled", which } });
+        }
+
+        private CommandResult MjStatusCommand()
+        {
+            Dictionary<string, object> data = new Dictionary<string, object>();
+            bool flight = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null;
+            data["flight"] = flight;
+            if (!flight)
+            {
+                return CommandResult.Ok(data);
+            }
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            data["activeVessel"] = vessel.vesselName ?? "";
+            data["partCount"] = vessel.parts == null ? 0 : vessel.parts.Count;
+
+            MechJebCore core = GetMasterCore(vessel);
+            data["hasCore"] = core != null;
+            if (core == null)
+            {
+                return CommandResult.Ok(data);
+            }
+            data["targetExists"] = core.Target != null && core.Target.NormalTargetExists;
+
+            MechJebModuleDockingAutopilot dock = core.GetComputerModule<MechJebModuleDockingAutopilot>();
+            if (dock != null)
+            {
+                data["dockEnabled"] = dock.Users.Count > 0;
+                data["dockStatus"] = dock.status ?? "";
+            }
+            MechJebModuleRendezvousAutopilot rv = core.GetComputerModule<MechJebModuleRendezvousAutopilot>();
+            if (rv != null)
+            {
+                data["rvEnabled"] = rv.Users.Count > 0;
+                data["rvStatus"] = rv.status ?? "";
+            }
+
+            ModuleDockingNode myPort = FindDockingPort(vessel, false);
+            data["myPortState"] = myPort != null && myPort.state != null ? myPort.state : "";
+            return CommandResult.Ok(data);
         }
 
         private static string GetOptional(Dictionary<string, string> fields, string key, string fallback)

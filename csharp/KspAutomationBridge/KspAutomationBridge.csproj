@@ -57,6 +57,17 @@
       <HintPath>$(KSP_MANAGED)\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- MechJeb2: drive its Rendezvous/Docking autopilots. Reference the installed plugin DLL
+         (under GameData, two levels up from KSP_x64_Data\Managed). Hard reference = compile-time
+         safety against dev-build member renames. Do NOT copy it (Private=false). -->
+    <Reference Include="MechJeb2">
+      <HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJeb2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MechJebLib">
+      <HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJebLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

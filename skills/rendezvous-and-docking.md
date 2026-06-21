@@ -5,17 +5,29 @@ description: Same-body rendezvous, RCS proximity ops, docking-port mate, and cre
 
 # Rendezvous and Docking
 
-Bring a chaser (e.g. Orion) to a target (e.g. parked HLS) in the SAME body's orbit, dock, transfer
-crew, undock. Primitives: `run_dock_and_transfer(chaser_name, target_name, ...)`,
-`_approach_and_dock(...)`, `_first_docking_port(...)`, `_undock_after_transfer(...)` in
-`flight_controller.py`. Driver: `tools/fly_dock.py configs/local-ksp.yaml <CHASER> <TARGET>`. Both
-craft must be built `docking_port=True` (Clamp-O-Tron `dockingPort2` + `RCSBlock` + RCS tank — see
-`craft-design`).
+> **PREFERRED METHOD — delegate to MechJeb. Do not hand-roll rendezvous/docking guidance.** MechJeb's
+> Rendezvous + Docking autopilots fly the whole phasing → approach → port-alignment → mate sequence
+> reliably; the agent only sets the target, the params, and starts them. Driver:
+> `tools/fly_mj_dock.py configs/local-ksp.yaml <CHASER> <TARGET>`. Endpoints: `BridgeClient.mj_rendezvous`,
+> `mj_dock`, `mj_status`. Requires the MechJeb-for-all patch + a rebuilt bridge — see
+> [docs/USING_KRPC_AND_MECHJEB.md](../docs/USING_KRPC_AND_MECHJEB.md). This is the architecture: the LLM
+> orchestrates, MechJeb/kRPC do the control. The hand-rolled method below is retained only as a
+> fallback / teaching reference and never reliably mated two ports.
 
-> Honest scope (methodology §5): robust autonomous rendezvous from far orbits needs live tuning. The
-> proximity dock assumes the craft start within a few km — arrange matching launch orbits. The current
-> Artemis arc instead uses a "rendezvous-EQUIVALENT" (both vessels alive in Mun orbit at once,
-> `artemis_orion_waiting_in_mun_orbit`); literal dock+transfer is this skill's job and is best-effort.
+Bring a chaser (e.g. Orion) to a target (e.g. parked HLS) in the SAME body's orbit, dock, transfer
+crew, undock. Both craft must be built `docking_port=True` (Clamp-O-Tron `dockingPort2` + `RCSBlock`
++ RCS tank — see `craft-design`).
+
+## Hand-rolled fallback (legacy; superseded by MechJeb)
+
+Primitives: `run_dock_and_transfer(...)`, `_approach_and_dock(...)`, `_first_docking_port(...)` in
+`flight_controller.py`. Driver: `tools/fly_dock.py`.
+
+> Honest scope: the hand-rolled path got a chaser to ~2 m but NEVER mated the ports, across ~13 live
+> attempts — the root cause was the kRPC autopilot silently rejecting the vessel-fixed reference frame
+> (it needs a non-rotating frame), plus the passive target's port facing an arbitrary direction and
+> weak RCS losing to orbital drift at close range. That is precisely the class of problem MechJeb
+> already solves, which is why the MechJeb path above is now preferred.
 
 ## METHOD
 

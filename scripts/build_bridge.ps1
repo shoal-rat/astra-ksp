@@ -45,6 +45,19 @@ if ($msbuild) {
     Get-ChildItem -Path $managed -Filter "UnityEngine*.dll" | ForEach-Object {
         $references += "/reference:$($_.FullName)"
     }
+    # MechJeb2: reference the installed plugin DLLs so the bridge can drive MechJeb's autopilots
+    # (rendezvous / docking). Hard-referencing the installed DLL gives compile-time safety against
+    # dev-build member renames. MechJebLib is referenced too so the compiler can resolve any
+    # MechJeb public signatures that mention MechJebLib types.
+    $mjPlugins = Join-Path $KspRoot "GameData\MechJeb2\Plugins"
+    foreach ($mj in @("MechJeb2.dll", "MechJebLib.dll")) {
+        $mjPath = Join-Path $mjPlugins $mj
+        if (Test-Path $mjPath) {
+            $references += "/reference:$mjPath"
+        } else {
+            Write-Warning "MechJeb DLL not found: $mjPath (MechJeb endpoints will fail to compile)"
+        }
+    }
     & $csc /nologo /target:library /out:$outputDll /nowarn:1701,1702 `
         $references `
         (Join-Path $projectDir "KspAutomationBridge.cs") `

@@ -89,6 +89,17 @@ Three milestones have been flown **live in the game** and are verified:
 Each milestone has a standalone driver that ASTRA invokes, so you can also fly any one of them on its
 own (see [Project layout](#project-layout)).
 
+### Delegate control to MechJeb + kRPC — don't reinvent it
+
+The agent's job is to **orchestrate and delegate**, not to compute guidance. The in-game
+`KspAutomationBridge` plugin now wraps **MechJeb's** own autopilots behind HTTP endpoints
+(`/mj-rendezvous`, `/mj-dock`, `/mj-status`), compiled against the installed `MechJeb2.dll` for
+compile-time safety. The LLM picks the autopilot, sets parameters, starts it, and polls the result —
+MechJeb flies the phasing, approach, port-alignment, and mate that a hand-rolled controller never
+reliably nailed. **kRPC** supplies live telemetry and orbital math (closest-approach prediction,
+relative state, maneuver-node evaluation). See **[docs/USING_KRPC_AND_MECHJEB.md](docs/USING_KRPC_AND_MECHJEB.md)**
+— the project's most important note for any LLM continuing this work. Driver: `tools/fly_mj_dock.py`.
+
 ---
 
 ## How the agent thinks

@@ -61,6 +61,45 @@ class BridgeClient:
             payload["resources"] = resources
         return self._request("POST", "/vessel/refuel", json=payload)
 
+    # ---- MechJeb autopilots (delegate rendezvous/docking to MechJeb instead of hand-rolling) ----
+    # The bridge's JSON parser only reads string values, so every field is passed as a string.
+
+    def mj_rendezvous(
+        self,
+        target: str,
+        desired_distance: float = 100.0,
+        max_phasing_orbits: float = 5.0,
+        max_closing_speed: float = 100.0,
+    ) -> dict:
+        """Enable MechJeb's rendezvous autopilot on the ACTIVE vessel to close on ``target``."""
+        return self._request("POST", "/mj-rendezvous", json={
+            "target": target,
+            "desiredDistance": str(desired_distance),
+            "maxPhasingOrbits": str(max_phasing_orbits),
+            "maxClosingSpeed": str(max_closing_speed),
+        })
+
+    def mj_dock(self, target: str, speed_limit: float = 1.0, force_rol: bool = False) -> dict:
+        """Enable MechJeb's docking autopilot on the ACTIVE vessel to dock with ``target``'s port."""
+        return self._request("POST", "/mj-dock", json={
+            "target": target,
+            "speedLimit": str(speed_limit),
+            "forceRol": "true" if force_rol else "false",
+        })
+
+    def mj_disable(self, which: str = "all") -> dict:
+        return self._request("POST", "/mj-disable", json={"which": which})
+
+    def mj_status(self) -> dict:
+        return self._request("GET", "/mj-status")
+
+    def transfer_crew(self, to_vessel: str = "") -> dict:
+        payload = {"toVessel": to_vessel} if to_vessel else {}
+        return self._request("POST", "/transfer-crew", json=payload)
+
+    def spawn_crew(self) -> dict:
+        return self._request("POST", "/spawn-crew", json={})
+
     def _request(self, method: str, path: str, **kwargs) -> dict:
         url = self.base_url.rstrip("/") + path
         if "json" in kwargs:
