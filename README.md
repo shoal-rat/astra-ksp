@@ -225,11 +225,16 @@ PYTHONPATH=src python tools/fly_orion.py         configs/local-ksp.yaml
 
 ## Roadmap
 
-- **Automated docking & crew transfer — implemented, live-tuning in progress.** Docking-capable craft
-  (Clamp-O-Tron port + RV-105 RCS + monopropellant), a rendezvous/proximity/dock/undock control
-  routine (`run_dock_and_transfer`), and a driver (`tools/fly_dock.py`) all exist; once two ports
-  mate, KSP merges the vessels, which *is* the crew transfer. Like every capability here, robust
-  autonomous rendezvous needs live tuning across flights.
+- **Automated docking & crew transfer — full machinery built, attempted live, one geometry left.**
+  Docking-capable crewed craft (Clamp-O-Tron + RV-105 RCS + monoprop + an inline probe core so a
+  crewed pod still launches headless), a `run_dock_and_transfer` routine with **plane-match →
+  orbit-match → phasing-drift → RCS proximity → dock → undock**, real crew via the bridge's
+  `/spawn-crew` + `/transfer-crew` endpoints, and the `tools/fly_dock.py` driver. Flown live, it
+  matched the target orbit and closed the along-track gap **from 477 km to ~79 km**; the dock itself
+  was blocked because that test chaser happened to **capture retrograde (174° relative inclination)**
+  to the surface-ascended target — a near-orbit-reversal that needs ~1140 m/s of plane change the
+  craft didn't carry. The plane-match step is now in for the general (small-inclination) case; the
+  clean fix for the extreme case is a **prograde, coplanar capture**, which is the next step.
 - **Visual fidelity.** Docking craft already drop the nose cone for a flush port; further nose-cone
   fairings and real mod craft would make generated vehicles *look* like a Saturn V / Starship.
 - **More target bodies.** Generalize the guidance and mission planner beyond the Mun.
@@ -240,12 +245,12 @@ PYTHONPATH=src python tools/fly_orion.py         configs/local-ksp.yaml
 
 This project values ruthless honesty over polish. The real state of things:
 
-- **Crew transfer was originally *modeled*.** "Crew at the lander" meant both vehicles in Mun orbit
-  plus a separately recovered capsule — the rendezvous geometry was achieved, not a literal docked
-  hand-off. Automated docking (ports + RCS + a rendezvous/dock control routine + `tools/fly_dock.py`)
-  is now **implemented in code and the craft are docking-equipped**, but end-to-end autonomous
-  rendezvous-and-dock is **best-effort and still being tuned across live flights** — exactly the
-  multi-flight maturation curve every other capability here went through.
+- **Crew transfer: real machinery, not yet a single end-to-end live run.** The Orion is genuinely
+  crewed, the bridge can seat roster kerbals (`/spawn-crew`) and move them between docked parts
+  (`/transfer-crew`), and the dock routine calls the transfer once ports mate. What's missing is one
+  clean live run that chains *prograde-coplanar capture → dock → crew transfer* — the latest mod
+  endpoints also need a KSP reload to be live. So "crew transfer" today is a complete, reviewable
+  mechanism that has not yet been demonstrated in one unbroken live flight.
 - **"Mission complete" was a chain of four separately-driven phases.** ASTRA now orchestrates those
   drivers behind one command, but the phases were validated independently. Run-to-run variance —
   especially the trans-Munar injection — is **absorbed by retries, not eliminated.**
