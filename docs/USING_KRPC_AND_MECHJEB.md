@@ -196,3 +196,36 @@ The "mod" the owner wants is precisely this: a **loop plus an experience noteboo
 researches and explores and the *heavy control is delegated to MechJeb/kRPC*. No bespoke guidance
 heuristics. See `docs/GENERALIZED_AEROSPACE_METHODOLOGY.md` for the generalized playbook and
 `skills/` for the per-phase recipes.
+
+---
+
+## 7. Experience notebook — lessons from flying a full Mun mission with MechJeb
+
+These are the things that bit us live, with the fix. They make the difference between MechJeb
+"working in theory" and a mission that actually completes.
+
+- **MechJeb ascent does NOT ignite the first stage from PRELAUNCH.** After enabling `/mj-ascent`,
+  the craft sits on the pad. Kick it once via kRPC: `throttle=1; control.activate_next_stage()`.
+  MechJeb then flies the gravity turn and autostages the rest. (Baked into `tools/mj_to_orbit.py`.)
+  MechJeb ascent itself is excellent — clean gravity turn, autostage, circularization to the exact
+  target apoapsis. Far more reliable than the hand-rolled ascent.
+- **MechJeb's node executor won't auto-warp to a node while it is still orienting** — the steering
+  caps rails-warp, so it sits in real time and the node passes unburned. Fix: with the *executor's
+  Autowarp on it still fails for distant nodes*; instead **disable MechJeb, `warp_to(node_ut - 45)`
+  with kRPC (no steering ⇒ warp works), then re-fire `/mj-execute-node`.** For nodes only seconds
+  away MechJeb burns them fine. (This is why `mj_to_mun.py` does the TMI via MechJeb but the Mun
+  capture via a direct kRPC burn.)
+- **Render-craft fuel flow can starve the engine after multi-stage burns** — `engine.thrust==0` at
+  full throttle with `propellant.current_amount==0` even though the vessel still shows hundreds of
+  units of LF/Ox (the *connected* tank is empty, a sibling tank is full). Fix: `/vessel/refuel`
+  refills the connected tank and thrust returns. Always verify `vessel.thrust>0` before trusting a
+  burn loop.
+- **Basic probe cores do NOT support SAS hold modes** (`SetSASMode` throws "Cannot set SAS mode").
+  Don't rely on `sas_mode = retrograde`. Point with the **autopilot**: `ap.reference_frame =
+  body.non_rotating_reference_frame; ap.target_direction = (-vx,-vy,-vz)` and **re-set
+  `target_direction` every loop iteration** to track the (rotating) velocity vector.
+- **PURE retrograde tracking is the robust capture/lower-apoapsis burn.** Burning retrograde while
+  tracking the velocity vector lowers apoapsis monotonically and *preserves periapsis*. A fixed
+  attitude (SAS "stability assist") or a mistargeted "circularize at current altitude" burn instead
+  drove periapsis below the surface (impact) and apoapsis beyond the SOI. When in doubt: retrograde
+  to capture (ap below the SOI), then circularize at an apsis. Frame discipline (§2) is everything.

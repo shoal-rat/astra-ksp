@@ -504,6 +504,24 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => MjStatusCommand(), 15000);
             }
 
+            if (request.Method == "POST" && request.Path == "/mj-ascent")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjAscentCommand(fields), 30000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/mj-execute-node")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjExecuteNodeCommand(fields), 30000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/mj-land")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjLandCommand(fields), 30000);
+            }
+
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
         }
 
@@ -1628,7 +1646,105 @@ namespace KspAutomationBridge
 
             ModuleDockingNode myPort = FindDockingPort(vessel, false);
             data["myPortState"] = myPort != null && myPort.state != null ? myPort.state : "";
+
+            // Ascent / landing / node-executor progress (for the mission driver to poll on).
+            MechJebModuleAscentClassicAutopilot asc = core.GetComputerModule<MechJebModuleAscentClassicAutopilot>();
+            if (asc != null) { data["ascentEnabled"] = asc.Users.Count > 0; }
+            MechJebModuleLandingAutopilot land = core.GetComputerModule<MechJebModuleLandingAutopilot>();
+            if (land != null) { data["landingEnabled"] = land.Users.Count > 0; }
+            MechJebModuleNodeExecutor nex = core.GetComputerModule<MechJebModuleNodeExecutor>();
+            if (nex != null) { data["nodeExecEnabled"] = nex.Users.Count > 0; }
+            data["nodeCount"] = vessel.patchedConicSolver != null ? vessel.patchedConicSolver.maneuverNodes.Count : 0;
+            data["situation"] = vessel.situation.ToString();
+            data["apoapsis"] = vessel.orbit != null ? vessel.orbit.ApA : 0.0;
+            data["periapsis"] = vessel.orbit != null ? vessel.orbit.PeA : 0.0;
+            data["body"] = vessel.orbit != null && vessel.orbit.referenceBody != null ? vessel.orbit.referenceBody.bodyName : "";
             return CommandResult.Ok(data);
+        }
+
+        private CommandResult MjAscentCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+                return CommandResult.Fail("MechJeb ascent requires an active vessel in flight.");
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+                return CommandResult.Fail("No MechJeb core on the active vessel.");
+            MechJebModuleAscentSettings settings = core.GetComputerModule<MechJebModuleAscentSettings>();
+            if (settings == null)
+                return CommandResult.Fail("MechJebModuleAscentSettings not present.");
+            settings.DesiredOrbitAltitude.Val = GetOptionalDouble(fields, "altitude", 100000.0);
+            settings.DesiredInclination.Val = GetOptionalDouble(fields, "inclination", 0.0);
+            // Classic ascent path = stock-friendly; PVG is for RSS/RO.
+            MechJebModuleAscentClassicAutopilot ap = core.GetComputerModule<MechJebModuleAscentClassicAutopilot>();
+            if (ap == null)
+                return CommandResult.Fail("Classic ascent autopilot not present.");
+            ap.Users.Add(core);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "ascent", true },
+                { "altitude", GetOptionalDouble(fields, "altitude", 100000.0) },
+                { "inclination", GetOptionalDouble(fields, "inclination", 0.0) }
+            });
+        }
+
+        private CommandResult MjExecuteNodeCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+                return CommandResult.Fail("Requires an active vessel in flight.");
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+                return CommandResult.Fail("No MechJeb core on the active vessel.");
+            if (vessel.patchedConicSolver == null || vessel.patchedConicSolver.maneuverNodes.Count == 0)
+                return CommandResult.Fail("No maneuver node to execute (create one via kRPC first).");
+            MechJebModuleNodeExecutor ex = core.GetComputerModule<MechJebModuleNodeExecutor>();
+            if (ex == null)
+                return CommandResult.Fail("MechJebModuleNodeExecutor not present.");
+            ex.Autowarp = GetOptionalBool(fields, "autowarp", true);
+            if (GetOptionalBool(fields, "all", false))
+                ex.ExecuteAllNodes(core);
+            else
+                ex.ExecuteOneNode(core);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "executing", true },
+                { "nodes", vessel.patchedConicSolver.maneuverNodes.Count }
+            });
+        }
+
+        private CommandResult MjLandCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+                return CommandResult.Fail("MechJeb land requires an active vessel in flight.");
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+                return CommandResult.Fail("No MechJeb core on the active vessel.");
+            MechJebModuleLandingAutopilot land = core.GetComputerModule<MechJebModuleLandingAutopilot>();
+            if (land == null)
+                return CommandResult.Fail("MechJebModuleLandingAutopilot not present.");
+            land.TouchdownSpeed.Val = GetOptionalDouble(fields, "touchdownSpeed", 0.5);
+            land.DeployGears = true;
+            land.DeployChutes = true;
+            land.RCSAdjustment = true;
+            vessel.ActionGroups.SetGroup(KSPActionGroup.RCS, true);
+            bool targeted = GetOptionalBool(fields, "targeted", false);
+            if (targeted)
+            {
+                double lat = GetOptionalDouble(fields, "lat", 0.0);
+                double lon = GetOptionalDouble(fields, "lon", 0.0);
+                core.Target.SetPositionTarget(vessel.mainBody, lat, lon);
+                land.LandAtPositionTarget(core);
+            }
+            else
+            {
+                land.LandUntargeted(core);
+            }
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "landing", true }, { "targeted", targeted }
+            });
         }
 
         private static string GetOptional(Dictionary<string, string> fields, string key, string fallback)

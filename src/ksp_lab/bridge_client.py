@@ -87,6 +87,30 @@ class BridgeClient:
             "forceRol": "true" if force_rol else "false",
         })
 
+    def mj_ascent(self, altitude: float = 90000.0, inclination: float = 0.0) -> dict:
+        """Enable MechJeb's ascent autopilot on the ACTIVE vessel to a parking orbit (Classic path)."""
+        return self._request("POST", "/mj-ascent", json={
+            "altitude": str(altitude),
+            "inclination": str(inclination),
+        })
+
+    def mj_execute_node(self, autowarp: bool = True, all_nodes: bool = False) -> dict:
+        """Have MechJeb's node executor burn the next (or all) maneuver node(s) precisely."""
+        return self._request("POST", "/mj-execute-node", json={
+            "autowarp": "true" if autowarp else "false",
+            "all": "true" if all_nodes else "false",
+        })
+
+    def mj_land(self, targeted: bool = False, lat: float = 0.0, lon: float = 0.0,
+                touchdown_speed: float = 0.5) -> dict:
+        """Enable MechJeb's landing autopilot on the ACTIVE vessel (targeted site or straight down)."""
+        return self._request("POST", "/mj-land", json={
+            "targeted": "true" if targeted else "false",
+            "lat": str(lat),
+            "lon": str(lon),
+            "touchdownSpeed": str(touchdown_speed),
+        })
+
     def mj_disable(self, which: str = "all") -> dict:
         return self._request("POST", "/mj-disable", json={"which": which})
 
