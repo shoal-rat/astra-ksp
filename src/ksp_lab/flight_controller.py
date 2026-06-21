@@ -466,63 +466,101 @@ class KrpcFlightController:
                 node_ut=sc.ut + max(1.0, float(t_to)), prograde_delta_v_mps=dv,
                 target_attr=set_attr, target_altitude_m=t_alt, max_burn_s=mb, max_throttle=mt)
 
-        # 1. Match the target's orbit altitude.
+        # 1. Set the periapsis to the target's altitude (the close approach is at periapsis). Leave
+        #    the apoapsis to the phasing step below, which raises it — lowering then re-raising it
+        #    would waste fuel and time.
         set_apsis("periapsis_altitude", "apoapsis")
-        set_apsis("apoapsis_altitude", "periapsis")
         self._record_live_sample(chaser, recorder, start, "rendezvous_orbit_matched",
                                  {"distance_m": self._relative_distance_m(chaser, target)})
 
-        # 2. Phasing orbit: drop periapsis so the chaser laps faster and closes the angular gap.
-        phase_alt = max(3_000.0, t_alt - 9_000.0)
+        # 2. Phasing orbit: RAISE the apoapsis a lot (burn prograde at periapsis) so the chaser's
+        #    period differs strongly from the target's and the relative phase sweeps fast. A low
+        #    phasing orbit is capped by the atmosphere (gentle, too-slow drift); a high one is not.
+        #    The periapsis stays at the target's altitude, so a phase-aligned periapsis pass is the
+        #    close approach.
+        phase_apo = t_alt + max(180_000.0, t_alt * 1.5)
         try:
-            cur_apo = float(chaser.orbit.apoapsis_altitude)
+            cur_per = float(chaser.orbit.periapsis_altitude)
             dv = self._opposite_apsis_delta_v_mps(
-                mu=mu, body_radius_m=body_radius, burn_altitude_m=cur_apo,
-                current_opposite_altitude_m=float(chaser.orbit.periapsis_altitude),
-                target_opposite_altitude_m=phase_alt)
-            if dv < -2.0:
+                mu=mu, body_radius_m=body_radius, burn_altitude_m=cur_per,
+                current_opposite_altitude_m=float(chaser.orbit.apoapsis_altitude),
+                target_opposite_altitude_m=phase_apo)
+            if dv > 2.0:
                 self._execute_mun_apsis_node(
                     conn, chaser, recorder, start, timeout_s, phase="rendezvous_phasing_orbit",
-                    node_ut=sc.ut + max(1.0, float(chaser.orbit.time_to_apoapsis)),
-                    prograde_delta_v_mps=dv, target_attr="periapsis_altitude",
-                    target_altitude_m=phase_alt, max_burn_s=90.0, max_throttle=0.6)
+                    node_ut=sc.ut + max(1.0, float(chaser.orbit.time_to_periapsis)),
+                    prograde_delta_v_mps=dv, target_attr="apoapsis_altitude",
+                    target_altitude_m=phase_apo, max_burn_s=150.0, max_throttle=0.9)
         except Exception:
             pass
 
-        # 3. Drift and pounce: watch the relative distance, warping a fraction of an orbit at a time
-        #    (less when close so a coarse warp can't skip past the closest approach).
+        # 3. Drift and pounce: the close approach happens at PERIAPSIS (the chaser's periapsis sits at
+        #    the target's altitude). Warp to just before each periapsis and step in real time through
+        #    the pass — a fixed-fraction warp would skip the brief periapsis where the orbits actually
+        #    meet. The strong phasing sweeps the phase fast, so a periapsis pass lands inside
+        #    proximity range within a few orbits; then null the relative velocity and hand to RCS.
         best = 1.0e12
         while time.monotonic() - start < timeout_s:
             d = self._relative_distance_m(chaser, target)
             best = min(best, d)
+            try:
+                t_peri = float(chaser.orbit.time_to_periapsis)
+            except Exception:
+                t_peri = 0.0
             self._record_live_sample(chaser, recorder, start, "rendezvous_phasing_drift",
-                                     {"distance_m": d, "best_m": best})
-            if d < 2_500.0:
-                # Kill the drift: raise periapsis back onto the target's orbit.
+                                     {"distance_m": d, "best_m": best, "t_peri_s": t_peri})
+            if d < 3_500.0:
                 self._set_physics_warp(conn, 0)
-                set_apsis("periapsis_altitude", "apoapsis")
+                self._null_relative_velocity(conn, chaser, target, recorder, start)
                 self._record_live_sample(chaser, recorder, start, "rendezvous_close_approach",
                                          {"distance_m": self._relative_distance_m(chaser, target)})
                 return True
-            # Step finer as the gap shrinks so a coarse warp can't skip past the closest approach;
-            # below ~6 km, drop out of rails warp entirely and watch in real time.
             try:
-                if d < 6_000.0:
+                if t_peri < 45.0 or d < 10_000.0:
+                    # near (or approaching) a periapsis pass: watch in real time so we catch the min
                     self._set_physics_warp(conn, 0)
-                    time.sleep(1.0)
-                    continue
-                if d < 25_000.0:
-                    frac = 40.0
-                elif d < 80_000.0:
-                    frac = 16.0
+                    time.sleep(0.5)
                 else:
-                    frac = 6.0
-                sc.warp_to(sc.ut + max(10.0, float(chaser.orbit.period) / frac),
-                           max_rails_rate=10_000.0, max_physics_rate=4.0)
+                    # skip ahead to just before the next periapsis (the close-approach point)
+                    sc.warp_to(sc.ut + max(10.0, t_peri - 25.0),
+                               max_rails_rate=100_000.0, max_physics_rate=4.0)
             except Exception:
                 time.sleep(2.0)
         self._set_physics_warp(conn, 0)
         return self._relative_distance_m(chaser, target) < 5_000.0
+
+    def _null_relative_velocity(self, conn, chaser, target, recorder, start, max_s: float = 90.0) -> None:
+        """Burn the main engine to null the chaser's velocity relative to the target. Point along the
+        target's relative-velocity vector (= match the target's velocity) and burn until the relative
+        speed is small."""
+        ref = chaser.orbital_reference_frame
+        ap = chaser.auto_pilot
+        chaser.control.rcs = True
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < max_s and time.monotonic() - start < self._dock_deadline(start):
+            try:
+                relv = target.velocity(ref)
+                speed = (relv[0] ** 2 + relv[1] ** 2 + relv[2] ** 2) ** 0.5
+            except Exception:
+                break
+            self._record_live_sample(chaser, recorder, start, "rendezvous_null_rel_velocity",
+                                     {"rel_speed_mps": speed,
+                                      "distance_m": self._relative_distance_m(chaser, target)})
+            if speed < 4.0:
+                break
+            try:
+                ap.reference_frame = ref
+                ap.target_direction = relv  # accelerate toward the target's velocity -> null relative
+                ap.engage()
+            except Exception:
+                pass
+            chaser.control.throttle = min(1.0, max(0.1, speed / 25.0))
+            time.sleep(0.3)
+        chaser.control.throttle = 0.0
+
+    @staticmethod
+    def _dock_deadline(start: float) -> float:
+        return 1.0e9  # rendezvous uses its own per-step timeout; this guard is effectively off
 
     def _approach_and_dock(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
         """Proximity ops: point at the target, translate in with RCS, null lateral drift, mate ports."""
