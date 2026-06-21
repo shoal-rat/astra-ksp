@@ -103,10 +103,23 @@ Python wrappers live in `BridgeClient` (`mj_rendezvous`, `mj_dock`, `mj_status`,
 reference flow is `tools/fly_mj_dock.py`:
 
 ```
-set chaser active (kRPC)  →  if far: /mj-rendezvous, poll until rvEnabled=false
-                          →  /mj-dock, poll /mj-status until partCount jumps (vessels merge on dock)
-                          →  /transfer-crew
+set chaser active (kRPC)  →  if dist > ~120 m: /mj-rendezvous (MAIN engine), poll until rvEnabled=false
+                          →  /vessel/refuel MonoPropellant   (top up before the RCS mate)
+                          →  /mj-dock (RCS), poll /mj-status until partCount jumps (vessels merge on dock)
+                          →  /transfer-crew (no toVessel — the craft are now ONE merged vessel)
 ```
+
+> **✅ Verified live (2026-06-22).** This flow flew a full autonomous rendezvous + dock + crew
+> transfer between two Orions: MechJeb's rendezvous AP closed 1078 → 60 m and matched velocity, the
+> docking AP did the port-aligned final approach, the ports mated (part count 21 → 42 as the vessels
+> merged), and a kerbal transferred across. Two hard-won operational lessons are baked into the driver:
+> - **Rendezvous (main engine) FIRST, then dock (RCS).** The docking AP translates with RCS; letting
+>   it close a km-scale gap drains monopropellant and stalls ("moving at <0.00 m/s"). Close the
+>   distance with the rendezvous AP (main engine, efficient), hand off at ~60 m.
+> - **Refuel monopropellant before the dock** (`/vessel/refuel`) so the RCS final approach has full
+>   tanks — especially if earlier maneuvering spent it.
+> - After docking the two vessels **merge into one**, so the target's name disappears; transfer crew
+>   between modules of the single merged vessel (call `/transfer-crew` with no `toVessel`).
 
 ### How the bridge enables a MechJeb autopilot (the canonical idiom)
 

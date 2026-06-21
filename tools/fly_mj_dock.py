@@ -88,11 +88,12 @@ def main() -> int:
                 log(f"  spawn-crew failed: {exc}")
                 break
 
-    # 1) RENDEZVOUS (only if far). MechJeb flies the phasing + closing.
-    if dist0 > 2500.0:
-        log("RENDEZVOUS via MechJeb ...")
+    # 1) RENDEZVOUS to close the distance with the MAIN engine (efficient). RCS docking alone would
+    # drain monoprop over a km-scale approach, so close to ~60 m first, then hand to the docking AP.
+    if dist0 > 120.0:
+        log("RENDEZVOUS via MechJeb (main-engine close) ...")
         try:
-            bridge.mj_rendezvous(target_name, desired_distance=80.0)
+            bridge.mj_rendezvous(target_name, desired_distance=60.0)
         except Exception as exc:
             log(f"  mj-rendezvous rejected: {exc}")
             return 2
@@ -103,10 +104,17 @@ def main() -> int:
         )
         log(f"  rendezvous ended: rvStatus={st.get('rvStatus')!r}")
 
-    # 2) DOCK. MechJeb aligns the ports and mates them.
+    # Top up monopropellant so the RCS docking phase has full tanks for the final mate.
+    try:
+        r = bridge.refuel_vessel(chaser_name, fraction=1.0, resources="MonoPropellant")
+        log(f"  refuel monoprop: {r.get('message')}")
+    except Exception as exc:
+        log(f"  refuel skipped: {exc}")
+
+    # 2) DOCK. MechJeb aligns the ports and mates them (RCS, short range).
     log("DOCK via MechJeb ...")
     try:
-        d = bridge.mj_dock(target_name, speed_limit=1.0)
+        d = bridge.mj_dock(target_name, speed_limit=2.0)
         parts_before = int(d.get("chaserPartCount", parts0))
     except Exception as exc:
         log(f"  mj-dock rejected: {exc}")
