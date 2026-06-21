@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bgU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#070A16"/>
+    </linearGradient>
+    <linearGradient id="cyanU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#103048"/>
+      <stop offset="1" stop-color="#0C2236"/>
+    </linearGradient>
+    <linearGradient id="magU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A1430"/>
+      <stop offset="1" stop-color="#2A0E24"/>
+    </linearGradient>
+    <linearGradient id="amberU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A2C10"/>
+      <stop offset="1" stop-color="#2A2009"/>
+    </linearGradient>
+    <linearGradient id="slateU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A2236"/>
+      <stop offset="1" stop-color="#121A2C"/>
+    </linearGradient>
+    <linearGradient id="winU" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13243A"/>
+      <stop offset="1" stop-color="#0B1626"/>
+    </linearGradient>
+    <filter id="softU" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <marker id="aCyU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="aMaU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#F472B6"/>
+    </marker>
+    <marker id="aAmU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#FBBF24"/>
+    </marker>
+    <marker id="aGrU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#86EFAC"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bgU)"/>
+  <!-- stars -->
+  <g fill="#94A3B8" opacity="0.5">
+    <circle cx="140" cy="78" r="1.1"/><circle cx="330" cy="48" r="0.9"/><circle cx="560" cy="92" r="1.3"/>
+    <circle cx="800" cy="58" r="0.9"/><circle cx="1000" cy="98" r="1.1"/><circle cx="1120" cy="52" r="1.2"/>
+    <circle cx="56" cy="360" r="1"/><circle cx="1150" cy="300" r="1.1"/><circle cx="210" cy="660" r="0.9"/>
+    <circle cx="660" cy="652" r="1.2"/><circle cx="1060" cy="648" r="1"/><circle cx="430" cy="640" r="0.8"/>
+    <circle cx="900" cy="662" r="1"/><circle cx="70" cy="180" r="0.9"/>
+  </g>
+
+  <!-- title -->
+  <text x="48" y="56" fill="#E2E8F0" font-size="30" font-weight="700">ASTRA — In-game Mod UX Loop</text>
+  <text x="48" y="84" fill="#7DD3FC" font-size="15">Type a mission inside KSP1, press Run, and watch the live STATUS panel as ASTRA flies it.</text>
+
+  <!-- ========== 1 · IN-GAME WINDOW (player) ========== -->
+  <g filter="url(#softU)">
+    <rect x="40" y="138" width="320" height="252" rx="16" fill="url(#winU)" stroke="#38BDF8" stroke-width="2"/>
+  </g>
+  <!-- window titlebar -->
+  <path d="M40,154 a16,16 0 0 1 16,-16 h288 a16,16 0 0 1 16,16 v18 h-320 z" fill="#0E2236"/>
+  <circle cx="60" cy="158" r="4" fill="#F472B6"/><circle cx="76" cy="158" r="4" fill="#FBBF24"/><circle cx="92" cy="158" r="4" fill="#38BDF8"/>
+  <text x="200" y="163" text-anchor="middle" fill="#CBD5E1" font-size="12" font-weight="700">KspAutomationBridge · in-game window</text>
+
+  <!-- command input -->
+  <text x="60" y="198" fill="#94A3B8" font-size="11" letter-spacing="0.6">MISSION COMMAND</text>
+  <rect x="60" y="206" width="280" height="56" rx="9" fill="#0A1626" stroke="#38BDF8" stroke-width="1.3"/>
+  <text x="74" y="230" fill="#E2E8F0" font-size="12.5">"land a relay and bring</text>
+  <text x="74" y="250" fill="#E2E8F0" font-size="12.5">a crew home"</text>
+  <rect x="60" y="274" width="124" height="30" rx="7" fill="url(#amberU)" stroke="#FBBF24" stroke-width="1.4"/>
+  <text x="122" y="294" text-anchor="middle" fill="#FDE68A" font-size="12.5" font-weight="700">▶ Run mission</text>
+
+  <!-- live status panel -->
+  <text x="60" y="332" fill="#94A3B8" font-size="11" letter-spacing="0.6">LIVE STATUS</text>
+  <rect x="60" y="340" width="280" height="36" rx="8" fill="#0A1626" stroke="#86EFAC" stroke-width="1.3"/>
+  <circle cx="78" cy="358" r="4.5" fill="#86EFAC"/>
+  <text x="92" y="362" fill="#A7F3D0" font-size="11.5">HLS landing · −0.1 m/s · phase 2/3 OK</text>
+
+  <text x="200" y="406" text-anchor="middle" fill="#7DD3FC" font-size="12" font-weight="600">1 · PLAYER — never leaves the game</text>
+
+  <!-- ========== 2 · C# BRIDGE ========== -->
+  <g filter="url(#softU)">
+    <rect x="452" y="150" width="262" height="120" rx="14" fill="url(#amberU)" stroke="#FBBF24" stroke-width="2"/>
+  </g>
+  <text x="583" y="180" text-anchor="middle" fill="#E2E8F0" font-size="16" font-weight="700">KspAutomationBridge</text>
+  <text x="583" y="200" text-anchor="middle" fill="#FCD34D" font-size="11.5">C# plugin · HTTP :48500</text>
+  <text x="583" y="224" text-anchor="middle" fill="#FDE68A" font-size="11" opacity="0.92">/command  ·  /status</text>
+  <text x="583" y="242" text-anchor="middle" fill="#FDE68A" font-size="11" opacity="0.92">/spawn-crew  ·  /transfer-crew</text>
+  <text x="583" y="260" text-anchor="middle" fill="#FCD34D" font-size="10.5" opacity="0.8">command queue + status board, inside KSP</text>
+
+  <!-- ========== 3 · DAEMON ========== -->
+  <g filter="url(#softU)">
+    <rect x="802" y="150" width="262" height="120" rx="14" fill="url(#cyanU)" stroke="#38BDF8" stroke-width="2"/>
+  </g>
+  <text x="933" y="180" text-anchor="middle" fill="#E2E8F0" font-size="16" font-weight="700">ASTRA daemon</text>
+  <text x="933" y="201" text-anchor="middle" fill="#7DD3FC" font-size="11.5">tools/astra_daemon.py</text>
+  <text x="933" y="224" text-anchor="middle" fill="#BAE6FD" font-size="11">polls GET /command/pending</text>
+  <text x="933" y="242" text-anchor="middle" fill="#BAE6FD" font-size="11">streams POST /status</text>
+  <text x="933" y="260" text-anchor="middle" fill="#7DD3FC" font-size="10.5" opacity="0.8">glue: game box ⇄ agent</text>
+
+  <!-- ========== 4 · AGENT ========== -->
+  <g filter="url(#softU)">
+    <rect x="802" y="416" width="262" height="124" rx="14" fill="url(#magU)" stroke="#F472B6" stroke-width="2"/>
+  </g>
+  <text x="933" y="448" text-anchor="middle" fill="#E2E8F0" font-size="16" font-weight="700">ASTRA agent</text>
+  <text x="933" y="470" text-anchor="middle" fill="#F9A8D4" font-size="11.5">Claude orchestrator</text>
+  <text x="933" y="490" text-anchor="middle" fill="#F9A8D4" font-size="11.5">+ executor subagents</text>
+  <text x="933" y="512" text-anchor="middle" fill="#FBCFE8" font-size="11" opacity="0.92">following skills/ playbooks</text>
+  <text x="933" y="530" text-anchor="middle" fill="#F472B6" font-size="10.5" opacity="0.8">interpret → fly → diagnose → retry</text>
+
+  <!-- ========== 5 · KSP via kRPC ========== -->
+  <g filter="url(#softU)">
+    <rect x="452" y="416" width="262" height="124" rx="14" fill="url(#amberU)" stroke="#FBBF24" stroke-width="2"/>
+  </g>
+  <text x="583" y="448" text-anchor="middle" fill="#E2E8F0" font-size="16" font-weight="700">KSP1 — the game</text>
+  <text x="583" y="470" text-anchor="middle" fill="#FCD34D" font-size="11.5">flown over kRPC :50000</text>
+  <text x="583" y="492" text-anchor="middle" fill="#FDE68A" font-size="11" opacity="0.92">staging · guidance · throttle</text>
+  <text x="583" y="510" text-anchor="middle" fill="#FDE68A" font-size="11" opacity="0.92">live telemetry back to the agent</text>
+  <text x="583" y="528" text-anchor="middle" fill="#FCD34D" font-size="10.5" opacity="0.8">the craft actually flies</text>
+
+  <!-- ========== FLOWS ========== -->
+  <!-- 1) player Run -> bridge /command -->
+  <path d="M360,250 L444,222" fill="none" stroke="#38BDF8" stroke-width="2.6" marker-end="url(#aCyU)"/>
+  <text x="404" y="218" text-anchor="middle" fill="#7DD3FC" font-size="11" font-weight="600">command</text>
+  <text x="404" y="232" text-anchor="middle" fill="#7DD3FC" font-size="10">POST /command</text>
+
+  <!-- 2) bridge -> daemon (poll pending) -->
+  <path d="M714,210 L794,210" fill="none" stroke="#38BDF8" stroke-width="2.6" marker-end="url(#aCyU)"/>
+  <text x="754" y="200" text-anchor="middle" fill="#7DD3FC" font-size="10.5">poll /command/pending</text>
+
+  <!-- 3) daemon -> agent (run mission) -->
+  <path d="M933,270 L933,410" fill="none" stroke="#F472B6" stroke-width="2.6" marker-end="url(#aMaU)"/>
+  <text x="945" y="345" fill="#F9A8D4" font-size="11">run ASTRA</text>
+
+  <!-- 4) agent -> KSP via kRPC -->
+  <path d="M802,486 L720,486" fill="none" stroke="#FBBF24" stroke-width="2.8" marker-end="url(#aAmU)"/>
+  <text x="760" y="478" text-anchor="middle" fill="#FCD34D" font-size="11" font-weight="600">fly via kRPC</text>
+
+  <!-- KSP telemetry back to agent (return up to agent) -->
+  <path d="M714,520 L800,520" fill="none" stroke="#FBBF24" stroke-width="2" stroke-dasharray="7 4" marker-end="url(#aAmU)"/>
+  <text x="757" y="536" text-anchor="middle" fill="#FCD34D" font-size="10">telemetry</text>
+
+  <!-- 5) agent -> status back to bridge (POST /status) -->
+  <path d="M888,416 Q780,360 700,300 Q670,278 660,272" fill="none" stroke="#86EFAC" stroke-width="2.4" stroke-dasharray="2 0" marker-end="url(#aGrU)"/>
+  <text x="742" y="346" text-anchor="middle" fill="#86EFAC" font-size="11" font-weight="600" transform="rotate(-34 742 346)">live status → POST /status</text>
+
+  <!-- 6) bridge status -> back to in-game panel (RETURN, big sweep) -->
+  <path d="M460,256 Q360,300 300,332 L300,334" fill="none" stroke="#86EFAC" stroke-width="2.6" stroke-dasharray="9 5" marker-end="url(#aGrU)"/>
+  <text x="372" y="316" text-anchor="middle" fill="#86EFAC" font-size="11" font-weight="700">status the player watches</text>
+
+  <!-- cycle order chips -->
+  <g font-size="13" font-weight="700">
+    <circle cx="404" cy="158" r="13" fill="#0B1020" stroke="#38BDF8" stroke-width="1.6"/><text x="404" y="163" text-anchor="middle" fill="#7DD3FC">1</text>
+    <circle cx="754" cy="142" r="13" fill="#0B1020" stroke="#38BDF8" stroke-width="1.6"/><text x="754" y="147" text-anchor="middle" fill="#7DD3FC">2</text>
+    <circle cx="1078" cy="345" r="13" fill="#0B1020" stroke="#F472B6" stroke-width="1.6"/><text x="1078" y="350" text-anchor="middle" fill="#F9A8D4">3</text>
+    <circle cx="688" cy="486" r="13" fill="#0B1020" stroke="#FBBF24" stroke-width="1.6"/><text x="688" y="491" text-anchor="middle" fill="#FCD34D">4</text>
+    <circle cx="430" cy="300" r="13" fill="#0B1020" stroke="#86EFAC" stroke-width="1.6"/><text x="430" y="305" text-anchor="middle" fill="#86EFAC">5</text>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(48,648)" font-size="12">
+    <rect x="0" y="-12" width="14" height="14" rx="3" fill="url(#cyanU)" stroke="#38BDF8"/>
+    <text x="22" y="0" fill="#CBD5E1">Daemon / player I/O</text>
+    <rect x="186" y="-12" width="14" height="14" rx="3" fill="url(#amberU)" stroke="#FBBF24"/>
+    <text x="208" y="0" fill="#CBD5E1">In-game bridge &amp; KSP</text>
+    <rect x="388" y="-12" width="14" height="14" rx="3" fill="url(#magU)" stroke="#F472B6"/>
+    <text x="410" y="0" fill="#CBD5E1">ASTRA agent</text>
+    <line x1="540" y1="-5" x2="576" y2="-5" stroke="#86EFAC" stroke-width="2.6" stroke-dasharray="9 5"/>
+    <text x="584" y="0" fill="#94A3B8">live status back to the player</text>
+  </g>
+  <text x="1152" y="688" text-anchor="end" fill="#475569" font-size="11">cycle: player → bridge → daemon → agent → kRPC → KSP → status → player</text>
+</svg>

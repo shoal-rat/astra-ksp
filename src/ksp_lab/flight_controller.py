@@ -306,6 +306,76 @@ class KrpcFlightController:
         except Exception:
             return 1.0e12
 
+    def _match_orbital_plane(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
+        """Reduce the relative inclination to the target's plane with a normal burn at the relative
+        node. Coplanar -> no-op. A near-retrograde mismatch needs ~2x orbital velocity and the craft
+        may run out of fuel; the burn does what it can and the result is recorded honestly. Best-
+        effort and intended to be observed live."""
+        import math
+
+        sc = conn.space_center
+        ref = chaser.orbit.body.non_rotating_reference_frame
+
+        def unit(v3):
+            m = self._norm(v3)
+            return (v3[0] / m, v3[1] / m, v3[2] / m) if m > 1e-9 else (0.0, 0.0, 1.0)
+
+        def orbit_normal(v):
+            return unit(self._cross(v.position(ref), v.velocity(ref)))
+
+        def rel_incl_deg():
+            nc, nt = orbit_normal(chaser), orbit_normal(target)
+            d = max(-1.0, min(1.0, nc[0] * nt[0] + nc[1] * nt[1] + nc[2] * nt[2]))
+            return math.degrees(math.acos(d)), nc, nt
+
+        rel, nc, nt = rel_incl_deg()
+        self._record_live_sample(chaser, recorder, start, "rendezvous_plane_relincl",
+                                 {"rel_incl_deg": rel})
+        if rel < 1.5:
+            return True
+        # The two planes intersect along node = nc x nt; the chaser is at the node when its position
+        # lies along +/- that line. Warp there so a normal burn rotates its plane toward the target.
+        node = unit(self._cross(nc, nt))
+        deadline = time.monotonic() + min(timeout_s, 900)
+        while time.monotonic() < deadline:
+            pos = unit(chaser.position(ref))
+            if abs(pos[0] * node[0] + pos[1] * node[1] + pos[2] * node[2]) > 0.985:
+                break
+            try:
+                sc.warp_to(sc.ut + max(8.0, float(chaser.orbit.period) / 96.0),
+                           max_rails_rate=1000.0, max_physics_rate=4.0)
+            except Exception:
+                time.sleep(1.0)
+        self._set_physics_warp(conn, 0)
+        # Point along the direction that rotates the chaser normal toward the target normal and burn.
+        desired = unit((nt[0] - nc[0], nt[1] - nc[1], nt[2] - nc[2]))
+        try:
+            ap = chaser.auto_pilot
+            ap.reference_frame = ref
+            ap.target_direction = desired
+            ap.engage()
+            time.sleep(6.0)
+        except Exception:
+            pass
+        t0 = time.monotonic()
+        chaser.control.throttle = 1.0
+        while time.monotonic() - t0 < min(timeout_s, 240):
+            cur, _, _ = rel_incl_deg()
+            if cur < 1.5 or self._fuel_fraction(chaser) < 0.05:
+                break
+            try:
+                ap.target_direction = unit((orbit_normal(target)[0] - orbit_normal(chaser)[0],
+                                            orbit_normal(target)[1] - orbit_normal(chaser)[1],
+                                            orbit_normal(target)[2] - orbit_normal(chaser)[2]))
+            except Exception:
+                pass
+            time.sleep(0.5)
+        chaser.control.throttle = 0.0
+        final, _, _ = rel_incl_deg()
+        self._record_live_sample(chaser, recorder, start, "rendezvous_plane_matched",
+                                 {"rel_incl_deg": final})
+        return final < 5.0
+
     def _rendezvous_from_far(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
         """Close an arbitrary same-body orbit down to RCS proximity range.
 
@@ -319,6 +389,10 @@ class KrpcFlightController:
         sc = conn.space_center
         body_radius = float(chaser.orbit.body.equatorial_radius)
         mu = float(chaser.orbit.body.gravitational_parameter)
+        # 0. Match the target's ORBITAL PLANE first. Surface-ascended targets (and an unlucky
+        #    capture) can sit in a very different plane; without this the closest approach is floored
+        #    by the plane separation no matter how well altitude/phase are matched.
+        self._match_orbital_plane(conn, chaser, target, recorder, start, timeout_s)
         try:
             t_alt = max(5_000.0, 0.5 * (float(target.orbit.apoapsis_altitude)
                                         + float(target.orbit.periapsis_altitude)))
@@ -342,10 +416,19 @@ class KrpcFlightController:
                 current_opposite_altitude_m=opp, target_opposite_altitude_m=t_alt)
             if abs(dv) < 2.0:
                 return
+            # Scale the burn to its size: a LARGE match (e.g. lowering apoapsis from 600+ km) needs
+            # full throttle and lots of time or it times out half-done; a SMALL tweak needs a low
+            # throttle for precision or full throttle overshoots and oscillates until timeout.
+            if abs(dv) > 60.0:
+                mt, mb = 1.0, 400.0
+            elif abs(dv) > 20.0:
+                mt, mb = 0.45, 200.0
+            else:
+                mt, mb = 0.18, 150.0
             self._execute_mun_apsis_node(
                 conn, chaser, recorder, start, timeout_s, phase=f"rendezvous_set_{set_attr}",
                 node_ut=sc.ut + max(1.0, float(t_to)), prograde_delta_v_mps=dv,
-                target_attr=set_attr, target_altitude_m=t_alt, max_burn_s=120.0, max_throttle=0.7)
+                target_attr=set_attr, target_altitude_m=t_alt, max_burn_s=mb, max_throttle=mt)
 
         # 1. Match the target's orbit altitude.
         set_apsis("periapsis_altitude", "apoapsis")
@@ -380,13 +463,25 @@ class KrpcFlightController:
                                      {"distance_m": d, "best_m": best})
             if d < 2_500.0:
                 # Kill the drift: raise periapsis back onto the target's orbit.
+                self._set_physics_warp(conn, 0)
                 set_apsis("periapsis_altitude", "apoapsis")
                 self._record_live_sample(chaser, recorder, start, "rendezvous_close_approach",
                                          {"distance_m": self._relative_distance_m(chaser, target)})
                 return True
+            # Step finer as the gap shrinks so a coarse warp can't skip past the closest approach;
+            # below ~6 km, drop out of rails warp entirely and watch in real time.
             try:
-                frac = 12.0 if d < 30_000.0 else 6.0
-                sc.warp_to(sc.ut + max(15.0, float(chaser.orbit.period) / frac),
+                if d < 6_000.0:
+                    self._set_physics_warp(conn, 0)
+                    time.sleep(1.0)
+                    continue
+                if d < 25_000.0:
+                    frac = 40.0
+                elif d < 80_000.0:
+                    frac = 16.0
+                else:
+                    frac = 6.0
+                sc.warp_to(sc.ut + max(10.0, float(chaser.orbit.period) / frac),
                            max_rails_rate=10_000.0, max_physics_rate=4.0)
             except Exception:
                 time.sleep(2.0)

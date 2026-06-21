@@ -62,6 +62,16 @@ PYTHONPATH=src python tools/astra.py "put a comsat in a high Mun orbit, then fly
 | `--no-llm` | Force the heuristic interpreter even if `ANTHROPIC_API_KEY` is set. |
 | `--config PATH` | kRPC / runner config (default `configs/local-ksp.yaml`). |
 
+### Play it in-game
+
+The player types a mission inside KSP and watches ASTRA fly it.
+
+![In-game mod UX](docs/diagrams/mod_ux.svg)
+
+Run the daemon (`PYTHONPATH=src python tools/astra_daemon.py configs/local-ksp.yaml`); it polls the
+`KspAutomationBridge` in-game window for your command and streams live status back to the panel you
+watch — no alt-tabbing out of the game.
+
 ---
 
 ## What it does
@@ -160,22 +170,7 @@ plus vis-viva / Hohmann / capture-burn helpers) and is exercised by `tests/test_
 
 ## Architecture
 
-```text
-"land a relay in high Mun orbit and bring a crew home"
-        │
-        ▼
- ┌──────────────┐   Mission Spec   ┌───────────────┐   render()   ┌──────────────────┐
- │ Interpreter  │ ───────────────▶ │   Architect   │ ───────────▶ │  Flight          │
- │ (Claude /    │  body + ordered  │ craft_writer  │   .craft     │  Controller      │
- │  heuristic)  │  capabilities    │               │              │  (live, kRPC)    │
- └──────────────┘                  └───────────────┘              └────────┬─────────┘
-        ▲                                                                  │ kRPC + C# bridge
-        │ diagnose & retry                                                 ▼
- ┌──────┴────────┐   ┌────────────────────┐   ┌──────────────┐      ┌─────────────┐
- │ Experience    │   │ Methodology KB     │   │ Guidance     │      │   KSP1      │
- │ Ledger        │   │ (failure→fix rules)│   │ math         │      │ (the game)  │
- └───────────────┘   └────────────────────┘   └──────────────┘      └─────────────┘
-```
+![LLM-native architecture](docs/diagrams/llm_native_architecture.svg)
 
 - **Interpreter** parses the command into a mission spec.
 - **Architect** (`craft_writer.render()`) generates the `.craft` file for each phase.
