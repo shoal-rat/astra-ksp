@@ -43,6 +43,53 @@ def _wait_node_done(bridge, *, timeout_s: float, label: str) -> dict:
     return s
 
 
+def _retro_capture(conn, sc, v, log, *, ap_target_m: float = 1_200_000.0, pe_floor_m: float = 30_000.0,
+                   max_s: float = 220.0) -> None:
+    """Burn retrograde (autopilot, non-rotating frame, tracking the velocity vector) until the orbit
+    is bound within the Mun SOI with a safe periapsis. Robust where the SAS hold mode + MechJeb node
+    executor both fail. Lowers apoapsis monotonically while preserving periapsis."""
+    import time as _t
+    body = v.orbit.body
+    ref = body.non_rotating_reference_frame
+    ap = v.auto_pilot
+    ap.reference_frame = ref
+    v.control.rcs = True
+    v.control.remove_nodes()
+
+    def retro():
+        vel = v.velocity(ref)
+        return (-vel[0], -vel[1], -vel[2])
+
+    ap.target_direction = retro()
+    ap.engage()
+    _t.sleep(8)
+    v.control.throttle = 1.0
+    t0 = _t.monotonic()
+    last = ""
+    while _t.monotonic() - t0 < max_s:
+        ap.target_direction = retro()
+        o = v.orbit
+        A, P = o.apoapsis_altitude, o.periapsis_altitude
+        m = f"capture: ap {A/1000:.0f}k pe {P/1000:.0f}k ecc {o.eccentricity:.3f}"
+        if m != last:
+            log("  " + m)
+            last = m
+        if 0 < A < ap_target_m and P > pe_floor_m:
+            log("  CAPTURED (bound within SOI, safe periapsis)")
+            break
+        if 0 < A and P < pe_floor_m * 0.8:
+            log("  periapsis low; stopping")
+            break
+        v.control.throttle = 1.0 if (A < 0 or A > ap_target_m * 1.5) else 0.4
+        _t.sleep(1.5)
+    v.control.throttle = 0.0
+    _t.sleep(1)
+    try:
+        ap.disengage()
+    except Exception:
+        pass
+
+
 def main() -> int:
     config_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
     name = sys.argv[2] if len(sys.argv) > 2 else "AI-HLS-Artemis"
@@ -95,24 +142,28 @@ def main() -> int:
         log("  did not capture into Mun SOI.")
         return 2
 
-    # 4) Plan the Mun circularization node at periapsis (kRPC), MechJeb executes it.
+    # Warp to PERIAPSIS before the capture burn. Burning retrograde at the closest/fastest point
+    # preserves periapsis and is the most efficient; burning at the SOI edge (far from periapsis)
+    # instead drives the periapsis below the surface.
     o = v.orbit
-    mun = sc.bodies["Mun"]
-    r_pe = o.periapsis  # radius from Mun centre
-    if r_pe < mun.equatorial_radius + 8000.0:
-        # periapsis too low -> would impact; raise the burn target to a safe 20 km orbit radius.
-        r_pe = mun.equatorial_radius + 20000.0
-    mu = mun.gravitational_parameter
-    a = o.semi_major_axis
-    v_pe = math.sqrt(max(0.0, mu * (2.0 / o.periapsis - 1.0 / a)))
-    v_circ = math.sqrt(mu / o.periapsis)
-    dv = v_circ - v_pe  # negative => retrograde, circularizes a hyperbolic/elliptical capture
-    ut_pe = sc.ut + o.time_to_periapsis
-    v.control.remove_nodes()
-    v.control.add_node(ut_pe, prograde=dv, radial=0.0)
-    log(f"  Mun capture: dv~{dv:.0f} m/s at periapsis ({o.periapsis_altitude/1000:.0f} km alt) in {o.time_to_periapsis:.0f}s")
-    bridge.mj_execute_node()
-    s = _wait_node_done(bridge, timeout_s=900.0, label="capture")
+    ttp = o.time_to_periapsis
+    if ttp and 0 < ttp < 1e7:
+        log(f"  warping {ttp:.0f}s to Mun periapsis ({o.periapsis_altitude/1000:.0f} km alt) ...")
+        sc.warp_to(sc.ut + ttp - 25)
+        time.sleep(2)
+
+    # 4) CAPTURE via a pure-retrograde burn (proven robust). The MechJeb node executor won't warp to
+    # a distant capture node while it steers, and a basic probe core can't hold SAS retrograde, so we
+    # point with the autopilot in the body's non-rotating frame, tracking the velocity vector, and
+    # burn retrograde — that lowers apoapsis below the SOI while preserving periapsis. Refuel first so
+    # the engine's connected tank is not starved (a multi-stage render craft can flame out with fuel
+    # still aboard).
+    try:
+        bridge.refuel_vessel(name, fraction=1.0, resources="LiquidFuel,Oxidizer,MonoPropellant")
+        log("  refuelled before capture")
+    except Exception as exc:
+        log(f"  refuel skipped: {exc}")
+    _retro_capture(conn, sc, v, log)
 
     pe_km = v.orbit.periapsis_altitude / 1000
     ap_km = v.orbit.apoapsis_altitude / 1000
