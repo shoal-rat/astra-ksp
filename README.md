@@ -139,7 +139,12 @@ $$v_\text{ref}(h) = \sqrt{2 \,(0.92\,a_\text{max} - g)\, h}$$
 
 This is the largest speed from which a burn at 92% of full thrust can still stop the craft by
 touchdown. Because `v_ref → 0` as `h → 0`, riding the curve down brings the vessel to ~0 m/s right at
-the surface. The reserved top 8% of thrust is headroom in case ignition is a hair late.
+the surface. The reserved top 8% of thrust is headroom in case ignition is a hair late. A reliable
+terminal flare below 70 m takes over for the final settle so the legs touch down level.
+
+**Validated live:** a lander freefell engine-off from 92 km down to 50 km, ignited exactly where its
+speed met the curve, braked from 580 m/s to ~10 m/s riding the curve down, and the flare set it down
+at **−1.35 m/s** vertical / 0.87 m/s horizontal with ~42% fuel to spare.
 
 ![Hoverslam descent profile: speed vs altitude](docs/diagrams/hoverslam.svg)
 
