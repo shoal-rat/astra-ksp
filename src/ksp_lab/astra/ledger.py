@@ -108,6 +108,13 @@ SEED_RULES: list[dict[str, str]] = [
         "(descent engine is the active stage) + landing legs + reaction wheels.",
     },
     {
+        "match": "transfer_node_not_found|transfer.*not_found|no.*encounter",
+        "principle": "Trans-Munar phase-angle variance",
+        "fix": "The Mun's phase angle was unfavorable in the searched window. Search ~3 orbital "
+        "periods ahead (not 1) for a transfer node, and/or simply retry — a relaunch gets a fresh "
+        "phasing. This is the dominant predeploy variance.",
+    },
+    {
         "match": "relay.*periapsis|periapsis.*high|relay.*reject",
         "principle": "Target the functional band",
         "fix": "A relay WANTS a high orbit — accept a relay-band capture (apoapsis 250-2150 km, "
