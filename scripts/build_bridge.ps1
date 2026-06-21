@@ -37,13 +37,15 @@ if ($msbuild) {
     $outputDir = Join-Path $projectDir "bin\$Configuration"
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
     $outputDll = Join-Path $outputDir "KspAutomationBridge.dll"
-    $references = @(
-        "/reference:$(Join-Path $managed "Assembly-CSharp.dll")",
-        "/reference:$(Join-Path $managed "UnityEngine.dll")",
-        "/reference:$(Join-Path $managed "UnityEngine.CoreModule.dll")",
-        "/reference:$(Join-Path $managed "UnityEngine.UI.dll")"
-    )
-    & $csc /nologo /target:library /out:$outputDll `
+    # Reference Assembly-CSharp + every UnityEngine*.dll present in Managed. The in-game GUI +
+    # crew-transfer code needs IMGUIModule (GUILayout), InputLegacyModule (F8), AnimationModule
+    # (AddModApplication) and TextRenderingModule on top of the core/UI modules — referencing all
+    # UnityEngine modules is the simplest robust way to cover them.
+    $references = @("/reference:$(Join-Path $managed "Assembly-CSharp.dll")")
+    Get-ChildItem -Path $managed -Filter "UnityEngine*.dll" | ForEach-Object {
+        $references += "/reference:$($_.FullName)"
+    }
+    & $csc /nologo /target:library /out:$outputDll /nowarn:1701,1702 `
         $references `
         (Join-Path $projectDir "KspAutomationBridge.cs") `
         (Join-Path $projectDir "Properties\AssemblyInfo.cs")

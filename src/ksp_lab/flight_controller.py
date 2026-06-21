@@ -255,12 +255,19 @@ class KrpcFlightController:
             chaser.control.sas = False
             self._record_live_sample(chaser, recorder, start, "dock_rendezvous_start",
                                      {"target": target_name})
+            # Rendezvous-from-far: close an arbitrary co-body orbit down to RCS range before the
+            # proximity dock. Skipped automatically if already close.
+            if self._relative_distance_m(chaser, target) > 2500.0:
+                self._rendezvous_from_far(conn, chaser, target, recorder, start, timeout_s)
             docked = self._approach_and_dock(conn, chaser, target, recorder, start, timeout_s)
             if not docked:
                 self._record_live_sample(chaser, recorder, start, "dock_not_completed")
                 return recorder.summarize()
-            # Docked => vessels merged => crew transfer is implicit (crew can move between modules).
-            self._record_live_sample(chaser, recorder, start, "dock_crew_transfer_complete")
+            # Docked => the two craft are now ONE vessel. Move a REAL kerbal across via the bridge
+            # crew-transfer endpoint (no-op if the rebuilt mod isn't loaded yet).
+            moved = self._bridge_transfer_crew(target_name)
+            self._record_live_sample(chaser, recorder, start, "dock_crew_transfer_complete",
+                                     {"crew_moved": moved})
             self._undock_after_transfer(conn, chaser, recorder, start)
             self._record_live_sample(chaser, recorder, start, "dock_and_transfer_complete")
         finally:
@@ -270,6 +277,121 @@ class KrpcFlightController:
             except Exception:
                 pass
         return recorder.summarize()
+
+    def _bridge_transfer_crew(self, to_vessel: str) -> bool:
+        """Ask the KspAutomationBridge to move a kerbal into the docked target vessel. Best-effort:
+        returns False if the (rebuilt) /transfer-crew endpoint isn't available."""
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        host = self.config.get("bridge_host", "127.0.0.1")
+        port = int(self.config.get("bridge_port", 48500))
+        body = _json.dumps({"toVessel": to_vessel}).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                f"http://{host}:{port}/transfer-crew", data=body,
+                headers={"content-type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                payload = _json.loads(resp.read().decode("utf-8"))
+            return bool(payload.get("ok"))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _relative_distance_m(chaser, target) -> float:
+        try:
+            p = target.position(chaser.reference_frame)
+            return (p[0] ** 2 + p[1] ** 2 + p[2] ** 2) ** 0.5
+        except Exception:
+            return 1.0e12
+
+    def _rendezvous_from_far(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
+        """Close an arbitrary same-body orbit down to RCS proximity range.
+
+        (1) Match the target's orbital altitude (two apsis burns -> near-circular at the target's
+        mean altitude). (2) Drop into a slightly lower PHASING orbit so the chaser orbits faster and
+        the angular gap to the target shrinks. (3) Drift, watching the relative distance, and when it
+        falls inside proximity range, circularize back onto the target's orbit to kill the drift.
+        Designed to be driven/observed live (telemetry markers every step); robust autonomous
+        rendezvous classically needs a few live adjustments.
+        """
+        sc = conn.space_center
+        body_radius = float(chaser.orbit.body.equatorial_radius)
+        mu = float(chaser.orbit.body.gravitational_parameter)
+        try:
+            t_alt = max(5_000.0, 0.5 * (float(target.orbit.apoapsis_altitude)
+                                        + float(target.orbit.periapsis_altitude)))
+        except Exception:
+            return False
+        self._record_live_sample(chaser, recorder, start, "rendezvous_match_orbit_begin",
+                                 {"target_alt_m": t_alt, "distance_m": self._relative_distance_m(chaser, target)})
+
+        def set_apsis(set_attr: str, burn_at: str) -> None:
+            try:
+                cur_apo = float(chaser.orbit.apoapsis_altitude)
+                cur_per = float(chaser.orbit.periapsis_altitude)
+            except Exception:
+                return
+            burn_alt = cur_apo if burn_at == "apoapsis" else cur_per
+            opp = cur_per if burn_at == "apoapsis" else cur_apo
+            t_to = (chaser.orbit.time_to_apoapsis if burn_at == "apoapsis"
+                    else chaser.orbit.time_to_periapsis)
+            dv = self._opposite_apsis_delta_v_mps(
+                mu=mu, body_radius_m=body_radius, burn_altitude_m=burn_alt,
+                current_opposite_altitude_m=opp, target_opposite_altitude_m=t_alt)
+            if abs(dv) < 2.0:
+                return
+            self._execute_mun_apsis_node(
+                conn, chaser, recorder, start, timeout_s, phase=f"rendezvous_set_{set_attr}",
+                node_ut=sc.ut + max(1.0, float(t_to)), prograde_delta_v_mps=dv,
+                target_attr=set_attr, target_altitude_m=t_alt, max_burn_s=120.0, max_throttle=0.7)
+
+        # 1. Match the target's orbit altitude.
+        set_apsis("periapsis_altitude", "apoapsis")
+        set_apsis("apoapsis_altitude", "periapsis")
+        self._record_live_sample(chaser, recorder, start, "rendezvous_orbit_matched",
+                                 {"distance_m": self._relative_distance_m(chaser, target)})
+
+        # 2. Phasing orbit: drop periapsis so the chaser laps faster and closes the angular gap.
+        phase_alt = max(3_000.0, t_alt - 9_000.0)
+        try:
+            cur_apo = float(chaser.orbit.apoapsis_altitude)
+            dv = self._opposite_apsis_delta_v_mps(
+                mu=mu, body_radius_m=body_radius, burn_altitude_m=cur_apo,
+                current_opposite_altitude_m=float(chaser.orbit.periapsis_altitude),
+                target_opposite_altitude_m=phase_alt)
+            if dv < -2.0:
+                self._execute_mun_apsis_node(
+                    conn, chaser, recorder, start, timeout_s, phase="rendezvous_phasing_orbit",
+                    node_ut=sc.ut + max(1.0, float(chaser.orbit.time_to_apoapsis)),
+                    prograde_delta_v_mps=dv, target_attr="periapsis_altitude",
+                    target_altitude_m=phase_alt, max_burn_s=90.0, max_throttle=0.6)
+        except Exception:
+            pass
+
+        # 3. Drift and pounce: watch the relative distance, warping a fraction of an orbit at a time
+        #    (less when close so a coarse warp can't skip past the closest approach).
+        best = 1.0e12
+        while time.monotonic() - start < timeout_s:
+            d = self._relative_distance_m(chaser, target)
+            best = min(best, d)
+            self._record_live_sample(chaser, recorder, start, "rendezvous_phasing_drift",
+                                     {"distance_m": d, "best_m": best})
+            if d < 2_500.0:
+                # Kill the drift: raise periapsis back onto the target's orbit.
+                set_apsis("periapsis_altitude", "apoapsis")
+                self._record_live_sample(chaser, recorder, start, "rendezvous_close_approach",
+                                         {"distance_m": self._relative_distance_m(chaser, target)})
+                return True
+            try:
+                frac = 12.0 if d < 30_000.0 else 6.0
+                sc.warp_to(sc.ut + max(15.0, float(chaser.orbit.period) / frac),
+                           max_rails_rate=10_000.0, max_physics_rate=4.0)
+            except Exception:
+                time.sleep(2.0)
+        self._set_physics_warp(conn, 0)
+        return self._relative_distance_m(chaser, target) < 5_000.0
 
     def _approach_and_dock(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
         """Proximity ops: point at the target, translate in with RCS, null lateral drift, mate ports."""

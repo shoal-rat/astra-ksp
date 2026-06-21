@@ -22,10 +22,11 @@ def test_artemis_architecture_has_hls_and_orion_designs():
     assert "hls" in hls.design.tags
     assert orion.launch_order == 3
     assert orion.design.mission_type == "artemis_orion_sls_return"
-    # Probe-controlled (headless-launchable; crew modeled) but carries a heat shield for Kerbin
-    # reentry/recovery.
-    assert not orion.design.crewed
+    # Crewed (carries real kerbals) but render() adds an inline probe core so it is still
+    # headless-launchable, plus a heat shield + docking port for the crewed return mission.
+    assert orion.design.crewed
     assert orion.design.heatshield
+    assert orion.design.docking_port
     assert orion.design.estimates["delta_v_mps"] > 8000
 
 

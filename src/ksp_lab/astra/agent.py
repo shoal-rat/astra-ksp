@@ -36,6 +36,22 @@ _PHASE_RE = re.compile(r"mission_phase\s*[:=]\s*([A-Za-z0-9_]+)")
 _RESULT_RE = re.compile(r"RESULT\s*[:=]\s*([A-Za-z]+)")
 
 
+def post_bridge_status(phase: str, message: str, *, host: str = "127.0.0.1", port: int = 48500) -> None:
+    """Push a live status line to the KspAutomationBridge so it shows in the in-game panel.
+    Best-effort: silently does nothing if the bridge/endpoint isn't available."""
+    import json as _json
+    import urllib.request
+
+    try:
+        body = _json.dumps({"phase": phase, "message": message}).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://{host}:{port}/status", data=body,
+            headers={"content-type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=4).read()
+    except Exception:
+        pass
+
+
 def _log(msg: str) -> None:
     print(f"[ASTRA {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
@@ -93,15 +109,21 @@ class AstraAgent:
         self.interpreter = interpreter or Interpreter()
         self.max_attempts = max(1, int(max_attempts))
         self.dry_run = dry_run
+        self.post_status = True
         try:
             self._driver_timeout = int(self.config["runner"]["flight_timeout_s"]) + 300
         except Exception:
             self._driver_timeout = 2100
 
+    def _status(self, phase: str, message: str) -> None:
+        _log(f"{phase}: {message}")
+        if self.post_status:
+            post_bridge_status(phase, message)
+
     # ---------- public ----------
     def run(self, command: str) -> AstraResult:
         plan = self.interpreter.interpret(command)
-        _log(f"interpreted ({plan.source}): body={plan.target_body} caps={plan.capabilities}")
+        self._status("interpret", f"[{plan.source}] {plan.target_body}: {' -> '.join(plan.capabilities)}")
         if plan.rationale:
             _log(f"rationale: {plan.rationale}")
         self.ledger.record(
@@ -137,7 +159,7 @@ class AstraAgent:
         diagnosis: Diagnosis | None = None
         attempt = 0
         for attempt in range(1, self.max_attempts + 1):
-            _log(f"capability {cap}: attempt {attempt}/{self.max_attempts}")
+            self._status(cap, f"attempt {attempt}/{self.max_attempts} — flying…")
             step_ok = True
             for step_name, script in steps:
                 extra: list[str] = []
@@ -158,10 +180,11 @@ class AstraAgent:
                 if not success:
                     step_ok = False
                     diagnosis = self.knowledge.diagnose(marker, log_tail=tail)
-                    _log(f"  FAILED on '{marker}'. diagnosis [{diagnosis.confidence}]: "
-                         f"{diagnosis.principle} — {diagnosis.fix}")
+                    self._status(cap, f"FAILED on '{marker}' — diagnosis [{diagnosis.confidence}]: "
+                                      f"{diagnosis.principle}")
+                    _log(f"  fix: {diagnosis.fix}")
                     break
-                _log(f"  step {step_name} OK ({marker})")
+                self._status(cap, f"{step_name} OK: {marker}")
             if step_ok:
                 return CapabilityResult(cap, True, last_marker, attempt, None)
             # An unknown failure won't fix itself by retrying — stop and surface it.

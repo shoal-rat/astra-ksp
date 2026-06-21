@@ -129,6 +129,8 @@ class CraftWriter:
     def _design_part_names(design: RocketDesign) -> set[str]:
         names = {"parachuteSingle", "Decoupler.1", "ServiceBay.125.v2"}
         names.add("mk1pod.v2" if design.crewed else "probeCoreOcto.v2")
+        if design.crewed:
+            names.add("probeCoreOcto.v2")  # inline control source for headless crewed launch
         if design.crewed or design.heatshield:
             names.add("HeatShield1")
         # Avionics/power/comms bus + aero fins added by _build_nodes; harvest their real
@@ -299,6 +301,14 @@ class CraftWriter:
             self._attach(current, heat, "bottom", "top")
             nodes.append(heat)
             current = heat
+        if design.crewed:
+            # A crewed pod carries the kerbals, but a headless launch needs a guaranteed control
+            # source even before crew portraits settle — and the probe core keeps the craft flyable
+            # if the pod is ever uncrewed. So crewed craft get an inline probe core too.
+            probe = new_node("probeCoreOcto.v2", 0)
+            self._attach(current, probe, "bottom", "top")
+            nodes.append(probe)
+            current = probe
 
         # Payload service bays model payload mass. Only emit them when a real serialization is
         # available (or when running with no part-body library at all, i.e. offline/minimal),

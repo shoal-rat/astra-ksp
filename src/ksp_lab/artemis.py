@@ -106,9 +106,11 @@ def build_artemis_architecture(mission: MissionSpec) -> ArtemisArchitecturePlan:
         name="AI-Orion-SLS",
         mission_type="artemis_orion_sls_return",
         payload_mass_t=max(mission.payload_mass_t, 0.2),
-        # Probe-controlled so it launches headless and stays controllable through capture, the
-        # rendezvous and the Kerbin return. It carries a HEAT SHIELD + parachute for reentry/recovery.
-        crewed=False,
+        # CREWED (carries real kerbals for the crew transfer) AND probe-controlled: render() adds an
+        # inline probe core to a crewed craft so a headless launch is still controllable through
+        # capture, rendezvous, docking and the Kerbin return. Crew is seated post-launch via the
+        # bridge /crew endpoint (a headless launch leaves the pod empty). HEAT SHIELD + parachute too.
+        crewed=True,
         heatshield=True,
         # Clamp-O-Tron + RCS so it can dock with the parked HLS and transfer crew in Mun orbit (the
         # literal version of the originally-modeled rendezvous).

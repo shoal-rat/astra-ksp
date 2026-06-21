@@ -1,3 +1,7 @@
+// NOTE FOR MAINTAINERS: This file is compiled into the KspAutomationBridge.dll plugin.
+// Any change here (new endpoints, the in-game GUI, crew transfer) only takes effect after
+// you rebuild the mod with scripts/build_bridge.ps1 and then restart / reload KSP so the
+// freshly built DLL is picked up. Edits to this .cs alone do nothing until a rebuild+reload.
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,6 +13,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using KSP.UI.Screens;
 using UnityEngine;
 
 namespace KspAutomationBridge
@@ -17,6 +22,7 @@ namespace KspAutomationBridge
     public sealed class AutomationBridgeAddon : MonoBehaviour
     {
         private const int DefaultPort = 48500;
+        private const int StatusBufferCap = 200;
         private static readonly Regex CraftNameRegex = new Regex(@"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$", RegexOptions.Compiled);
         private static AutomationBridgeAddon _instance;
 
@@ -27,6 +33,25 @@ namespace KspAutomationBridge
         private string _lastCraftName = "";
         private string _lastCraftPath = "";
         private string _lastError = "";
+
+        // Player-typed mission commands waiting for the external agent to pick up via GET /command/pending.
+        // Written by both POST /command (background thread) and the in-game "Run mission" button (main thread).
+        private readonly ConcurrentQueue<string> _pendingCommands = new ConcurrentQueue<string>();
+
+        // Ring buffer of recent agent status lines (phase + message). Shown live in the GUI panel and
+        // returned by GET /status. Guarded by its own lock because both the listener threads (POST /status)
+        // and the main thread (OnGUI render) touch it.
+        private readonly object _statusLock = new object();
+        private readonly List<StatusLine> _status = new List<StatusLine>(StatusBufferCap);
+
+        // ---- In-game GUI state (only ever touched on the Unity main thread: OnGUI / Update) ----
+        private bool _windowVisible;
+        private Rect _windowRect = new Rect(60f, 60f, 460f, 420f);
+        private string _commandInput = "";
+        private Vector2 _logScroll = Vector2.zero;
+        private bool _logAutoScroll = true;
+        private int _lastStatusCountForScroll = -1;
+        private ApplicationLauncherButton _appButton;
 
         public void Start()
         {
@@ -39,11 +64,84 @@ namespace KspAutomationBridge
             _instance = this;
             DontDestroyOnLoad(gameObject);
             StartServer(DefaultPort);
+
+            // Try to register an app-launcher (toolbar) button. If the launcher is not ready yet,
+            // we subscribe to onGUIApplicationLauncherReady; the F8 hotkey works regardless.
+            try
+            {
+                GameEvents.onGUIApplicationLauncherReady.Add(AddAppLauncherButton);
+                AddAppLauncherButton();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[KspAutomationBridge] Could not hook app launcher: " + ex.Message);
+            }
         }
 
         public void OnDestroy()
         {
             StopServer();
+            try
+            {
+                GameEvents.onGUIApplicationLauncherReady.Remove(AddAppLauncherButton);
+                RemoveAppLauncherButton();
+            }
+            catch (Exception)
+            {
+                // Ignore launcher teardown races.
+            }
+        }
+
+        private void AddAppLauncherButton()
+        {
+            try
+            {
+                if (_appButton != null || ApplicationLauncher.Instance == null)
+                {
+                    return;
+                }
+
+                Texture2D icon = MakeButtonIcon();
+                _appButton = ApplicationLauncher.Instance.AddModApplication(
+                    OnAppButtonToggle,
+                    OnAppButtonToggle,
+                    null, null, null, null,
+                    ApplicationLauncher.AppScenes.ALWAYS,
+                    icon);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[KspAutomationBridge] AddModApplication failed: " + ex.Message);
+            }
+        }
+
+        private void RemoveAppLauncherButton()
+        {
+            if (_appButton != null && ApplicationLauncher.Instance != null)
+            {
+                ApplicationLauncher.Instance.RemoveModApplication(_appButton);
+            }
+            _appButton = null;
+        }
+
+        private void OnAppButtonToggle()
+        {
+            _windowVisible = !_windowVisible;
+        }
+
+        private static Texture2D MakeButtonIcon()
+        {
+            // Tiny solid-colour 38x38 icon so the toolbar button is visible without shipping an asset.
+            Texture2D tex = new Texture2D(38, 38, TextureFormat.RGBA32, false);
+            Color fill = new Color(0.20f, 0.65f, 0.95f, 1f);
+            Color[] pixels = new Color[38 * 38];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = fill;
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
         }
 
         public void Update()
@@ -63,6 +161,143 @@ namespace KspAutomationBridge
                 finally
                 {
                     work.Done.Set();
+                }
+            }
+
+            // F8 toggles the GUI window (fallback / always-available alongside the toolbar button).
+            try
+            {
+                if (Input.GetKeyDown(KeyCode.F8))
+                {
+                    _windowVisible = !_windowVisible;
+                }
+            }
+            catch (Exception)
+            {
+                // Never let input polling kill the addon.
+            }
+        }
+
+        // OnGUI runs every IMGUI frame on the main thread. Everything here is wrapped so a render
+        // glitch can never throw out of the addon. No KSP simulation calls happen here; the only
+        // shared state read is the status ring buffer (under its lock) and the only writes are GUI
+        // fields plus enqueuing a pending command (thread-safe queue).
+        public void OnGUI()
+        {
+            if (!_windowVisible)
+            {
+                return;
+            }
+
+            try
+            {
+                _windowRect = GUILayout.Window(0x4B535042, _windowRect, DrawWindow, "KSP Automation Bridge");
+            }
+            catch (Exception ex)
+            {
+                // Swallow: OnGUI must never throw. Record for /state diagnostics.
+                _lastError = "OnGUI: " + ex.Message;
+            }
+        }
+
+        private void DrawWindow(int windowId)
+        {
+            try
+            {
+                // Header: connection / listener state.
+                string conn = _running
+                    ? "Listening on http://127.0.0.1:" + DefaultPort
+                    : "Bridge listener STOPPED";
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(conn);
+                GUILayout.FlexibleSpace();
+                int pending = _pendingCommands.Count;
+                GUILayout.Label("pending: " + pending);
+                GUILayout.EndHorizontal();
+
+                GUILayout.Space(4f);
+                GUILayout.Label("Mission command:");
+                _commandInput = GUILayout.TextField(_commandInput ?? "", GUILayout.MinHeight(22f));
+
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Run mission", GUILayout.Height(26f)))
+                {
+                    string cmd = (_commandInput ?? "").Trim();
+                    if (cmd.Length > 0)
+                    {
+                        // Same store the external agent drains via GET /command/pending.
+                        _pendingCommands.Enqueue(cmd);
+                        AppendStatus("queued", "Player queued mission: " + cmd);
+                        _commandInput = "";
+                    }
+                }
+                if (GUILayout.Button("Clear log", GUILayout.Height(26f), GUILayout.Width(80f)))
+                {
+                    lock (_statusLock)
+                    {
+                        _status.Clear();
+                    }
+                }
+                _logAutoScroll = GUILayout.Toggle(_logAutoScroll, "auto-scroll", GUILayout.Width(90f));
+                GUILayout.EndHorizontal();
+
+                GUILayout.Space(4f);
+                GUILayout.Label("Agent status:");
+
+                // Snapshot the ring buffer under lock, then render outside the lock.
+                StatusLine[] lines;
+                lock (_statusLock)
+                {
+                    lines = _status.ToArray();
+                }
+
+                // Auto-scroll to the bottom whenever new lines arrived since the last frame.
+                if (_logAutoScroll && lines.Length != _lastStatusCountForScroll)
+                {
+                    _logScroll.y = float.MaxValue;
+                    _lastStatusCountForScroll = lines.Length;
+                }
+
+                _logScroll = GUILayout.BeginScrollView(_logScroll, GUILayout.MinHeight(200f));
+                if (lines.Length == 0)
+                {
+                    GUILayout.Label("(no status yet)");
+                }
+                else
+                {
+                    foreach (StatusLine line in lines)
+                    {
+                        GUILayout.Label("[" + line.Phase + "] " + line.Message);
+                    }
+                }
+                GUILayout.EndScrollView();
+
+                GUILayout.Space(2f);
+                GUILayout.Label("Toggle: toolbar button or F8. Build: scripts/build_bridge.ps1 then reload KSP.");
+
+                // Let the player drag the window by its title bar.
+                GUI.DragWindow(new Rect(0f, 0f, 10000f, 22f));
+            }
+            catch (Exception ex)
+            {
+                _lastError = "DrawWindow: " + ex.Message;
+            }
+        }
+
+        private void AppendStatus(string phase, string message)
+        {
+            StatusLine line = new StatusLine
+            {
+                Phase = phase ?? "",
+                Message = message ?? "",
+                TimestampUtc = DateTime.UtcNow.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+            };
+            lock (_statusLock)
+            {
+                _status.Add(line);
+                if (_status.Count > StatusBufferCap)
+                {
+                    _status.RemoveRange(0, _status.Count - StatusBufferCap);
                 }
             }
         }
@@ -201,6 +436,45 @@ namespace KspAutomationBridge
             if (request.Method == "POST" && request.Path == "/reset")
             {
                 return RunOnMainThread(ResetCommand, 60000);
+            }
+
+            // ---- Player mission command queue (no KSP API: thread-safe queue, handle inline) ----
+            if (request.Method == "POST" && request.Path == "/command")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return EnqueueCommand(fields);
+            }
+
+            if (request.Method == "GET" && request.Path == "/command/pending")
+            {
+                return DequeuePendingCommand();
+            }
+
+            // ---- Agent status ring buffer (no KSP API: lock-protected list, handle inline) ----
+            if (request.Method == "POST" && request.Path == "/status")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return PostStatus(fields);
+            }
+
+            if (request.Method == "GET" && request.Path == "/status")
+            {
+                return GetStatus();
+            }
+
+            // ---- Crew transfer: touches the KSP API, MUST run on the main thread ----
+            if (request.Method == "POST" && request.Path == "/transfer-crew")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => TransferCrewCommand(fields), 30000);
+            }
+
+            // ---- Crew spawn: seat a kerbal from the roster into an empty crewable part (a headless
+            // launch leaves crewed pods empty). Lets the agent put REAL people aboard before a dock.
+            if (request.Method == "POST" && request.Path == "/spawn-crew")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => SpawnCrewCommand(fields), 30000);
             }
 
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
@@ -552,6 +826,451 @@ namespace KspAutomationBridge
             return CommandResult.Ok(new Dictionary<string, object> { { "message", "Reset to space center requested." } });
         }
 
+        // POST /command  body {"command": "..."}  -> enqueue a pending mission command.
+        private CommandResult EnqueueCommand(Dictionary<string, string> fields)
+        {
+            string command = GetOptional(fields, "command", "").Trim();
+            if (command.Length == 0)
+            {
+                return CommandResult.Fail("Missing required field: command");
+            }
+
+            _pendingCommands.Enqueue(command);
+            AppendStatus("queued", "Command queued via HTTP: " + command);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", "Command queued." },
+                { "command", command },
+                { "pending", _pendingCommands.Count }
+            });
+        }
+
+        // GET /command/pending  -> pop the oldest queued command, or {"command": null} if empty.
+        private CommandResult DequeuePendingCommand()
+        {
+            string command;
+            if (_pendingCommands.TryDequeue(out command))
+            {
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "command", command },
+                    { "remaining", _pendingCommands.Count }
+                });
+            }
+
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "command", null },
+                { "remaining", 0 }
+            });
+        }
+
+        // POST /status  body {"phase": "...", "message": "..."}  -> append to the ring buffer.
+        private CommandResult PostStatus(Dictionary<string, string> fields)
+        {
+            string phase = GetOptional(fields, "phase", "");
+            string message = GetOptional(fields, "message", "");
+            if (phase.Length == 0 && message.Length == 0)
+            {
+                return CommandResult.Fail("Provide at least one of: phase, message.");
+            }
+
+            AppendStatus(phase, message);
+            int count;
+            lock (_statusLock)
+            {
+                count = _status.Count;
+            }
+
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", "Status appended." },
+                { "count", count }
+            });
+        }
+
+        // GET /status  -> recent status lines as a JSON array.
+        private CommandResult GetStatus()
+        {
+            StatusLine[] lines;
+            lock (_statusLock)
+            {
+                lines = _status.ToArray();
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.Append("[");
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(",");
+                }
+                sb.Append("{\"ts\":\"").Append(JsonEscape(lines[i].TimestampUtc))
+                  .Append("\",\"phase\":\"").Append(JsonEscape(lines[i].Phase))
+                  .Append("\",\"message\":\"").Append(JsonEscape(lines[i].Message))
+                  .Append("\"}");
+            }
+            sb.Append("]");
+
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "count", lines.Length },
+                { "status", new RawJson(sb.ToString()) }
+            });
+        }
+
+        // POST /spawn-crew {"vessel"?: name} -> seat a roster kerbal into the first empty crewable
+        // seat (a headless launch leaves crewed pods empty). MUST run on the main thread.
+        private CommandResult SpawnCrewCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("Crew spawn requires an active vessel in flight.");
+            }
+            string vesselName = GetOptional(fields, "vessel", "").Trim();
+            Vessel target = FlightGlobals.ActiveVessel;
+            if (vesselName.Length > 0 && FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel v in FlightGlobals.Vessels)
+                {
+                    if (v != null && v.loaded && v.vesselName != null &&
+                        v.vesselName.IndexOf(vesselName, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        target = v;
+                        break;
+                    }
+                }
+            }
+            Part destPart = null;
+            if (target != null && target.parts != null)
+            {
+                foreach (Part part in target.parts)
+                {
+                    if (part != null && part.CrewCapacity > 0 &&
+                        part.protoModuleCrew != null && part.protoModuleCrew.Count < part.CrewCapacity)
+                    {
+                        destPart = part;
+                        break;
+                    }
+                }
+            }
+            if (destPart == null)
+            {
+                return CommandResult.Fail("No crewable part with a free seat found.");
+            }
+            ProtoCrewMember pcm = null;
+            try
+            {
+                KerbalRoster roster = HighLogic.CurrentGame.CrewRoster;
+                foreach (ProtoCrewMember c in roster.Crew)
+                {
+                    if (c != null && c.rosterStatus == ProtoCrewMember.RosterStatus.Available &&
+                        c.type == ProtoCrewMember.KerbalType.Crew)
+                    {
+                        pcm = c;
+                        break;
+                    }
+                }
+                if (pcm == null)
+                {
+                    pcm = roster.GetNewKerbal(ProtoCrewMember.KerbalType.Crew);
+                }
+            }
+            catch (Exception ex)
+            {
+                return CommandResult.Fail("Could not get a kerbal from the roster: " + ex.Message);
+            }
+            if (pcm == null)
+            {
+                return CommandResult.Fail("No available kerbal to spawn.");
+            }
+            try
+            {
+                pcm.rosterStatus = ProtoCrewMember.RosterStatus.Assigned;
+                destPart.AddCrewmember(pcm);
+                target.SpawnCrew();
+                GameEvents.onVesselWasModified.Fire(target);
+                GameEvents.onVesselChange.Fire(target);
+            }
+            catch (Exception ex)
+            {
+                return CommandResult.Fail("Spawn failed: " + ex.Message);
+            }
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", "Spawned " + pcm.name + " into " + destPart.partInfo.title +
+                             " on " + target.vesselName },
+                { "crew", pcm.name },
+            });
+        }
+
+        // POST /transfer-crew  -> move a kerbal between crewed parts (after docking, both craft are
+        // one vessel) or between two separate-but-docked vessels addressed by name.
+        // MUST be invoked on the main thread (called via RunOnMainThread).
+        private CommandResult TransferCrewCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("Crew transfer requires an active vessel in flight.");
+            }
+
+            string crewName = GetOptional(fields, "crew", "").Trim();
+            string fromPartName = GetOptional(fields, "fromPart", "").Trim();
+            string toPartName = GetOptional(fields, "toPart", "").Trim();
+            string toVesselName = GetOptional(fields, "toVessel", "").Trim();
+
+            // Resolve the kerbal to move and the part it currently sits in.
+            ProtoCrewMember pcm = null;
+            Part sourcePart = null;
+            Vessel sourceVessel = null;
+
+            // Search every loaded vessel for the named crew member (or the first crew member if
+            // only fromPart/no name was supplied).
+            List<Vessel> searchVessels = new List<Vessel>();
+            if (FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel v in FlightGlobals.Vessels)
+                {
+                    if (v != null && v.loaded)
+                    {
+                        searchVessels.Add(v);
+                    }
+                }
+            }
+            if (searchVessels.Count == 0)
+            {
+                searchVessels.Add(FlightGlobals.ActiveVessel);
+            }
+
+            foreach (Vessel v in searchVessels)
+            {
+                if (v == null || v.parts == null)
+                {
+                    continue;
+                }
+
+                foreach (Part part in v.parts)
+                {
+                    if (part == null || part.protoModuleCrew == null || part.protoModuleCrew.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    // If a specific source part was named, restrict to it.
+                    if (fromPartName.Length > 0 && !PartMatches(part, fromPartName))
+                    {
+                        continue;
+                    }
+
+                    foreach (ProtoCrewMember candidate in part.protoModuleCrew)
+                    {
+                        if (candidate == null)
+                        {
+                            continue;
+                        }
+
+                        if (crewName.Length == 0 ||
+                            string.Equals(candidate.name, crewName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            pcm = candidate;
+                            sourcePart = part;
+                            sourceVessel = v;
+                            break;
+                        }
+                    }
+
+                    if (pcm != null)
+                    {
+                        break;
+                    }
+                }
+
+                if (pcm != null)
+                {
+                    break;
+                }
+            }
+
+            if (pcm == null || sourcePart == null)
+            {
+                return CommandResult.Fail(crewName.Length > 0
+                    ? "Crew member not found in a crewed part: " + crewName
+                    : "No crew member found to transfer (no crewed parts matched).", 404);
+            }
+
+            // Resolve the destination part. Priority: explicit toPart name; else first part with a
+            // free seat on the named toVessel; else first part with a free seat on the active vessel
+            // that is not the source part.
+            Part destPart = null;
+
+            if (toPartName.Length > 0)
+            {
+                destPart = FindPartByName(searchVessels, toPartName, sourcePart);
+                if (destPart == null)
+                {
+                    return CommandResult.Fail("Destination part not found: " + toPartName, 404);
+                }
+            }
+            else if (toVesselName.Length > 0)
+            {
+                Vessel destVessel = null;
+                foreach (Vessel v in searchVessels)
+                {
+                    if (v != null && string.Equals(v.vesselName, toVesselName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        destVessel = v;
+                        break;
+                    }
+                }
+                if (destVessel == null)
+                {
+                    return CommandResult.Fail("Destination vessel not found: " + toVesselName, 404);
+                }
+                destPart = FindFirstSeat(destVessel, sourcePart);
+                if (destPart == null)
+                {
+                    return CommandResult.Fail("No free crew seat on destination vessel: " + toVesselName);
+                }
+            }
+            else
+            {
+                // Default: any free seat on the active vessel that is not the source part.
+                destPart = FindFirstSeat(FlightGlobals.ActiveVessel, sourcePart);
+                if (destPart == null)
+                {
+                    return CommandResult.Fail("No destination part/vessel given and no free seat found on the active vessel.");
+                }
+            }
+
+            if (destPart == sourcePart)
+            {
+                return CommandResult.Fail("Source and destination part are the same; nothing to do.");
+            }
+
+            // Capacity check on destination.
+            if (destPart.protoModuleCrew != null && destPart.CrewCapacity > 0 &&
+                destPart.protoModuleCrew.Count >= destPart.CrewCapacity)
+            {
+                return CommandResult.Fail("Destination part is full: " +
+                    destPart.partInfo.title + " (" + destPart.protoModuleCrew.Count + "/" + destPart.CrewCapacity + ").");
+            }
+            if (destPart.CrewCapacity <= 0)
+            {
+                return CommandResult.Fail("Destination part has no crew capacity: " + destPart.partInfo.title + ".");
+            }
+
+            Vessel destVesselFinal = destPart.vessel;
+            string movedName = pcm.name;
+            string fromTitle = sourcePart.partInfo != null ? sourcePart.partInfo.title : sourcePart.name;
+            string toTitle = destPart.partInfo != null ? destPart.partInfo.title : destPart.name;
+
+            try
+            {
+                // Core move. seatIdx = -1 lets SpawnCrew pick a free seat in the destination part.
+                sourcePart.RemoveCrewmember(pcm);
+                pcm.seatIdx = -1;
+                destPart.AddCrewmember(pcm);
+
+                // Refresh internal seats/portraits on both ends.
+                sourcePart.vessel.SpawnCrew();
+                if (destVesselFinal != null && destVesselFinal != sourcePart.vessel)
+                {
+                    destVesselFinal.SpawnCrew();
+                }
+
+                // Tell the game the vessels changed so UI / portraits / map update.
+                GameEvents.onVesselWasModified.Fire(sourcePart.vessel);
+                if (destVesselFinal != null && destVesselFinal != sourcePart.vessel)
+                {
+                    GameEvents.onVesselWasModified.Fire(destVesselFinal);
+                }
+                if (FlightGlobals.ActiveVessel != null)
+                {
+                    GameEvents.onVesselChange.Fire(FlightGlobals.ActiveVessel);
+                }
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("Crew transfer failed mid-move: " + ex.Message);
+            }
+
+            AppendStatus("crew", "Transferred " + movedName + " -> " + toTitle);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", "Crew transferred." },
+                { "crew", movedName },
+                { "fromPart", fromTitle },
+                { "toPart", toTitle },
+                { "fromVessel", sourceVessel != null ? sourceVessel.vesselName : "" },
+                { "toVessel", destVesselFinal != null ? destVesselFinal.vesselName : "" }
+            });
+        }
+
+        private static bool PartMatches(Part part, string needle)
+        {
+            if (part == null)
+            {
+                return false;
+            }
+
+            // Match by craft-tag name, prefab name, or part title (case-insensitive).
+            string title = part.partInfo != null ? part.partInfo.title : "";
+            return string.Equals(part.name, needle, StringComparison.OrdinalIgnoreCase) ||
+                   (title.Length > 0 && string.Equals(title, needle, StringComparison.OrdinalIgnoreCase)) ||
+                   (title.Length > 0 && title.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static Part FindPartByName(List<Vessel> vessels, string needle, Part exclude)
+        {
+            foreach (Vessel v in vessels)
+            {
+                if (v == null || v.parts == null)
+                {
+                    continue;
+                }
+                foreach (Part part in v.parts)
+                {
+                    if (part == null || part == exclude || part.CrewCapacity <= 0)
+                    {
+                        continue;
+                    }
+                    if (PartMatches(part, needle))
+                    {
+                        return part;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static Part FindFirstSeat(Vessel vessel, Part exclude)
+        {
+            if (vessel == null || vessel.parts == null)
+            {
+                return null;
+            }
+            foreach (Part part in vessel.parts)
+            {
+                if (part == null || part == exclude || part.CrewCapacity <= 0)
+                {
+                    continue;
+                }
+                int occupied = part.protoModuleCrew != null ? part.protoModuleCrew.Count : 0;
+                if (occupied < part.CrewCapacity)
+                {
+                    return part;
+                }
+            }
+            return null;
+        }
+
+        private static string JsonEscape(string value)
+        {
+            return (value ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+        }
+
         private static string ResolveCraftPath(string craftName, string requestedPath, EditorFacility facility)
         {
             string folder = facility == EditorFacility.SPH ? "SPH" : "VAB";
@@ -635,6 +1354,26 @@ namespace KspAutomationBridge
         public MainThreadWork(Func<CommandResult> action)
         {
             Action = action;
+        }
+    }
+
+    // One line in the agent-status ring buffer shown in the GUI and returned by GET /status.
+    internal struct StatusLine
+    {
+        public string TimestampUtc;
+        public string Phase;
+        public string Message;
+    }
+
+    // Marker for a value that is already valid JSON and must be emitted verbatim
+    // (not quoted/escaped) inside CommandResult.ToJson().
+    internal sealed class RawJson
+    {
+        public readonly string Json;
+
+        public RawJson(string json)
+        {
+            Json = json ?? "null";
         }
     }
 
@@ -747,6 +1486,11 @@ namespace KspAutomationBridge
             if (value == null)
             {
                 sb.Append("null");
+            }
+            else if (value is RawJson)
+            {
+                // Pre-serialized JSON (e.g. an array of status objects): emit verbatim.
+                sb.Append(((RawJson)value).Json);
             }
             else if (value is bool)
             {
