@@ -75,6 +75,17 @@ def main() -> int:
             landing_seen = landing_seen or bool(bridge.mj_status().get("landingEnabled", False))
         except Exception:
             pass
+        # Warp-assist the long high coast ONLY. MechJeb owns the LANDING (attitude, deceleration burn,
+        # parachute timing); it just won't fast-warp a huge descent ellipse on its own. Above 80 km,
+        # step rails warp toward the atmosphere; at/below 80 km hand fully back to MechJeb in real time
+        # so it flies the deceleration + chute phase. We never deploy chutes or time burns ourselves.
+        try:
+            if alt > 80000 and sit in ("sub_orbital", "orbiting"):
+                sc.rails_warp_factor = 4 if alt > 1_000_000 else (3 if alt > 250_000 else 1)
+            elif sc.rails_warp_factor > 0:
+                sc.rails_warp_factor = 0
+        except Exception:
+            pass
         m = f"alt {alt/1000:.1f}k spd {spd:.0f} {sit} mjLanding={landing_seen}"
         if m != last:
             log("  " + m)
