@@ -522,6 +522,14 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => MjLandCommand(fields), 30000);
             }
 
+            // Enter FLIGHT on an existing orbital vessel from the Space Center / Tracking Station.
+            // kRPC can't do this; it removes the per-phase computer-use "click Fly" friction.
+            if (request.Method == "POST" && request.Path == "/fly-vessel")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => FlyVesselCommand(fields), 30000);
+            }
+
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
         }
 
@@ -1744,6 +1752,42 @@ namespace KspAutomationBridge
             return CommandResult.Ok(new Dictionary<string, object>
             {
                 { "landing", true }, { "targeted", targeted }
+            });
+        }
+
+        private CommandResult FlyVesselCommand(Dictionary<string, string> fields)
+        {
+            if (HighLogic.LoadedScene != GameScenes.SPACECENTER && HighLogic.LoadedScene != GameScenes.TRACKSTATION)
+            {
+                return CommandResult.Fail("fly-vessel only works from the Space Center / Tracking Station scene.");
+            }
+            string name = GetOptional(fields, "vessel", "").Trim();
+            if (name.Length == 0)
+            {
+                return CommandResult.Fail("Provide a 'vessel' name.");
+            }
+            int idx = -1;
+            for (int i = 0; i < FlightGlobals.Vessels.Count; i++)
+            {
+                Vessel vv = FlightGlobals.Vessels[i];
+                if (vv != null && string.Equals(vv.vesselName, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0)
+            {
+                return CommandResult.Fail("Vessel not found: " + name);
+            }
+            // Persist current state, then load the flight scene focused on that vessel (the same call
+            // the Tracking Station "Fly" button uses).
+            GamePersistence.SaveGame("persistent", HighLogic.SaveFolder, SaveMode.OVERWRITE);
+            FlightDriver.StartAndFocusVessel("persistent", idx);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "flying", name },
+                { "index", idx }
             });
         }
 
