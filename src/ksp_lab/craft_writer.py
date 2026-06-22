@@ -302,6 +302,17 @@ class CraftWriter:
             self._attach(current, heat, "bottom", "top")
             nodes.append(heat)
             current = heat
+            # SEPARABLE CREW CAPSULE: a decoupler directly below the heatshield lets the return driver
+            # JETTISON the probe/cabin/service section before reentry, so the reentry vehicle is just
+            # pod+heatshield+parachute — a short, aerodynamically-stable capsule (CoM behind the
+            # heatshield) whose chute actually lands the crew. Without this, the long command bus
+            # tumbles on reentry, the crew pod splits off chuteless, and the crew die. Inverse-stage 0
+            # so it NEVER auto-fires during ascent/staging — the driver triggers it manually.
+            if design.crewed:
+                capsule_decoupler = new_node("Decoupler.1", 0)
+                self._attach(current, capsule_decoupler, "bottom", "top")
+                nodes.append(capsule_decoupler)
+                current = capsule_decoupler
         if design.crewed:
             # A crewed pod carries the kerbals, but a headless launch needs a guaranteed control
             # source even before crew portraits settle — and the probe core keeps the craft flyable
