@@ -42,8 +42,10 @@ class BridgeClient:
     def save(self) -> dict:
         return self._request("POST", "/save", json={})
 
-    def load_save(self, save_folder: str) -> dict:
-        return self._request("POST", "/save/load", json={"saveFolder": save_folder})
+    def load_save(self, save_folder: str, scene: str = "spacecenter") -> dict:
+        """Load a save. scene='spacecenter' (default) or 'flight' to resume the saved active vessel
+        directly in flight (lets an in-space vessel be re-controlled after a bridge rebuild)."""
+        return self._request("POST", "/save/load", json={"saveFolder": save_folder, "scene": scene})
 
     def space_center(self) -> dict:
         return self._request("POST", "/space-center", json={})

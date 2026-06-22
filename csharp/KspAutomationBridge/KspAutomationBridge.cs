@@ -701,11 +701,24 @@ namespace KspAutomationBridge
 
             HighLogic.CurrentGame = game;
             HighLogic.SaveFolder = saveFolder;
-            HighLogic.LoadScene(GameScenes.SPACECENTER);
+            string scene = GetOptional(fields, "scene", "spacecenter").ToLowerInvariant();
+            if (scene == "flight")
+            {
+                // Resume the recorded active vessel directly in flight, so an in-space vessel can be
+                // re-controlled after a bridge rebuild without the tracking station (which the bridge
+                // and kRPC can't drive). game.Start() loads the saved active vessel into the FLIGHT scene.
+                game.startScene = GameScenes.FLIGHT;
+                game.Start();
+            }
+            else
+            {
+                HighLogic.LoadScene(GameScenes.SPACECENTER);
+            }
             return CommandResult.Ok(new Dictionary<string, object>
             {
                 { "message", "Save load requested." },
-                { "saveFolder", saveFolder }
+                { "saveFolder", saveFolder },
+                { "scene", scene }
             });
         }
 
@@ -1767,8 +1780,10 @@ namespace KspAutomationBridge
                 op = new OperationCircularize();
             else if (operation == "plane")
                 op = new OperationPlane();
+            else if (operation == "correction")
+                op = new OperationCourseCorrection();  // mid-course fine-tune of closest approach to the target
             else
-                return CommandResult.Fail("Unknown operation '" + operation + "' (interplanetary|circularize|plane).");
+                return CommandResult.Fail("Unknown operation '" + operation + "' (interplanetary|circularize|plane|correction).");
 
             double ut = Planetarium.GetUniversalTime();
             List<ManeuverParameters> maneuvers;
