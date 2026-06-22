@@ -88,6 +88,15 @@ def main() -> int:
     rec.append({"phase": "duna_transfer_plan", "ejection_dv": ejection_dv, "v_inf": v_inf,
                 "transfer_time_s": transfer_time, "target_phase_rad": target_phase})
 
+    def refuel():
+        # A render craft's engine starves when its CONNECTED tank empties while sibling tanks stay
+        # full (available_thrust -> 0 at full throttle). /vessel/refuel restores flow. (Notebook §7.)
+        try:
+            bridge.refuel_vessel(name, fraction=1.0, resources="LiquidFuel,Oxidizer,MonoPropellant")
+        except Exception:
+            pass
+
+    refuel()
     # 0) Raise apoapsis for fast warp. KSP caps rails warp at ~50x in LKO (an altitude limit), far too
     # slow to wait out an interplanetary window (months) — verified live. A prograde burn lifts
     # apoapsis above ~750 km where 100,000x warp unlocks; periapsis stays low for the Oberth ejection.
@@ -179,7 +188,14 @@ def main() -> int:
         log(f"  no encounter in search; eject prograde T+{ut - sc.ut:.0f}s dv {dv:.0f} (needs correction)")
     rec.append({"phase": "duna_ejection_node", "ut": ut, "dv": dv, "encounter": best is not None})
 
-    # 3) MechJeb flies the ejection burn (it auto-warps to the node and steers precisely).
+    # 3) Fly the ejection burn with MechJeb. Its node executor will NOT auto-warp to a distant node
+    # while it steers (notebook §7), so kRPC-warp to the node first (no steering => warp works), then
+    # fire MechJeb to burn it (close nodes burn cleanly).
+    refuel()
+    nodes = v.control.nodes
+    if nodes and nodes[0].ut - sc.ut > 60:
+        sc.warp_to(nodes[0].ut - 45)
+        time.sleep(2)
     bridge.mj_execute_node()
     _wait_node_done(bridge, timeout_s=1200.0, label="TDI")
 
@@ -211,6 +227,7 @@ def main() -> int:
     if ttp and 0 < ttp < 1e7:
         sc.warp_to(sc.ut + ttp - 25)
         time.sleep(2)
+    refuel()
     _retro_capture_duna(conn, sc, v, log, ap_target_m=900_000.0, pe_floor_m=20_000.0)
 
     ok = v.orbit.body.name == "Duna" and v.orbit.periapsis_altitude > 10_000.0
