@@ -297,37 +297,37 @@ class CraftWriter:
         nodes.append(chute)
 
         current = root
+        # A crew cabin gives extra seats (the 1-seat pod alone leaves nowhere to transfer kerbals).
+        # It sits DIRECTLY BELOW THE POD — i.e. ABOVE the capsule decoupler — so ALL crew (pod + cabin)
+        # ride inside the reentry capsule and the whole crew comes home, not just the pod's one seat.
+        if design.crewed and (part_bodies is None or "crewCabin" in part_bodies):
+            cabin = new_node("crewCabin", 0)
+            self._attach(current, cabin, "bottom", "top")
+            nodes.append(cabin)
+            current = cabin
         if design.crewed or design.heatshield:
             heat = new_node("HeatShield1", 0)
             self._attach(current, heat, "bottom", "top")
             nodes.append(heat)
             current = heat
-            # SEPARABLE CREW CAPSULE: a decoupler directly below the heatshield lets the return driver
-            # JETTISON the probe/cabin/service section before reentry, so the reentry vehicle is just
-            # pod+heatshield+parachute — a short, aerodynamically-stable capsule (CoM behind the
-            # heatshield) whose chute actually lands the crew. Without this, the long command bus
-            # tumbles on reentry, the crew pod splits off chuteless, and the crew die. Inverse-stage 0
-            # so it NEVER auto-fires during ascent/staging — the driver triggers it manually.
+            # SEPARABLE CREW CAPSULE: a decoupler at the BASE of the pod+cabin+heatshield capsule lets
+            # the return driver JETTISON the probe/service section before reentry, so the reentry
+            # vehicle is the short, stable capsule whose chute lands the WHOLE crew. Without this the
+            # long command bus tumbles and the crew pod splits off chuteless. Inverse-stage 0 so it
+            # never auto-fires during ascent/staging — the driver triggers it manually.
             if design.crewed:
                 capsule_decoupler = new_node("Decoupler.1", 0)
                 self._attach(current, capsule_decoupler, "bottom", "top")
                 nodes.append(capsule_decoupler)
                 current = capsule_decoupler
         if design.crewed:
-            # A crewed pod carries the kerbals, but a headless launch needs a guaranteed control
-            # source even before crew portraits settle — and the probe core keeps the craft flyable
-            # if the pod is ever uncrewed. So crewed craft get an inline probe core too.
+            # Inline probe core BELOW the decoupler: a guaranteed control source for the headless
+            # launch (before crew portraits settle). It stays with the jettisoned service section —
+            # fine, because the crewed pod controls the capsule after separation.
             probe = new_node("probeCoreOcto.v2", 0)
             self._attach(current, probe, "bottom", "top")
             nodes.append(probe)
             current = probe
-            # A crew cabin gives extra seats so astronauts can be transferred between modules (and
-            # across a dock) — the 1-seat command pod alone leaves nowhere to move them.
-            if part_bodies is None or "crewCabin" in part_bodies:
-                cabin = new_node("crewCabin", 0)
-                self._attach(current, cabin, "bottom", "top")
-                nodes.append(cabin)
-                current = cabin
 
         # Payload service bays model payload mass. Only emit them when a real serialization is
         # available (or when running with no part-body library at all, i.e. offline/minimal),

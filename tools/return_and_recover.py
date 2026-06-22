@@ -87,9 +87,15 @@ def main() -> int:
         log("WARNING: could not find capsule decoupler; reentering whole stack (may tumble)")
     time.sleep(3)
 
-    # 3) Switch to the crewed capsule and reenter it.
-    cap = next((vv for vv in sc.vessels if vv.crew_count > 0 and vv.orbit.body.name == body.name
-                and vv.orbit.periapsis_altitude < 45000), None)
+    # 3) Switch to the crewed capsule and reenter it. Match by the ORIGINAL vessel name + crew + a
+    # parachute (the capsule keeps the root pod's name and carries the chute; the jettisoned service
+    # section is a separate, chuteless vessel). A loose "any crewed low-pe vessel" match grabbed an
+    # unrelated clutter vessel last time.
+    base = name.split()[0]
+    cap = next((vv for vv in sc.vessels if base in vv.name and vv.crew_count > 0
+                and len(vv.parts.parachutes) > 0), None)
+    if cap is None:
+        cap = next((vv for vv in sc.vessels if base in vv.name and vv.crew_count > 0), None)
     if cap is not None:
         sc.active_vessel = cap
         time.sleep(2)
