@@ -134,27 +134,50 @@ def main() -> int:
         time.sleep(0.5)
     log(f"  window reached at phase {math.degrees(_heliocentric_phase(sun_ref, kerbin, duna)):.1f} deg")
 
-    # 2) Place the prograde ejection node ~ a quarter-orbit ahead (so MechJeb can orient + warp to it),
-    # with the CALCULATED ejection Δv as the prograde component. A small UT search refines the node so
-    # the resulting Kerbol orbit best reaches Duna's heliocentric radius (apoapsis ≈ Duna's r2).
+    # 2) Place the prograde ejection node, refined against a LIVE Duna-encounter check: with Duna set
+    # as target, search the burn point (around the orbit) and Δv (around the calculated ejection) for a
+    # trajectory whose patched conics ACTUALLY reach Duna's SOI, picking the one nearest a ~100 km Duna
+    # periapsis. MechJeb then flies the burn; if no encounter is found we eject prograde and rely on a
+    # mid-course correction (interplanetary aim is sensitive — that is expected, not a failure).
+    try:
+        sc.target_body = duna
+    except Exception:
+        pass
+
+    def duna_periapsis(node):
+        o = node.orbit
+        for _ in range(5):
+            if o is None:
+                return None
+            try:
+                if o.body.name == "Duna":
+                    return o.periapsis_altitude
+                o = o.next_orbit
+            except Exception:
+                return None
+        return None
+
     period = v.orbit.period
-    best = None
-    for frac in (0.25, 0.4, 0.55, 0.7, 0.85, 1.0, 1.15):
-        ut = sc.ut + period * frac
-        node = v.control.add_node(ut, prograde=ejection_dv)
-        try:
-            ap_helio = node.orbit.next_orbit.apoapsis if node.orbit.next_orbit else 0.0
-        except Exception:
-            ap_helio = 0.0
-        score = abs(ap_helio - r2) if ap_helio else float("inf")
-        if best is None or score < best[0]:
-            best = (score, ut)
-        v.control.remove_nodes()
-    ut = best[1] if best else sc.ut + period * 0.5
-    v.control.add_node(ut, prograde=ejection_dv)
-    log(f"  ejection node placed at T+{ut - sc.ut:.0f}s, dv {ejection_dv:.0f} m/s "
-        f"(best heliocentric-apoapsis match)")
-    rec.append({"phase": "duna_ejection_node", "ut": ut, "dv": ejection_dv})
+    best = None  # (score, ut, dv)
+    for frac in (0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95):
+        for dv in (ejection_dv * 0.95, ejection_dv, ejection_dv * 1.05):
+            ut = sc.ut + period * frac
+            node = v.control.add_node(ut, prograde=dv)
+            dpe = duna_periapsis(node)
+            v.control.remove_nodes()
+            if dpe is not None:
+                score = abs(dpe - 100_000.0)
+                if best is None or score < best[0]:
+                    best = (score, ut, dv)
+    if best is not None:
+        ut, dv = best[1], best[2]
+        v.control.add_node(ut, prograde=dv)
+        log(f"  ejection node -> Duna ENCOUNTER: T+{ut - sc.ut:.0f}s dv {dv:.0f} m/s")
+    else:
+        ut, dv = sc.ut + period * 0.5, ejection_dv
+        v.control.add_node(ut, prograde=dv)
+        log(f"  no encounter in search; eject prograde T+{ut - sc.ut:.0f}s dv {dv:.0f} (needs correction)")
+    rec.append({"phase": "duna_ejection_node", "ut": ut, "dv": dv, "encounter": best is not None})
 
     # 3) MechJeb flies the ejection burn (it auto-warps to the node and steers precisely).
     bridge.mj_execute_node()
