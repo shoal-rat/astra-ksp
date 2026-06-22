@@ -7,7 +7,6 @@ node executor flies both burns precisely (auto-warps to each). The agent only se
 """
 from __future__ import annotations
 
-import math
 import sys
 import time
 from pathlib import Path
@@ -48,7 +47,6 @@ def _retro_capture(conn, sc, v, log, *, ap_target_m: float = 1_200_000.0, pe_flo
     """Burn retrograde (autopilot, non-rotating frame, tracking the velocity vector) until the orbit
     is bound within the Mun SOI with a safe periapsis. Robust where the SAS hold mode + MechJeb node
     executor both fail. Lowers apoapsis monotonically while preserving periapsis."""
-    import time as _t
     body = v.orbit.body
     ref = body.non_rotating_reference_frame
     ap = v.auto_pilot
@@ -62,11 +60,11 @@ def _retro_capture(conn, sc, v, log, *, ap_target_m: float = 1_200_000.0, pe_flo
 
     ap.target_direction = retro()
     ap.engage()
-    _t.sleep(8)
+    time.sleep(8)
     v.control.throttle = 1.0
-    t0 = _t.monotonic()
+    t0 = time.monotonic()
     last = ""
-    while _t.monotonic() - t0 < max_s:
+    while time.monotonic() - t0 < max_s:
         ap.target_direction = retro()
         o = v.orbit
         A, P = o.apoapsis_altitude, o.periapsis_altitude
@@ -81,9 +79,9 @@ def _retro_capture(conn, sc, v, log, *, ap_target_m: float = 1_200_000.0, pe_flo
             log("  periapsis low; stopping")
             break
         v.control.throttle = 1.0 if (A < 0 or A > ap_target_m * 1.5) else 0.4
-        _t.sleep(1.5)
+        time.sleep(1.5)
     v.control.throttle = 0.0
-    _t.sleep(1)
+    time.sleep(1)
     try:
         ap.disengage()
     except Exception:

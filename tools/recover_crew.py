@@ -67,7 +67,6 @@ def main() -> int:
     body = v.orbit.body
     ref = body.non_rotating_reference_frame
     chutes = len(v.parts.parachutes)
-    has_engine = v.available_thrust > 1.0
     mp = v.resources.amount("MonoPropellant")
     log(f"{v.name!r} crew {v.crew_count} ap {v.orbit.apoapsis_altitude/1000:.0f}k "
         f"pe {v.orbit.periapsis_altitude/1000:.0f}k chutes {chutes} "
@@ -85,8 +84,8 @@ def main() -> int:
         return (-vel[0], -vel[1], -vel[2])
 
     # 1) Deorbit to a ~24 km periapsis (sure reentry). Burn at apoapsis for high/eccentric orbits
-    # (far more efficient than burning low). Use the engine if present, else RCS fore translation
-    # (nose held on retrograde, so +forward pushes retrograde).
+    # (far more efficient than burning low). RCS fore translation only (vessel is engineless by the
+    # guard above): nose held on retrograde, so +forward pushes retrograde.
     if v.orbit.apoapsis_altitude > 150000 and 0 < v.orbit.time_to_apoapsis < v.orbit.period * 0.95:
         log(f"warping {v.orbit.time_to_apoapsis-30:.0f}s to apoapsis for an efficient deorbit ...")
         sc.warp_to(sc.ut + v.orbit.time_to_apoapsis - 30)
@@ -101,19 +100,15 @@ def main() -> int:
         pe = v.orbit.periapsis_altitude
         if pe < 24000:
             break
-        if has_engine:
-            v.control.throttle = 1.0 if pe > 45000 else 0.35
-        else:
-            v.control.forward = 1.0  # RCS retrograde translation
+        v.control.forward = 1.0  # RCS retrograde translation
         m = f"deorbit: pe {pe/1000:.1f}k"
         if m != last:
             log("  " + m)
             last = m
-        if not has_engine and v.resources.amount("MonoPropellant") < 1:
+        if v.resources.amount("MonoPropellant") < 1:
             log("  out of monoprop")
             break
         time.sleep(0.5)
-    v.control.throttle = 0.0
     v.control.forward = 0.0
     log(f"deorbit done: pe {v.orbit.periapsis_altitude/1000:.1f}k")
 

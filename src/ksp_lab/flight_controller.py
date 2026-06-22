@@ -15,7 +15,7 @@ from .guidance import (
     hoverslam_throttle,
     outward_transfer_phase_angle_rad,
     suicide_burn_distance_m,
-    terminal_landing_throttle,
+    terminal_descent_target_vertical_mps,
     vis_viva_speed_mps,
     vertical_landing_throttle,
 )
@@ -422,123 +422,6 @@ class KrpcFlightController:
         self._record_live_sample(chaser, recorder, start, "rendezvous_plane_matched",
                                  {"rel_incl_deg": final})
         return final < 5.0
-
-    def _rendezvous_from_far(self, conn, chaser, target, recorder, start, timeout_s) -> bool:
-        """Close an arbitrary same-body orbit down to RCS proximity range.
-
-        (1) Match the target's orbital altitude (two apsis burns -> near-circular at the target's
-        mean altitude). (2) Drop into a slightly lower PHASING orbit so the chaser orbits faster and
-        the angular gap to the target shrinks. (3) Drift, watching the relative distance, and when it
-        falls inside proximity range, circularize back onto the target's orbit to kill the drift.
-        Designed to be driven/observed live (telemetry markers every step); robust autonomous
-        rendezvous classically needs a few live adjustments.
-        """
-        sc = conn.space_center
-        body_radius = float(chaser.orbit.body.equatorial_radius)
-        mu = float(chaser.orbit.body.gravitational_parameter)
-        # 0. Match the target's ORBITAL PLANE first. Surface-ascended targets (and an unlucky
-        #    capture) can sit in a very different plane; without this the closest approach is floored
-        #    by the plane separation no matter how well altitude/phase are matched.
-        self._match_orbital_plane(conn, chaser, target, recorder, start, timeout_s)
-        try:
-            t_alt = max(5_000.0, 0.5 * (float(target.orbit.apoapsis_altitude)
-                                        + float(target.orbit.periapsis_altitude)))
-        except Exception:
-            return False
-        self._record_live_sample(chaser, recorder, start, "rendezvous_match_orbit_begin",
-                                 {"target_alt_m": t_alt, "distance_m": self._relative_distance_m(chaser, target)})
-
-        def set_apsis(set_attr: str, burn_at: str) -> None:
-            try:
-                cur_apo = float(chaser.orbit.apoapsis_altitude)
-                cur_per = float(chaser.orbit.periapsis_altitude)
-            except Exception:
-                return
-            burn_alt = cur_apo if burn_at == "apoapsis" else cur_per
-            opp = cur_per if burn_at == "apoapsis" else cur_apo
-            t_to = (chaser.orbit.time_to_apoapsis if burn_at == "apoapsis"
-                    else chaser.orbit.time_to_periapsis)
-            dv = self._opposite_apsis_delta_v_mps(
-                mu=mu, body_radius_m=body_radius, burn_altitude_m=burn_alt,
-                current_opposite_altitude_m=opp, target_opposite_altitude_m=t_alt)
-            if abs(dv) < 2.0:
-                return
-            # Scale the burn to its size: a LARGE match (e.g. lowering apoapsis from 600+ km) needs
-            # full throttle and lots of time or it times out half-done; a SMALL tweak needs a low
-            # throttle for precision or full throttle overshoots and oscillates until timeout.
-            if abs(dv) > 60.0:
-                mt, mb = 1.0, 400.0
-            elif abs(dv) > 20.0:
-                mt, mb = 0.45, 200.0
-            else:
-                mt, mb = 0.18, 150.0
-            self._execute_mun_apsis_node(
-                conn, chaser, recorder, start, timeout_s, phase=f"rendezvous_set_{set_attr}",
-                node_ut=sc.ut + max(1.0, float(t_to)), prograde_delta_v_mps=dv,
-                target_attr=set_attr, target_altitude_m=t_alt, max_burn_s=mb, max_throttle=mt)
-
-        # 1. Set the periapsis to the target's altitude (the close approach is at periapsis). Leave
-        #    the apoapsis to the phasing step below, which raises it — lowering then re-raising it
-        #    would waste fuel and time.
-        set_apsis("periapsis_altitude", "apoapsis")
-        self._record_live_sample(chaser, recorder, start, "rendezvous_orbit_matched",
-                                 {"distance_m": self._relative_distance_m(chaser, target)})
-
-        # 2. Phasing orbit: RAISE the apoapsis a lot (burn prograde at periapsis) so the chaser's
-        #    period differs strongly from the target's and the relative phase sweeps fast. A low
-        #    phasing orbit is capped by the atmosphere (gentle, too-slow drift); a high one is not.
-        #    The periapsis stays at the target's altitude, so a phase-aligned periapsis pass is the
-        #    close approach.
-        phase_apo = t_alt + max(180_000.0, t_alt * 1.5)
-        try:
-            cur_per = float(chaser.orbit.periapsis_altitude)
-            dv = self._opposite_apsis_delta_v_mps(
-                mu=mu, body_radius_m=body_radius, burn_altitude_m=cur_per,
-                current_opposite_altitude_m=float(chaser.orbit.apoapsis_altitude),
-                target_opposite_altitude_m=phase_apo)
-            if dv > 2.0:
-                self._execute_mun_apsis_node(
-                    conn, chaser, recorder, start, timeout_s, phase="rendezvous_phasing_orbit",
-                    node_ut=sc.ut + max(1.0, float(chaser.orbit.time_to_periapsis)),
-                    prograde_delta_v_mps=dv, target_attr="apoapsis_altitude",
-                    target_altitude_m=phase_apo, max_burn_s=150.0, max_throttle=0.9)
-        except Exception:
-            pass
-
-        # 3. Drift and pounce: the close approach happens at PERIAPSIS (the chaser's periapsis sits at
-        #    the target's altitude). Warp to just before each periapsis and step in real time through
-        #    the pass — a fixed-fraction warp would skip the brief periapsis where the orbits actually
-        #    meet. The strong phasing sweeps the phase fast, so a periapsis pass lands inside
-        #    proximity range within a few orbits; then null the relative velocity and hand to RCS.
-        best = 1.0e12
-        while time.monotonic() - start < timeout_s:
-            d = self._relative_distance_m(chaser, target)
-            best = min(best, d)
-            try:
-                t_peri = float(chaser.orbit.time_to_periapsis)
-            except Exception:
-                t_peri = 0.0
-            self._record_live_sample(chaser, recorder, start, "rendezvous_phasing_drift",
-                                     {"distance_m": d, "best_m": best, "t_peri_s": t_peri})
-            if d < 3_500.0:
-                self._set_physics_warp(conn, 0)
-                self._null_relative_velocity(conn, chaser, target, recorder, start)
-                self._record_live_sample(chaser, recorder, start, "rendezvous_close_approach",
-                                         {"distance_m": self._relative_distance_m(chaser, target)})
-                return True
-            try:
-                if t_peri < 45.0 or d < 10_000.0:
-                    # near (or approaching) a periapsis pass: watch in real time so we catch the min
-                    self._set_physics_warp(conn, 0)
-                    time.sleep(0.5)
-                else:
-                    # skip ahead to just before the next periapsis (the close-approach point)
-                    sc.warp_to(sc.ut + max(10.0, t_peri - 25.0),
-                               max_rails_rate=100_000.0, max_physics_rate=4.0)
-            except Exception:
-                time.sleep(2.0)
-        self._set_physics_warp(conn, 0)
-        return self._relative_distance_m(chaser, target) < 5_000.0
 
     def _closest_approach_m(self, orbit, target_orbit) -> float:
         """Best (minimum) closest-approach distance between two orbits over the next several orbits,
@@ -3972,16 +3855,7 @@ class KrpcFlightController:
                 # Reliable terminal flare: ramp the target descent rate down to a soft touchdown and
                 # brake at full throttle if falling faster than target. Kills the last lateral drift.
                 self._set_physics_warp(conn, 0)
-                if surface_altitude > 45.0:
-                    target_v = -9.0
-                elif surface_altitude > 25.0:
-                    target_v = -5.5
-                elif surface_altitude > 12.0:
-                    target_v = -3.0
-                elif surface_altitude > 5.0:
-                    target_v = -1.8
-                else:
-                    target_v = -1.0
+                target_v = terminal_descent_target_vertical_mps(surface_altitude, horizontal_speed)
                 throttle = vertical_landing_throttle(
                     vertical_speed_mps=vertical_speed,
                     target_vertical_mps=target_v,
@@ -4007,7 +3881,6 @@ class KrpcFlightController:
                     gravity_mps2=gravity,
                     deadband_mps=1.5,
                 )
-            stopping_distance = surface_stopping_distance
             target_vertical = -reference_speed
             throttle = min(1.0, max(0.0, throttle))
             vessel.control.throttle = throttle
@@ -4026,7 +3899,6 @@ class KrpcFlightController:
                     "hoverslam_reference_speed_mps": reference_speed,
                     "hoverslam_speed_margin_mps": speed_margin,
                     "freefalling": freefalling,
-                    "stopping_distance_m": stopping_distance,
                     "surface_stopping_distance_m": surface_stopping_distance,
                     "burn_gate_m": burn_gate,
                     "target_vertical_speed_mps": target_vertical,

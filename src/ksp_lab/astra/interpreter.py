@@ -53,9 +53,8 @@ class Interpreter:
         if self.allow_llm and os.environ.get("ANTHROPIC_API_KEY"):
             try:
                 plan = self._interpret_llm(command)
-            except Exception as exc:  # network/parse/key issues -> graceful fallback
+            except Exception:  # network/parse/key issues -> graceful fallback
                 plan = None
-                _last_err = str(exc)
         if plan is None:
             plan = self._interpret_heuristic(command)
         return plan
