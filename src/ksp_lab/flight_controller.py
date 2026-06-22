@@ -4329,52 +4329,64 @@ class KrpcFlightController:
         start: float,
         timeout_s: int,
     ) -> bool:
+        # DELEGATE the entire reentry + landing to MechJeb's Landing Autopilot (/mj-land). It computes
+        # the deorbit, the attitude hold (no tumble), the deceleration burn, and — crucially — the
+        # parachute-deployment timing. We compute NO chute altitude and do NO warp_to(periapsis) here:
+        # the old hand-rolled version of this method (a guessed 8 km chute trigger + a warp that hangs
+        # on a sub-atmosphere periapsis) is the exact class of code that killed crew. We only
+        # warp-assist the boring high coast (MechJeb won't fast-warp a huge descent ellipse) and watch.
+        from .bridge_client import BridgeClient
+
+        sc = conn.space_center
         vessel.control.throttle = 0.0
         try:
-            from krpc.services import spacecenter
-
-            vessel.control.sas = True
-            vessel.control.speed_mode = spacecenter.SpeedMode.surface
-            vessel.control.sas_mode = spacecenter.SASMode.retrograde
+            sc.active_vessel = vessel
         except Exception:
             pass
+        bridge = BridgeClient(
+            base_url=self.config.get("bridge_base_url", "http://127.0.0.1:48500"),
+            timeout_s=int(self.config.get("bridge_timeout_s", 30)),
+        )
+        try:
+            bridge.mj_land(touchdown_speed=0.5)
+            self._record_live_sample(vessel, recorder, start, "mj_land_engaged")
+        except Exception as exc:
+            self._record_live_sample(
+                vessel, recorder, start, "mj_land_unavailable",
+                {"error": f"{type(exc).__name__}: {exc}"},
+            )
 
         while time.monotonic() - start < timeout_s:
             situation = str(vessel.situation).lower()
             if situation.endswith("landed") or situation.endswith("splashed"):
-                self._set_physics_warp(conn, 0)
+                try:
+                    sc.rails_warp_factor = 0
+                except Exception:
+                    pass
                 vessel.control.throttle = 0.0
                 self._record_live_sample(vessel, recorder, start, "recovered", {"landed": True, "recovered": True})
                 return True
-            flight = vessel.flight(vessel.orbit.body.reference_frame)
-            altitude = float(flight.mean_altitude)
-            surface_altitude = float(flight.surface_altitude)
-            if altitude > 80_000.0:
-                try:
-                    time_to_periapsis = float(vessel.orbit.time_to_periapsis)
-                except Exception:
-                    time_to_periapsis = 0.0
-                if time_to_periapsis > 120.0:
-                    conn.space_center.warp_to(
-                        conn.space_center.ut + time_to_periapsis - 90.0,
-                        max_rails_rate=100_000.0,
-                        max_physics_rate=4.0,
-                    )
-            elif altitude > 30_000.0:
-                self._set_physics_warp(conn, int(self.config.get("physics_warp_factor", 0)))
-            else:
-                self._set_physics_warp(conn, 0)
-
-            if surface_altitude < 8_000.0:
-                try:
-                    vessel.control.parachutes = True
-                except Exception:
-                    if int(vessel.control.current_stage) > 0:
-                        vessel.control.activate_next_stage()
-
-            self._record_live_sample(vessel, recorder, start, "kerbin_reentry_recovery")
-            time.sleep(0.5)
-        self._set_physics_warp(conn, 0)
+            try:
+                altitude = float(vessel.flight(vessel.orbit.body.reference_frame).mean_altitude)
+                sit = str(vessel.situation).split(".")[-1].lower()
+            except Exception:
+                time.sleep(1.0)
+                continue
+            # Step rails warp down to ~80 km, then hand fully back to MechJeb for the deceleration +
+            # chute phase. NEVER warp_to(periapsis) — it blocks forever on a sub-atmosphere periapsis.
+            try:
+                if altitude > 80_000.0 and sit in ("sub_orbital", "orbiting"):
+                    sc.rails_warp_factor = 4 if altitude > 1_000_000 else (3 if altitude > 250_000 else 1)
+                elif sc.rails_warp_factor > 0:
+                    sc.rails_warp_factor = 0
+            except Exception:
+                pass
+            self._record_live_sample(vessel, recorder, start, "kerbin_reentry_mj_land")
+            time.sleep(1.0)
+        try:
+            sc.rails_warp_factor = 0
+        except Exception:
+            pass
         self._record_live_sample(vessel, recorder, start, "kerbin_recovery_timeout")
         return False
 
