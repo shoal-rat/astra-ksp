@@ -51,6 +51,19 @@ def outward_transfer_phase_angle_rad(mu: float, target_radius_m: float, transfer
     return (math.pi - target_mean_motion * transfer_time_s) % (2.0 * math.pi)
 
 
+def ejection_burn_delta_v_mps(mu_body: float, parking_radius_m: float, v_infinity_mps: float) -> float:
+    """Δv at periapsis of a circular parking orbit (radius ``parking_radius_m`` about a body of GM
+    ``mu_body``) to leave the body's SOI with hyperbolic excess speed ``v_infinity_mps`` — the
+    Oberth-effect ejection burn. v_infinity is the heliocentric transfer Δv, i.e. the result of
+    ``hohmann_transfer_delta_v_mps`` evaluated with the SUN's GM and the two bodies' orbital radii.
+    This is the only interplanetary piece the existing Hohmann helpers don't already give."""
+    if mu_body <= 0.0 or parking_radius_m <= 0.0:
+        return 0.0
+    v_park = math.sqrt(mu_body / parking_radius_m)
+    v_eject = math.sqrt(v_infinity_mps * v_infinity_mps + 2.0 * mu_body / parking_radius_m)
+    return v_eject - v_park
+
+
 def burn_duration_s(mass_kg: float, thrust_n: float, delta_v_mps: float) -> float:
     if mass_kg <= 0.0 or thrust_n <= 0.0 or delta_v_mps <= 0.0:
         return 0.0

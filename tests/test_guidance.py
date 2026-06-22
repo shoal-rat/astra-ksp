@@ -4,6 +4,7 @@ from ksp_lab.guidance import (
     burn_duration_s,
     capture_burn_estimate,
     circular_speed_mps,
+    ejection_burn_delta_v_mps,
     finite_burn_lead_s,
     hohmann_transfer_delta_v_mps,
     hohmann_transfer_time_s,
@@ -43,6 +44,26 @@ def test_kerbin_to_mun_hohmann_seed_is_in_expected_range():
     assert 820.0 < delta_v < 890.0
     assert 20_000.0 < transfer_time < 35_000.0
     assert 105.0 < phase_angle < 118.0
+
+
+def test_kerbin_to_duna_interplanetary_transfer_matches_known_values():
+    # The "Mars" (Duna) transfer: heliocentric Hohmann + Oberth ejection from a 100 km LKO.
+    mu_sun = 1.1723328e18
+    r_kerbin = 13_599_840_256.0
+    r_duna = 20_726_155_264.0
+    mu_kerbin = 3_531_600_000_000.0
+    r_park = 600_000.0 + 100_000.0
+
+    v_inf = hohmann_transfer_delta_v_mps(mu_sun, r_kerbin, r_duna)
+    transfer_time = hohmann_transfer_time_s(mu_sun, r_kerbin, r_duna)
+    phase_angle = math.degrees(outward_transfer_phase_angle_rad(mu_sun, r_duna, transfer_time))
+    ejection_dv = ejection_burn_delta_v_mps(mu_kerbin, r_park, v_inf)
+
+    # Canonical Kerbin->Duna window: ejection ~1060 m/s, phase ~44.4 deg, ~300 Kerbin-days, v_inf ~920.
+    assert 1_000.0 < ejection_dv < 1_120.0
+    assert 40.0 < phase_angle < 49.0
+    assert 280.0 < transfer_time / 21_600.0 < 320.0
+    assert 850.0 < v_inf < 980.0
 
 
 def test_capture_estimate_is_positive_for_hyperbolic_mun_arrival():
