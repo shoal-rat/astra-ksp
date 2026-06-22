@@ -84,39 +84,72 @@ def main() -> int:
     sc.rails_warp_factor = 0
     log(f"at periapsis approach: pe={v.orbit.periapsis_altitude/1000:.0f}km t_pe={v.orbit.time_to_periapsis:.0f}s")
 
-    # 3) Capture: point retrograde (EC restored) and burn until bound.
+    # 3) Capture with a maneuver NODE at periapsis: a FIXED burn direction (node frame) avoids the
+    #    retrograde-tracking swing that pushed the vessel out of the SOI last time. Size the node by a
+    #    linear scan: smallest retrograde dv that binds the orbit (0 < apoapsis < TARGET_APO).
     refuel()
     ignite()
     v.control.sas = False
-    ref = v.orbit.body.non_rotating_reference_frame
+    pe_ut = sc.ut + v.orbit.time_to_periapsis
+    cap_dv, n = None, None
+    for dv in range(50, 2001, 50):
+        for nd in list(v.control.nodes):
+            nd.remove()
+        n = v.control.add_node(pe_ut, prograde=-float(dv))
+        time.sleep(0.05)
+        a = n.orbit.apoapsis_altitude
+        if 0 < a < TARGET_APO:
+            cap_dv = dv
+            break
+    if cap_dv is None:
+        for nd in list(v.control.nodes):
+            nd.remove()
+        n = v.control.add_node(pe_ut, prograde=-1500.0)
+        cap_dv = 1500
+    log(f"capture node: retro {cap_dv} m/s -> post-node apo {n.orbit.apoapsis_altitude/1000:.0f}km, t_pe {n.time_to:.0f}s")
     ap = v.auto_pilot
-    ap.reference_frame = ref
-    ap.target_direction = tuple(-x for x in v.velocity(ref))
+    ap.reference_frame = n.reference_frame
+    ap.target_direction = (0.0, 1.0, 0.0)
     ap.engage()
-    log("pointing retrograde (EC restored) ...")
     t1 = time.monotonic()
-    while time.monotonic() - t1 < 60:
-        ap.target_direction = tuple(-x for x in v.velocity(ref))
+    while time.monotonic() - t1 < 50:
+        ap.target_direction = (0.0, 1.0, 0.0)
         if abs(ap.error) < 4.0:
             break
         time.sleep(1.0)
-    log(f"  retro err={abs(ap.error):.1f} deg. BURNING to capture")
+    log(f"  pointed err={abs(ap.error):.1f} deg")
+    half_burn = cap_dv / 8.0 / 2.0  # start ~half the burn before periapsis to center it
+    while n.time_to > half_burn + 2:
+        ap.target_direction = (0.0, 1.0, 0.0)
+        if int(n.time_to) % 15 == 0:
+            refuel()
+        time.sleep(0.5)
+    log("BURNING to capture")
     v.control.throttle = 1.0
     t1, last = time.monotonic(), ""
     while time.monotonic() - t1 < 200:
         ignite()
-        ap.target_direction = tuple(-x for x in v.velocity(ref))
-        if int(time.monotonic() - t1) % 20 == 0:
+        ap.target_direction = (0.0, 1.0, 0.0)
+        if int(time.monotonic() - t1) % 15 == 0:
             refuel()
         ap_alt = v.orbit.apoapsis_altitude
+        rem = v.control.nodes[0].remaining_delta_v if v.control.nodes else 0.0
         bound = 0 < ap_alt < TARGET_APO
-        msg = f"ap={ap_alt/1e6:.1f}Mm pe={v.orbit.periapsis_altitude/1000:.0f}km ecc={v.orbit.eccentricity:.2f} thr={v.thrust:.0f}"
+        msg = f"rem={rem:.0f} ap={ap_alt/1e6:.1f}Mm pe={v.orbit.periapsis_altitude/1000:.0f}km body={v.orbit.body.name}"
         if msg != last:
             log("  " + msg)
             last = msg
-        if bound:
+        if v.orbit.body.name != "Duna":
+            log("  left Duna SOI")
+            break
+        if bound and rem < 6.0:
             break
         time.sleep(0.3)
+    for nd in list(v.control.nodes):
+        try:
+            nd.remove()
+        except Exception:
+            pass
     v.control.throttle = 0.0
     try:
         ap.disengage()

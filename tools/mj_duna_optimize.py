@@ -59,6 +59,17 @@ def main() -> int:
             d = ((cp[0] - dp[0]) ** 2 + (cp[1] - dp[1]) ** 2 + (cp[2] - dp[2]) ** 2) ** 0.5
             if d < md:
                 md, tbest = d, ut
+        # refine around the minimum (the approach sweeps past in hours; coarse sampling misses it)
+        w = (t1 - t0) / n
+        for _ in range(2):
+            for i in range(21):
+                ut = tbest - w + 2.0 * w * i / 20.0
+                cp = orbit.position_at(ut, ref)
+                dp = duna.orbit.position_at(ut, ref)
+                d = ((cp[0] - dp[0]) ** 2 + (cp[1] - dp[1]) ** 2 + (cp[2] - dp[2]) ** 2) ** 0.5
+                if d < md:
+                    md, tbest = d, ut
+            w /= 10.0
         return md, tbest
 
     # Phase 1: coarse closest approach over one period (locate the approach window).
@@ -80,8 +91,15 @@ def main() -> int:
         md, _ = sample_min(node.orbit, win0, win1, N, duna_cache)
         return md
 
-    best = [0.0, 0.0, 0.0]
-    bestmd = obj(*best)
+    # coarse grid pre-search so the descent doesn't stall in a flat region near (0,0,0)
+    best, bestmd = [0.0, 0.0, 0.0], obj(0.0, 0.0, 0.0)
+    for pg in (-400, 0, 400):
+        for nm in (-400, 0, 400):
+            for rd in (-400, 0, 400):
+                md = obj(pg, nm, rd)
+                if md < bestmd:
+                    bestmd, best = md, [float(pg), float(nm), float(rd)]
+    log(f"  grid start=({best[0]:.0f},{best[1]:.0f},{best[2]:.0f}) closest={bestmd/1e6:.2f} Mm")
     step = 300.0
     while step > 1.0:
         improved = False
