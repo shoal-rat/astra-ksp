@@ -88,7 +88,32 @@ def main() -> int:
     rec.append({"phase": "duna_transfer_plan", "ejection_dv": ejection_dv, "v_inf": v_inf,
                 "transfer_time_s": transfer_time, "target_phase_rad": target_phase})
 
+    # 0) Raise apoapsis for fast warp. KSP caps rails warp at ~50x in LKO (an altitude limit), far too
+    # slow to wait out an interplanetary window (months) — verified live. A prograde burn lifts
+    # apoapsis above ~750 km where 100,000x warp unlocks; periapsis stays low for the Oberth ejection.
+    if v.orbit.apoapsis_altitude < 750_000:
+        kref = kerbin.non_rotating_reference_frame
+        apc = v.auto_pilot
+        apc.reference_frame = kref
+        apc.target_direction = v.velocity(kref)
+        apc.engage()
+        time.sleep(5)
+        v.control.throttle = 1.0
+        tw0 = time.monotonic()
+        while time.monotonic() - tw0 < 120 and v.orbit.apoapsis_altitude < 1_500_000:
+            apc.target_direction = v.velocity(kref)
+            time.sleep(0.5)
+        v.control.throttle = 0.0
+        try:
+            apc.disengage()
+        except Exception:
+            pass
+        log(f"  raised apoapsis to {v.orbit.apoapsis_altitude/1000:.0f} km for fast warp")
+
     # 1) Warp to the launch window: wait until Duna leads Kerbin by the required phase angle.
+    # TODO(mj-plan): the precise ejection NODE (angle + timing from this eccentric orbit) is best
+    # produced by MechJeb's interplanetary maneuver planner — add the POST /mj-plan bridge endpoint
+    # (the audit's #1 gap) and use it here; the kRPC node search below is a calculated approximation.
     target = target_phase
     last = ""
     for _ in range(4000):

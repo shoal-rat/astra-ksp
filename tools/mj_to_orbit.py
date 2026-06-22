@@ -32,7 +32,11 @@ def main() -> int:
     mission = MissionPlanner().interpret("Artemis Mun SLS Orion Starship HLS relay science return")
 
     suffix = uuid4().hex[:8]
-    design = deepcopy(build_artemis_architecture(mission).vehicle(vehicle).design)
+    if vehicle == "duna_comsat":
+        from ksp_lab.duna import build_duna_comsat
+        design = build_duna_comsat()
+    else:
+        design = deepcopy(build_artemis_architecture(mission).vehicle(vehicle).design)
     name = sys.argv[4] if len(sys.argv) > 4 else f"AI-{vehicle.upper()}-MJ-{suffix}"
     design.name = name
     design.estimates = estimate_design(design)
