@@ -516,6 +516,12 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => MjExecuteNodeCommand(fields), 30000);
             }
 
+            if (request.Method == "POST" && request.Path == "/mj-plan")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => MjPlanCommand(fields), 30000);
+            }
+
             if (request.Method == "POST" && request.Path == "/mj-land")
             {
                 Dictionary<string, string> fields = JsonObject.Parse(request.Body);
@@ -1718,6 +1724,73 @@ namespace KspAutomationBridge
             {
                 { "executing", true },
                 { "nodes", vessel.patchedConicSolver.maneuverNodes.Count }
+            });
+        }
+
+        // Plan a maneuver node with MechJeb's maneuver planner (the interplanetary transfer computes
+        // the precise ejection ANGLE + timing a hand-rolled prograde burn can't — that is the blocker
+        // to reaching Duna orbit). The kRPC side then fires /mj-execute-node to fly it.
+        private CommandResult MjPlanCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+                return CommandResult.Fail("Requires an active vessel in flight.");
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            MechJebCore core = GetMasterCore(vessel);
+            if (core == null)
+                return CommandResult.Fail("No MechJeb core on the active vessel.");
+
+            string targetName = GetOptional(fields, "target", "");
+            if (targetName.Length > 0)
+            {
+                CelestialBody body = null;
+                foreach (CelestialBody b in FlightGlobals.Bodies)
+                {
+                    if (string.Equals(b.bodyName, targetName, StringComparison.OrdinalIgnoreCase)) { body = b; break; }
+                }
+                if (body == null)
+                    return CommandResult.Fail("Target body not found: " + targetName);
+                FlightGlobals.fetch.SetVesselTarget(body);
+            }
+            if (core.Target == null || !core.Target.NormalTargetExists)
+                return CommandResult.Fail("No target set (pass target=Duna).");
+
+            string operation = GetOptional(fields, "operation", "interplanetary").ToLowerInvariant();
+            Operation op;
+            if (operation == "interplanetary")
+                op = new OperationInterplanetaryTransfer();
+            else if (operation == "circularize")
+                op = new OperationCircularize();
+            else if (operation == "plane")
+                op = new OperationPlane();
+            else
+                return CommandResult.Fail("Unknown operation '" + operation + "' (interplanetary|circularize|plane).");
+
+            double ut = Planetarium.GetUniversalTime();
+            List<ManeuverParameters> maneuvers;
+            try
+            {
+                maneuvers = op.MakeNodes(vessel.orbit, ut, core.Target);
+            }
+            catch (Exception ex)
+            {
+                return CommandResult.Fail("Planner MakeNodes failed: " + ex.Message);
+            }
+            if (maneuvers == null || maneuvers.Count == 0)
+                return CommandResult.Fail("Planner produced no node (no transfer window / bad geometry).");
+
+            if (vessel.patchedConicSolver != null)
+                vessel.patchedConicSolver.maneuverNodes.Clear();
+            foreach (ManeuverParameters m in maneuvers)
+                vessel.PlaceManeuverNode(vessel.orbit, m.dV, m.UT);
+
+            ManeuverParameters firstNode = maneuvers[0];
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "planned", true },
+                { "operation", operation },
+                { "nodeCount", maneuvers.Count },
+                { "dv", firstNode.dV.magnitude },
+                { "ut", firstNode.UT }
             });
         }
 

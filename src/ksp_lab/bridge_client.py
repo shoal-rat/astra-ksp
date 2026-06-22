@@ -117,6 +117,13 @@ class BridgeClient:
     def mj_status(self) -> dict:
         return self._request("GET", "/mj-status")
 
+    def mj_plan(self, target: str = "Duna", operation: str = "interplanetary") -> dict:
+        """Plan a maneuver node with MechJeb's maneuver planner on the ACTIVE vessel — the
+        interplanetary transfer computes the precise ejection ANGLE + timing (the thing a hand-rolled
+        prograde burn can't, which is why comsats missed Duna). Sets the target body and places the
+        node; then call mj_execute_node to fly it. operation: interplanetary | circularize | plane."""
+        return self._request("POST", "/mj-plan", json={"target": target, "operation": operation})
+
     def transfer_crew(self, to_vessel: str = "") -> dict:
         payload = {"toVessel": to_vessel} if to_vessel else {}
         return self._request("POST", "/transfer-crew", json=payload)
