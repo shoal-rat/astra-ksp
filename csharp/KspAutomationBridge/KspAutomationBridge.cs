@@ -1749,9 +1749,14 @@ namespace KspAutomationBridge
                 }
                 if (body == null)
                     return CommandResult.Fail("Target body not found: " + targetName);
+                // Set MechJeb's target controller DIRECTLY. FlightGlobals.SetVesselTarget only updates
+                // vessel.targetObject; MechJeb's core.Target syncs from it on its next OnFixedUpdate, so
+                // checking NormalTargetExists in the same frame reads stale null. core.Target.Set both
+                // updates MechJeb and sets the vessel target, so the planner sees Duna immediately.
                 FlightGlobals.fetch.SetVesselTarget(body);
+                core.Target.Set(body);
             }
-            if (core.Target == null || !core.Target.NormalTargetExists)
+            if (core.Target == null || core.Target.Target == null)
                 return CommandResult.Fail("No target set (pass target=Duna).");
 
             string operation = GetOptional(fields, "operation", "interplanetary").ToLowerInvariant();
