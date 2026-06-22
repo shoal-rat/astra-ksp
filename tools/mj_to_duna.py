@@ -143,61 +143,59 @@ def main() -> int:
         time.sleep(0.5)
     log(f"  window reached at phase {math.degrees(_heliocentric_phase(sun_ref, kerbin, duna)):.1f} deg")
 
-    # 2) Place the prograde ejection node, refined against a LIVE Duna-encounter check: with Duna set
-    # as target, search the burn point (around the orbit) and Δv (around the calculated ejection) for a
-    # trajectory whose patched conics ACTUALLY reach Duna's SOI, picking the one nearest a ~100 km Duna
-    # periapsis. MechJeb then flies the burn; if no encounter is found we eject prograde and rely on a
-    # mid-course correction (interplanetary aim is sensitive — that is expected, not a failure).
+    # 2-3) Eject toward Duna with a DIRECT prograde burn at periapsis. Verified live: MechJeb's node
+    # executor MISSES a distant ejection node (it overshoots the kRPC pre-warp and mis-times the
+    # orient), so the robust pattern is a direct burn — the same one mj_to_mun uses for capture. Burn
+    # prograde at periapsis until the HELIOCENTRIC transfer apoapsis reaches Duna's orbit, reading
+    # next_orbit while still inside Kerbin's SOI but the CURRENT orbit once we cross into the Sun's SOI
+    # (next_orbit is empty in the Sun's SOI; reading it there made an earlier run over-burn to 75 Gm).
     try:
         sc.target_body = duna
     except Exception:
         pass
-
-    def duna_periapsis(node):
-        o = node.orbit
-        for _ in range(5):
-            if o is None:
-                return None
-            try:
-                if o.body.name == "Duna":
-                    return o.periapsis_altitude
-                o = o.next_orbit
-            except Exception:
-                return None
-        return None
-
-    period = v.orbit.period
-    best = None  # (score, ut, dv)
-    for frac in (0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95):
-        for dv in (ejection_dv * 0.95, ejection_dv, ejection_dv * 1.05):
-            ut = sc.ut + period * frac
-            node = v.control.add_node(ut, prograde=dv)
-            dpe = duna_periapsis(node)
-            v.control.remove_nodes()
-            if dpe is not None:
-                score = abs(dpe - 100_000.0)
-                if best is None or score < best[0]:
-                    best = (score, ut, dv)
-    if best is not None:
-        ut, dv = best[1], best[2]
-        v.control.add_node(ut, prograde=dv)
-        log(f"  ejection node -> Duna ENCOUNTER: T+{ut - sc.ut:.0f}s dv {dv:.0f} m/s")
-    else:
-        ut, dv = sc.ut + period * 0.5, ejection_dv
-        v.control.add_node(ut, prograde=dv)
-        log(f"  no encounter in search; eject prograde T+{ut - sc.ut:.0f}s dv {dv:.0f} (needs correction)")
-    rec.append({"phase": "duna_ejection_node", "ut": ut, "dv": dv, "encounter": best is not None})
-
-    # 3) Fly the ejection burn with MechJeb. Its node executor will NOT auto-warp to a distant node
-    # while it steers (notebook §7), so kRPC-warp to the node first (no steering => warp works), then
-    # fire MechJeb to burn it (close nodes burn cleanly).
-    refuel()
-    nodes = v.control.nodes
-    if nodes and nodes[0].ut - sc.ut > 60:
-        sc.warp_to(nodes[0].ut - 45)
+    v.control.remove_nodes()
+    ttp = v.orbit.time_to_periapsis
+    if ttp and 30 < ttp < 1e6:
+        sc.warp_to(sc.ut + ttp - 30)
         time.sleep(2)
-    bridge.mj_execute_node()
-    _wait_node_done(bridge, timeout_s=1200.0, label="TDI")
+    refuel()
+    ap_ctrl = v.auto_pilot
+    frame = v.orbit.body.non_rotating_reference_frame
+    ap_ctrl.reference_frame = frame
+    ap_ctrl.target_direction = v.velocity(frame)
+    ap_ctrl.engage()
+    time.sleep(6)
+    v.control.throttle = 1.0
+    t0 = time.monotonic()
+    last = ""
+    while time.monotonic() - t0 < 240:
+        refuel()  # render craft starves mid-burn; refuel every loop to keep the engine fed
+        frame = v.orbit.body.non_rotating_reference_frame
+        ap_ctrl.reference_frame = frame
+        ap_ctrl.target_direction = v.velocity(frame)
+        o = v.orbit
+        if o.body.name == "Sun":
+            helio_ap = o.apoapsis
+        else:
+            try:
+                helio_ap = o.next_orbit.apoapsis if o.next_orbit else 0.0
+            except Exception:
+                helio_ap = 0.0
+        m = f"TDI: in {o.body.name}, heliocentric apoapsis {helio_ap/1e9:.1f}Gm (need {r2/1e9:.0f})"
+        if m != last:
+            log("  " + m)
+            last = m
+        if helio_ap >= r2:
+            log("  transfer apoapsis reaches Duna's orbit — TDI complete")
+            break
+        time.sleep(0.5)
+    v.control.throttle = 0.0
+    try:
+        ap_ctrl.disengage()
+    except Exception:
+        pass
+    rec.append({"phase": "duna_tdi_done",
+                "helio_ap": v.orbit.apoapsis if v.orbit.body.name == "Sun" else 0.0})
 
     # 4) Coast to Duna's SOI (warp through the long Kerbol cruise).
     log("  cruising to Duna SOI ...")
