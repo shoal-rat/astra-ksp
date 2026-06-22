@@ -126,6 +126,15 @@ SEED_RULES: list[dict[str, str]] = [
         "fix": "An uncrewed return craft still needs a heat shield + parachute for Kerbin reentry "
         "(render adds HeatShield1 when crewed OR heatshield flag set).",
     },
+    {
+        "match": "chuteless|reentry.*crash|splashed.*fast|recovery_timeout|kerbin_recovery|chute.*fail|tumble.*reentry|hand.?roll",
+        "principle": "Delegate reentry to MechJeb's Landing Autopilot",
+        "fix": "Never hand-fly reentry or parachute timing — guessed chute altitudes, loop timeouts, "
+        "and a warp_to(periapsis) hang killed crew. Call /mj-land (tools/mj_land_vessel.py): make the "
+        "capsule active, hand the WHOLE descent to MechJeb (it computes the deorbit, deceleration burn, "
+        "and chute-deployment timing), monitor only, and warp-assist the high coast down to ~80 km. "
+        "Reentry vehicles need a heat shield; jettison a full stack to a bare capsule first.",
+    },
 ]
 
 

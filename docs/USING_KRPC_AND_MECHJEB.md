@@ -201,52 +201,137 @@ heuristics. See `docs/GENERALIZED_AEROSPACE_METHODOLOGY.md` for the generalized 
 
 ## 7. Experience notebook — lessons from flying a full Mun mission with MechJeb
 
-These are the things that bit us live, with the fix. They make the difference between MechJeb
-"working in theory" and a mission that actually completes.
+These are the things that bit us live, with the fix, grouped by mission phase so you can scan to the
+one you are flying. Each lesson is **symptom → cause → fix**, with the exact numbers and primitive /
+endpoint names preserved. The three closing lessons under *Discipline* are the standing doctrine —
+read them last.
 
-- **MechJeb ascent does NOT ignite the first stage from PRELAUNCH.** After enabling `/mj-ascent`,
-  the craft sits on the pad. Kick it once via kRPC: `throttle=1; control.activate_next_stage()`.
-  MechJeb then flies the gravity turn and autostages the rest. (Baked into `tools/mj_to_orbit.py`.)
-  MechJeb ascent itself is excellent — clean gravity turn, autostage, circularization to the exact
-  target apoapsis. Far more reliable than the hand-rolled ascent.
-- **MechJeb's node executor won't auto-warp to a node while it is still orienting** — the steering
-  caps rails-warp, so it sits in real time and the node passes unburned. Fix: with the *executor's
-  Autowarp on it still fails for distant nodes*; instead **disable MechJeb, `warp_to(node_ut - 45)`
-  with kRPC (no steering ⇒ warp works), then re-fire `/mj-execute-node`.** For nodes only seconds
-  away MechJeb burns them fine. (This is why `mj_to_mun.py` does the TMI via MechJeb but the Mun
-  capture via a direct kRPC burn.)
-- **Render-craft fuel flow can starve the engine after multi-stage burns** — `engine.thrust==0` at
-  full throttle with `propellant.current_amount==0` even though the vessel still shows hundreds of
-  units of LF/Ox (the *connected* tank is empty, a sibling tank is full). Fix: `/vessel/refuel`
-  refills the connected tank and thrust returns. Always verify `vessel.thrust>0` before trusting a
-  burn loop.
-- **Basic probe cores do NOT support SAS hold modes** (`SetSASMode` throws "Cannot set SAS mode").
-  Don't rely on `sas_mode = retrograde`. Point with the **autopilot**: `ap.reference_frame =
-  body.non_rotating_reference_frame; ap.target_direction = (-vx,-vy,-vz)` and **re-set
-  `target_direction` every loop iteration** to track the (rotating) velocity vector.
-- **PURE retrograde tracking is the robust capture/lower-apoapsis burn.** Burning retrograde while
-  tracking the velocity vector lowers apoapsis monotonically and *preserves periapsis*. A fixed
-  attitude (SAS "stability assist") or a mistargeted "circularize at current altitude" burn instead
-  drove periapsis below the surface (impact) and apoapsis beyond the SOI. When in doubt: retrograde
-  to capture (ap below the SOI), then circularize at an apsis. Frame discipline (§2) is everything.
-- **NEVER hand-roll reentry/landing timing — hand the whole descent to MechJeb's Landing Autopilot
-  (`/mj-land`, `tools/mj_land_vessel.py`).** Hand-rolled descent code killed six kerbals: a
-  `sc.warp_to(periapsis)` that hangs forever on a sub-atmosphere periapsis (the craft hits the air at
-  70 km long before the periapsis *time*, so the chute loop never runs → chuteless crash); a chute
-  armed too low to open on a steep/hot reentry; a reentry loop whose timeout quit 1.7 km above
-  chute-arm. MechJeb's Landing Autopilot already CALCULATES all of it — deorbit, attitude hold (no
+### 7.1 Ascent
+
+- **MechJeb ascent does NOT ignite the first stage from PRELAUNCH.**
+  *Symptom:* after enabling `/mj-ascent` the craft just sits on the pad.
+  *Cause:* MechJeb's ascent AP won't light the first stage itself.
+  *Fix:* kick it once via kRPC — `throttle=1; control.activate_next_stage()` — then MechJeb flies the
+  gravity turn and autostages the rest (baked into `tools/mj_to_orbit.py`). MechJeb ascent itself is
+  excellent (clean gravity turn, autostage, circularization to the exact target apoapsis) and far more
+  reliable than the hand-rolled ascent.
+
+### 7.2 Transfer & nodes
+
+- **MechJeb's node executor won't auto-warp to a distant node while it is still orienting.**
+  *Symptom:* it sits in real time and the node passes unburned.
+  *Cause:* the steering caps rails-warp, so the executor's own Autowarp can't reach a distant node.
+  *Fix:* **disable MechJeb, `warp_to(node_ut - 45)` with kRPC (no steering ⇒ warp works), then re-fire
+  `/mj-execute-node`.** For nodes only seconds away MechJeb burns them fine. (This is why
+  `mj_to_mun.py` flies the TMI via MechJeb but the Mun capture via a direct kRPC burn.)
+- **A prograde TMI can only RAISE apoapsis — falling apoapsis means a mis-aligned start.**
+  *Symptom:* apoapsis drops during the trans-Munar burn.
+  *Cause:* the burn started off-prograde (weak attitude authority on a heavy upper stack).
+  *Fix:* re-align to prograde and resume at low throttle so the engine gimbal can hold it; **never
+  flip**, and guard the Kerbin periapsis so the burn can't decay the orbit into reentry. (Mirrors the
+  ledger `Burn direction & re-align` rule.)
+
+### 7.3 SOI capture
+
+- **PURE retrograde tracking is the robust capture / lower-apoapsis burn.**
+  *Symptom:* a fixed-attitude SAS "stability assist" burn, or a mistargeted "circularize at current
+  altitude" burn, drove periapsis below the surface (impact) and apoapsis beyond the SOI.
+  *Cause:* the attitude wasn't tracking the (rotating) velocity vector, so thrust wasn't purely
+  energy-removing.
+  *Fix:* burn retrograde while **re-pointing at the live velocity vector every tick** — it lowers
+  apoapsis monotonically and *preserves* periapsis. When in doubt: retrograde to capture (ap below the
+  SOI), then circularize at an apsis. Frame discipline (§7.6) is everything here.
+
+### 7.4 Rendezvous & docking
+
+- **Rendezvous (main engine) FIRST, then dock (RCS).**
+  *Symptom:* the docking AP stalls "moving at <0.00 m/s" and drains monopropellant.
+  *Cause:* the docking AP translates on RCS; letting it close a km-scale gap exhausts monoprop.
+  *Fix:* close the distance with `/mj-rendezvous` (main engine, efficient) and hand off to `/mj-dock`
+  at ~60 m. **Refuel monopropellant before the dock** (`/vessel/refuel`) so the RCS final approach has
+  full tanks. After docking the two vessels MERGE into one (the target's name disappears); transfer
+  crew between modules of the single merged vessel — call `/transfer-crew` with no `toVessel`. (Full
+  verified flow in §3; driver `tools/fly_mj_dock.py`.)
+
+### 7.5 Landing & reentry
+
+- **Render-craft fuel flow can starve the engine after multi-stage burns.**
+  *Symptom:* `engine.thrust==0` at full throttle with `propellant.current_amount==0`, even though the
+  vessel still shows hundreds of units of LF/Ox.
+  *Cause:* the *connected* tank is empty while a sibling tank is full.
+  *Fix:* `/vessel/refuel` refills the connected tank and thrust returns. Always verify `vessel.thrust>0`
+  before trusting a burn loop.
+- **NEVER hand-roll reentry / landing timing — hand the WHOLE descent to MechJeb's Landing Autopilot
+  (`/mj-land`, `tools/mj_land_vessel.py`).**
+  *Symptom:* hand-rolled descent code killed six kerbals (Gangwei, Boke, Defan + 3) — a chuteless
+  crash, a too-fast splash, an impact 1.7 km past where the loop quit.
+  *Cause:* (a) `sc.warp_to(periapsis)` hangs forever on a sub-atmosphere periapsis — the craft hits the
+  air at 70 km long before the periapsis *time*, so the chute loop never runs; (b) a chute armed too
+  low to open on a steep/hot reentry; (c) a reentry loop whose fixed timeout quit 1.7 km above
+  chute-arm. Every one of these is a guessed constant standing in for a computed quantity.
+  *Fix:* make the vessel active, call `/mj-land`, then **MONITOR ONLY** — compute no altitudes, no
+  timeouts, no chute commands in Python. MechJeb already CALCULATES the deorbit, the attitude hold (no
   tumble), the deceleration ("recoil") burn timing, and the parachute deployment timing (the bridge
-  sets `DeployChutes=true`, `DeployGears=true`, `TouchdownSpeed=0.5`). Make the vessel active, call
-  `/mj-land`, then MONITOR ONLY — compute no altitudes, no timeouts, no chute commands in Python. The
-  single thing to add yourself is a **warp-assist for high orbits**: MechJeb won't fast-warp a huge
-  descent ellipse, so step rails warp down to ~80 km, then hand back to MechJeb for the deceleration +
-  chute phase. (A heatshield-less craft still disintegrates at ~3 km/s — reentry vehicles need a
-  heatshield; an Orion capsule survives and MechJeb lands it.)
+  sets `DeployChutes=true`, `DeployGears=true`, `TouchdownSpeed=0.5`). The single allowed hand-written
+  piece is a **warp-assist for high orbits**: MechJeb won't fast-warp a huge descent ellipse, so step
+  rails warp down to ~80 km (target read from telemetry, not guessed), then hand back to MechJeb for
+  the deceleration + chute phase.
+- **A reentry vehicle needs a heat shield.**
+  *Symptom:* a heatshield-less craft disintegrates at ~3 km/s on the way down.
+  *Cause:* no ablative protection against reentry heating.
+  *Fix:* render adds `HeatShield1` when the design is crewed OR the heatshield flag is set; an Orion
+  capsule then survives and MechJeb lands it. (Mirrors the ledger `Return craft need a heat shield`
+  rule.)
+- **The Falcon-9 hoverslam is the airless-body (Mun) touchdown profile.**
+  *Symptom:* a fixed-throttle descent either runs out of fuel or hard-contacts.
+  *Cause:* on an airless body there is no chute — the only brake is the engine, and burning too early
+  wastes fuel while burning too late impacts.
+  *Fix:* maximize freefall (engine off) until total speed reaches the reference curve
+  `v_ref(h)=sqrt(2*(0.92*a_max - g)*h)`, then full-throttle brake on surface-retrograde to null all
+  velocity at the ground; flip to local-up for the final slow settle. Needs a controllable lander with
+  CLEAN staging (descent engine is the active stage) + landing legs + reaction wheels. These numbers
+  are *computed* in `guidance.py` (`hoverslam_reference_speed_mps`, `suicide_burn_distance_m`), not
+  guessed.
+
+### 7.6 Frames, warp & control
+
+- **The AutoPilot reference frame must NOT rotate with the vessel.**
+  *Symptom:* `ap.reference_frame = vessel.reference_frame` throws `ValueError: Invalid reference frame;
+  must not rotate with the vessel`, and (when swallowed by a `try/except`) the autopilot silently never
+  points — this ate ~13 docking attempts and is *the* reason hand-rolled docking never mated.
+  *Cause:* MechJeb / kRPC attitude pointing requires a non-rotating frame.
+  *Fix:* use a non-rotating frame (`vessel.orbital_reference_frame`, `surface_reference_frame`, or a
+  body frame, e.g. `body.non_rotating_reference_frame`). RCS *translation* (`control.right/up/forward`)
+  is correctly in the vessel-fixed frame — only the autopilot *pointing* needs the non-rotating one.
+  Read ascent/landing flight in `vessel.orbit.body.reference_frame`, not the default co-moving surface
+  frame (which reads zero velocity); key a stuck-on-pad detector on apoapsis, not on that speed.
+- **Basic probe cores do NOT support SAS hold modes.**
+  *Symptom:* `SetSASMode` throws "Cannot set SAS mode"; `sas_mode = retrograde` does nothing.
+  *Cause:* a basic probe core lacks the SAS hold capability.
+  *Fix:* point with the **autopilot** instead — `ap.reference_frame = body.non_rotating_reference_frame;
+  ap.target_direction = (-vx,-vy,-vz)` — and **re-set `target_direction` every loop iteration** to
+  track the rotating velocity vector.
+- **Never `sc.warp_to(periapsis)` toward a sub-atmosphere periapsis.**
+  *Symptom:* `warp_to` blocks forever and the loop after it never runs.
+  *Cause:* the craft enters the atmosphere at ~70 km long before the periapsis *time*; KSP cancels
+  rails warp, but `warp_to` keeps waiting for a UT the vessel won't reach by rails. (This is the literal
+  root cause of the Gangwei loss.)
+  *Fix:* for an atmospheric coast, **step `rails_warp_factor` down by altitude** (read live) toward the
+  70 km edge instead of warping to a UT; for the descent itself, prefer `/mj-land` (above), which owns
+  its own warp.
+
+### 7.7 Discipline (standing doctrine — read these last)
+
+- **Reentry/landing belongs to MechJeb's Landing Autopilot — do not reinvent it.** This is the
+  hardest-won lesson of the whole project and the reason `tools/mj_land_vessel.py` exists: hand the
+  entire descent to `/mj-land` and monitor only. The bridge sets `DeployChutes`/`DeployGears`/
+  `TouchdownSpeed`; Python computes no altitudes, timeouts, or chute commands. (See §7.5 for the full
+  failure history.)
 - **If a step genuinely cannot be delegated and you must fly it by hand, CALCULATE the numbers first —
-  never guess.** Every guessed constant (a chute altitude, a loop timeout, a burn duration) is a
-  future failure. Derive it (Δv, time-to-apsis, terminal velocity, suicide-burn altitude) or read it
-  live from kRPC before you act. Precision-when-manual is non-negotiable.
-- **It's a GAME — iterate boldly; do not stall out of caution. Kerbals are not human, and losing a
-  crew while learning is acceptable — it costs a reload, not a life.** The loop-plus-notebook exists
-  for fearless iteration: try the maneuver, watch the real result, write down what failed and the fix,
-  and try again. Don't freeze on "this might lose crew." Try it.
+  never guess.** Every guessed constant (a chute altitude, a loop timeout, a burn duration) is a future
+  failure. Derive it (Δv, time-to-apsis, terminal velocity, suicide-burn altitude) or read it live from
+  kRPC before you act. Precision-when-manual is non-negotiable.
+- **It's a GAME — iterate boldly; do not stall out of caution.** Kerbals are not human, and losing a
+  crew while learning is acceptable — it costs a reload, not a life. The loop-plus-notebook exists for
+  fearless iteration: try the maneuver, watch the real result, write down what failed and the fix, and
+  try again. Don't freeze on "this might lose crew." Try it.

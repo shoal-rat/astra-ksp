@@ -1,5 +1,12 @@
 """EXPENDABLE-CRAFT CHUTE TEST (run before any crewed rescue).
 
+⛔ DEPRECATED — SUPERSEDED BY tools/mj_land_vessel.py (MechJeb Landing Autopilot). The whole reason
+this expendable test exists is to validate a hand-rolled chute-arming heuristic; MechJeb's Landing
+Autopilot owns the parachute-deployment timing, so the heuristic this script verifies is no longer
+the flight path. Keep it only as a diagnostic for the jettison-then-MechJeb-land case (confirm a
+given craft's chute physically deploys). The 30 km deorbit periapsis and 15 km chute-arm altitude
+below are guessed constants — do NOT promote this descent to a crewed flight. Logic unchanged.
+
 Reenter an UNCREWED vessel and ARM its parachute EARLY, then watch the parachute state and the
 speed all the way down. Boke's crew died because the recovery armed the chute only at alt<4.5km &
 speed<330 — a window a steep reentry reaches too low to open in time. A stock chute, once armed,

@@ -1,5 +1,12 @@
 """Bring an already-in-orbit crewed CAPSULE home: deorbit (RCS), reenter, parachute, land.
 
+⛔ DEPRECATED — SUPERSEDED BY tools/mj_land_vessel.py (MechJeb Landing Autopilot). MechJeb computes
+the deorbit + deceleration burn + parachute-deployment timing that this file hand-rolls and guesses
+(the magic 14 km chute-arm altitude and the 240/400 s loop timeouts below are exactly the kind of
+guessed constants that killed crew). Default to `/mj-land`; only keep this hand-rolled path for the
+narrow jettison-then-MechJeb-land case where a stack must first be cut to a bare capsule. Logic
+unchanged — do NOT extend it.
+
 ⚠️ DANGER — THIS TOOL HAS KILLED CREW. On 2026-06-22 an earlier version killed 5 live kerbals:
   * It reentered FULL STACKS whole (engine+tanks+cabin) → they tumbled and the chute could not slow
     them → 238 m/s impact. It now REFUSES any vessel that has an engine (guard below). A stack must

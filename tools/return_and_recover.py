@@ -1,6 +1,13 @@
 """Bring a crewed Orion home: deorbit, JETTISON the service section at the capsule decoupler (so the
 reentry vehicle is just pod+heatshield+parachute — a short, stable capsule), reenter, recover.
 
+⛔ DEPRECATED for the reentry/landing half — SUPERSEDED BY tools/mj_land_vessel.py (MechJeb Landing
+Autopilot computes the deorbit + deceleration burn + parachute-deployment timing that this file
+hand-rolls with guessed constants: the 32 km target periapsis, the 14 km chute-arm altitude, the
+400 s reentry timeout). Use this tool ONLY for the value it still adds — the JETTISON-to-bare-capsule
+step — then hand the freed capsule to `/mj-land`. Logic unchanged; do NOT extend the hand-flown
+descent below.
+
 Requires the craft built with the separable-capsule fix (craft_writer adds a Decoupler.1 directly
 below HeatShield1 for crewed designs). The old long-command-bus Orions tumble + lose the crew.
 
