@@ -110,7 +110,7 @@ def main() -> int:
         # (the warp ramp-down lags the 0.5 s poll), which wrecks the ejection timing.
         target = node.ut - lead
         while sc.ut < target - 30:
-            step = min(target, sc.ut + 5 * 86400)
+            step = min(target, sc.ut + 30 * 86400)
             try:
                 sc.warp_to(step)
             except Exception:
