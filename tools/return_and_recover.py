@@ -106,27 +106,40 @@ def main() -> int:
     ap.reference_frame = v.surface_velocity_reference_frame
     ap.target_direction = (0, -1, 0)
     ap.engage()
-    if v.orbit.time_to_periapsis > 60:
-        sc.warp_to(sc.ut + v.orbit.time_to_periapsis - 30)
-        time.sleep(2)
+    time.sleep(3)
+    # Step rails warp down to the atmosphere edge. Do NOT sc.warp_to(periapsis): with a sub-atmosphere
+    # periapsis the craft enters the atmosphere at 70 km long before the periapsis TIME, KSP cancels
+    # rails warp, and warp_to then BLOCKS forever waiting for a UT it won't reach — the reentry/chute
+    # loop never runs and the crew die chuteless. (Verified root cause of the Gangwei loss.)
+    tw = time.monotonic()
+    while v.flight().mean_altitude > 72000 and time.monotonic() - tw < 220:
+        alt = v.flight().mean_altitude
+        sc.rails_warp_factor = 3 if alt > 150000 else (2 if alt > 95000 else 1)
+        time.sleep(0.4)
+    sc.rails_warp_factor = 0
+    time.sleep(1)
     chutes = False
     t0 = time.monotonic()
     last = ""
-    while time.monotonic() - t0 < 260:
+    while time.monotonic() - t0 < 400:
         f = v.flight(body.reference_frame)
         alt, spd = f.surface_altitude, f.speed
         m = f"alt {alt/1000:.1f}k speed {spd:.0f} sit {str(v.situation)}"
         if m != last:
             log("  " + m)
             last = m
-        if not chutes and alt < 4500 and spd < 320:
+        # ARM the chute EARLY (alt < 14 km) and keep re-arming — a stock chute auto-deploys the moment
+        # it is SAFE, so arming high beats waiting for a low/slow window a steep reentry never reaches
+        # (that, plus reentry heat on a too-steep descent, is how Boke's chute failed to save him).
+        if alt < 14000:
             for par in v.parts.parachutes:
                 try:
                     par.deploy()
                 except Exception:
                     pass
-            chutes = True
-            log("  parachutes deployed")
+            if not chutes:
+                log("  parachutes ARMED (auto-deploy when safe)")
+                chutes = True
         if str(v.situation) in ("VesselSituation.landed", "VesselSituation.splashed"):
             break
         time.sleep(1)

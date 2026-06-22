@@ -114,11 +114,19 @@ def main() -> int:
     ap.reference_frame = v.surface_velocity_reference_frame
     ap.target_direction = (0, -1, 0)
     ap.engage()
-    if v.flight().mean_altitude > 70000 and 0 < v.orbit.time_to_periapsis < 1e6:
-        sc.warp_to(sc.ut + v.orbit.time_to_periapsis - 15)
-        time.sleep(2)
+    time.sleep(3)
+    # Step rails warp down to the atmosphere edge — NOT sc.warp_to(periapsis), which hangs forever on
+    # a sub-atmosphere periapsis (the craft enters the atmosphere at 70 km long before the periapsis
+    # TIME) and stops the chute logic from ever running. That hang killed Gangwei.
+    tw = time.monotonic()
+    while v.flight().mean_altitude > 72000 and time.monotonic() - tw < 220:
+        alt = v.flight().mean_altitude
+        sc.rails_warp_factor = 3 if alt > 150000 else (2 if alt > 95000 else 1)
+        time.sleep(0.4)
+    sc.rails_warp_factor = 0
+    time.sleep(1)
 
-    # 3) Ride the reentry; pop chutes when safe; confirm landing.
+    # 3) Ride the reentry; ARM chutes EARLY (auto-deploy when safe) and confirm landing.
     deployed = False
     t0 = time.monotonic()
     last = ""
@@ -129,14 +137,15 @@ def main() -> int:
         if m != last:
             log("  " + m)
             last = m
-        if not deployed and alt < 4500 and spd < 330:
+        if alt < 14000:
             for par in v.parts.parachutes:
                 try:
                     par.deploy()
                 except Exception:
                     pass
-            deployed = True
-            log("  parachutes deployed")
+            if not deployed:
+                log("  parachutes ARMED (auto-deploy when safe)")
+                deployed = True
         if str(v.situation) in ("VesselSituation.landed", "VesselSituation.splashed"):
             break
         time.sleep(1)
