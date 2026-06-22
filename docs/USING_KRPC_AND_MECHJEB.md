@@ -229,3 +229,24 @@ These are the things that bit us live, with the fix. They make the difference be
   attitude (SAS "stability assist") or a mistargeted "circularize at current altitude" burn instead
   drove periapsis below the surface (impact) and apoapsis beyond the SOI. When in doubt: retrograde
   to capture (ap below the SOI), then circularize at an apsis. Frame discipline (§2) is everything.
+- **NEVER hand-roll reentry/landing timing — hand the whole descent to MechJeb's Landing Autopilot
+  (`/mj-land`, `tools/mj_land_vessel.py`).** Hand-rolled descent code killed six kerbals: a
+  `sc.warp_to(periapsis)` that hangs forever on a sub-atmosphere periapsis (the craft hits the air at
+  70 km long before the periapsis *time*, so the chute loop never runs → chuteless crash); a chute
+  armed too low to open on a steep/hot reentry; a reentry loop whose timeout quit 1.7 km above
+  chute-arm. MechJeb's Landing Autopilot already CALCULATES all of it — deorbit, attitude hold (no
+  tumble), the deceleration ("recoil") burn timing, and the parachute deployment timing (the bridge
+  sets `DeployChutes=true`, `DeployGears=true`, `TouchdownSpeed=0.5`). Make the vessel active, call
+  `/mj-land`, then MONITOR ONLY — compute no altitudes, no timeouts, no chute commands in Python. The
+  single thing to add yourself is a **warp-assist for high orbits**: MechJeb won't fast-warp a huge
+  descent ellipse, so step rails warp down to ~80 km, then hand back to MechJeb for the deceleration +
+  chute phase. (A heatshield-less craft still disintegrates at ~3 km/s — reentry vehicles need a
+  heatshield; an Orion capsule survives and MechJeb lands it.)
+- **If a step genuinely cannot be delegated and you must fly it by hand, CALCULATE the numbers first —
+  never guess.** Every guessed constant (a chute altitude, a loop timeout, a burn duration) is a
+  future failure. Derive it (Δv, time-to-apsis, terminal velocity, suicide-burn altitude) or read it
+  live from kRPC before you act. Precision-when-manual is non-negotiable.
+- **It's a GAME — iterate boldly; do not stall out of caution. Kerbals are not human, and losing a
+  crew while learning is acceptable — it costs a reload, not a life.** The loop-plus-notebook exists
+  for fearless iteration: try the maneuver, watch the real result, write down what failed and the fix,
+  and try again. Don't freeze on "this might lose crew." Try it.

@@ -1,0 +1,84 @@
+<svg viewBox="0 0 980 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowUp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/>
+    </marker>
+  </defs>
+
+  <style>
+    .box   { rx: 12; stroke-width: 2; }
+    .title { font-size: 17px; font-weight: 700; fill: #ffffff; }
+    .sub   { font-size: 12.5px; fill: #e2e8f0; }
+    .lab   { font-size: 12px; fill: #64748b; font-weight: 600; }
+    .layer { font-size: 12px; fill: #94a3b8; font-weight: 700; letter-spacing: .08em; }
+    .flow  { stroke: #64748b; stroke-width: 2.2; fill: none; }
+    .flowtel { stroke: #0e7490; stroke-width: 2.2; fill: none; stroke-dasharray: 6 4; }
+  </style>
+
+  <!-- ===== BRAIN: Claude Code ===== -->
+  <text x="40" y="34" class="layer">ORCHESTRATOR</text>
+  <rect x="40" y="46" width="900" height="92" class="box" fill="#6d28d9" stroke="#4c1d95"/>
+  <text x="64" y="78" class="title">Claude Code  —  the brain (required)</text>
+  <text x="64" y="103" class="sub">Divide the task into steps · research how each is normally done · pick the right MechJeb / kRPC API for each step</text>
+  <text x="64" y="123" class="sub">Design a minimal ship (craft_writer) · fly autopilots one-by-one · retry on failure · record every lesson in the notebook</text>
+
+  <!-- ===== TOOLS layer ===== -->
+  <text x="40" y="178" class="layer">PYTHON TOOLS  (tools/, src/ksp_lab/)</text>
+  <rect x="40" y="190" width="900" height="84" class="box" fill="#1d4ed8" stroke="#1e3a8a"/>
+  <text x="64" y="220" class="title">tools/ drivers  +  BridgeClient / kRPC client</text>
+  <text x="64" y="244" class="sub">mj_to_orbit · mj_to_mun · fly_mj_dock · mj_land_vessel · astra (one-line agent) · fly_relay/hls/orion</text>
+  <text x="64" y="263" class="sub">Each driver picks an autopilot, sets params, starts it, then polls telemetry/status for the result.</text>
+
+  <!-- ===== BRIDGE layer ===== -->
+  <text x="40" y="314" class="layer">C# BRIDGE PLUGIN</text>
+  <rect x="40" y="326" width="430" height="96" class="box" fill="#0f766e" stroke="#115e59"/>
+  <text x="64" y="356" class="title">KspAutomationBridge</text>
+  <text x="64" y="379" class="sub">HTTP server · 127.0.0.1:48500</text>
+  <text x="64" y="399" class="sub">/mj-ascent /mj-execute-node /mj-rendezvous</text>
+  <text x="64" y="416" class="sub">/mj-dock /mj-land · spawn-crew · craft load/launch</text>
+
+  <!-- kRPC server box (sits beside the bridge, telemetry path) -->
+  <rect x="510" y="326" width="430" height="96" class="box" fill="#0e7490" stroke="#155e75"/>
+  <text x="534" y="356" class="title">kRPC server</text>
+  <text x="534" y="379" class="sub">RPC · 127.0.0.1:50000  (stream 50001)</text>
+  <text x="534" y="399" class="sub">telemetry · reference frames · orbit prediction</text>
+  <text x="534" y="416" class="sub">maneuver-node planning · warp · staging · set target</text>
+
+  <!-- ===== MECHJEB layer ===== -->
+  <text x="40" y="462" class="layer">MECHJEB 2  AUTOPILOTS  (wrapped by the bridge)</text>
+  <rect x="40" y="474" width="430" height="58" class="box" fill="#b45309" stroke="#92400e"/>
+  <text x="64" y="500" class="title" font-size="15px">MechJeb2.dll autopilots</text>
+  <text x="64" y="520" class="sub">Ascent · NodeExecutor · Rendezvous · Docking · Landing</text>
+
+  <!-- ===== GAME ===== -->
+  <rect x="510" y="474" width="430" height="58" class="box" fill="#334155" stroke="#1e293b"/>
+  <text x="534" y="500" class="title" font-size="15px">Live Kerbal Space Program 1  (v1.12.5)</text>
+  <text x="534" y="520" class="sub">the simulator everything actually flies in</text>
+
+  <!-- ===== FLOW ARROWS ===== -->
+  <!-- brain -> tools -->
+  <path d="M490,138 L490,190" class="flow" marker-end="url(#arrow)"/>
+  <text x="500" y="170" class="lab">delegate</text>
+
+  <!-- tools -> bridge (control, MechJeb) -->
+  <path d="M255,274 L255,326" class="flow" marker-end="url(#arrow)"/>
+  <text x="265" y="304" class="lab">HTTP control</text>
+
+  <!-- tools -> kRPC (telemetry) -->
+  <path d="M725,274 L725,326" class="flowtel" marker-end="url(#arrowUp)"/>
+  <text x="735" y="304" class="lab" fill="#0e7490">telemetry / math</text>
+
+  <!-- bridge -> mechjeb -->
+  <path d="M255,422 L255,474" class="flow" marker-end="url(#arrow)"/>
+  <text x="265" y="455" class="lab">enable AP</text>
+
+  <!-- mechjeb -> game -->
+  <path d="M470,503 L510,503" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- kRPC <-> game (telemetry back up) -->
+  <path d="M725,474 L725,422" class="flowtel" marker-end="url(#arrowUp)"/>
+  <text x="735" y="455" class="lab" fill="#0e7490">reads game</text>
+</svg>

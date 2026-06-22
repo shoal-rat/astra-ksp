@@ -1,25 +1,35 @@
-# ASTRA — Autonomous Spaceflight Trial & Research Agent
+# ASTRA — an LLM-native Space Commander for Kerbal Space Program 1
 
-> **One sentence in. A flown mission out.**
+> **One line of natural language in. A mission flown live in the game out.**
+> The agent doesn't reinvent guidance, navigation, or control — it *delegates* to MechJeb2 and kRPC.
 
-[![KSP1](https://img.shields.io/badge/Kerbal%20Space%20Program-1-blue)](https://www.kerbalspaceprogram.com/)
+[![KSP1](https://img.shields.io/badge/Kerbal%20Space%20Program-1.12.5-blue)](https://www.kerbalspaceprogram.com/)
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![kRPC](https://img.shields.io/badge/control-kRPC-1f8fff)](https://krpc.github.io/krpc/)
-[![Tests](https://img.shields.io/badge/Tests-53%20passing-2ea44f)](#project-layout)
+[![kRPC](https://img.shields.io/badge/telemetry-kRPC-1f8fff)](https://krpc.github.io/krpc/)
+[![MechJeb2](https://img.shields.io/badge/autopilots-MechJeb2-b45309)](https://github.com/MuMech/MechJeb2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-You type **one line of natural language**. ASTRA interprets it, designs the rocket, writes the
-`.craft` file, flies it **live** in Kerbal Space Program 1 over kRPC, watches the telemetry, diagnoses
-what went wrong against a growing experience ledger, fixes itself, and retries until the mission
-succeeds. It has already flown a complete Artemis-style Moon campaign end to end — relay, lander, and
-crew vehicle — in the real game.
+ASTRA is an autonomous agent that flies Kerbal Space Program 1 **live**. You give it a goal in plain
+English; **Claude Code** divides it into flight steps, researches how each step is normally done,
+picks the right MechJeb or kRPC API for it, designs a minimal ship that can do the job, flies it
+through MechJeb's autopilots **one autopilot at a time**, retries when a step fails, and writes down
+every lesson it learns. The owner's framing for the whole thing: *a loop plus an experience notebook*,
+behaving like **a Space Commander operating a spacecraft through an API**.
 
-![ASTRA system architecture](docs/diagrams/architecture.svg)
+The guiding rule is **"don't reinvent the wheel."** MechJeb already solves ascent, rendezvous,
+docking, and landing better than any controller an LLM would hand-roll under time pressure; kRPC
+already gives exact telemetry and orbital math. ASTRA's job is to *orchestrate* those tools — split
+the mission, choose the autopilot, set its parameters, start it, watch the result — not to compute
+thrust vectors.
+
+It has already flown a complete **Artemis-style Moon campaign** end to end, live in the game:
+ascent → trans-Munar injection → Mun capture → lunar rendezvous & docking → crew transfer → Mun
+landing → return and reentry. Public repo: **[github.com/shoal-rat/astra-ksp](https://github.com/shoal-rat/astra-ksp)**.
 
 ```text
 $ PYTHONPATH=src python tools/astra.py "land a relay in high Mun orbit and bring a crew home"
 
-[ASTRA] interpreted (heuristic): body=Mun caps=['relay', 'hls_land_return', 'crew_return']
+[ASTRA] interpreted: body=Mun caps=['relay', 'hls_land_return', 'crew_return']
 [ASTRA] capability relay: attempt 1/2 ... OK (relay_band_capture)
 [ASTRA] capability hls_land_return: attempt 1/2 ... OK (ascend_to_orbit)
 [ASTRA] capability crew_return: attempt 1/2 ... OK (recovered)
@@ -28,167 +38,154 @@ $ PYTHONPATH=src python tools/astra.py "land a relay in high Mun orbit and bring
 
 ---
 
-## Quickstart
+## What it is, and why
 
-**Requirements**
+- **LLM-native.** The agent is a loop with a memory, not a flight script. Claude Code is the brain:
+  it reads the goal, plans the steps, selects the API for each, and decides what to do next from the
+  live result.
+- **Delegate, don't reimplement.** The heavy closed-loop control is handed to **MechJeb2**; the
+  *knowing and measuring* (telemetry, reference frames, orbit prediction, maneuver-node planning) is
+  handed to **kRPC**. ASTRA stitches them together.
+- **A loop + an experience notebook.** Every attempt — what was tried, what failed, the fix — is
+  recorded in [`docs/USING_KRPC_AND_MECHJEB.md`](docs/USING_KRPC_AND_MECHJEB.md) (the human notebook)
+  and in an append-only run ledger, so the system gets smarter across flights.
 
-- **KSP1** open, with the **kRPC** mod server listening on `127.0.0.1:50000` (stream port `50001`).
-- The project's C# **`KspAutomationBridge`** plugin serving on `http://127.0.0.1:48500`.
-- **Python 3.13** and the [`krpc`](https://pypi.org/project/krpc/) package.
-- The game's default save folder (paths come from `configs/local-ksp.yaml`).
-
-**Run it (zero config — no API key needed):**
-
-```bash
-PYTHONPATH=src python tools/astra.py "land a relay in high Mun orbit and bring a crew home"
-```
-
-That uses the built-in **heuristic interpreter**, so it works with no credentials at all.
-
-**Let Claude do the interpretation (optional):**
-
-```bash
-export ANTHROPIC_API_KEY=sk-...        # enables LLM natural-language interpretation
-export ASTRA_MODEL=claude-opus-4-8     # optional; this is the default model
-PYTHONPATH=src python tools/astra.py "put a comsat in a high Mun orbit, then fly a crew there and back"
-```
-
-**Useful flags**
-
-| Flag | Effect |
-| --- | --- |
-| `--dry-run` | Interpret the command and print the plan; do **not** fly. |
-| `--max-attempts N` | Retries per phase to absorb run-to-run variance (default `2`). |
-| `--no-llm` | Force the heuristic interpreter even if `ANTHROPIC_API_KEY` is set. |
-| `--config PATH` | kRPC / runner config (default `configs/local-ksp.yaml`). |
-
-### Play it in-game
-
-The player types a mission inside KSP and watches ASTRA fly it.
-
-![In-game mod UX](docs/diagrams/mod_ux.svg)
-
-Run the daemon (`PYTHONPATH=src python tools/astra_daemon.py configs/local-ksp.yaml`); it polls the
-`KspAutomationBridge` in-game window for your command and streams live status back to the panel you
-watch — no alt-tabbing out of the game.
-
----
-
-## What it does
-
-ASTRA orchestrates a set of **proven, separately-validated flight drivers** — the flight core that
-actually flew the campaign — and wraps them in an autonomous interpret → fly → diagnose → retry loop.
-Three milestones have been flown **live in the game** and are verified:
-
-| # | Milestone | Result (live in KSP1) |
-| --- | --- | --- |
-| 1 | **Relay comsat** | Deployed to a high Mun orbit of **2041 × 101 km**. |
-| 2 | **HLS lander** | Flew to Mun orbit, performed a **soft powered landing** on the Mun (touchdown **−0.1 m/s**), ran surface science, and **ascended back to lunar orbit**. |
-| 3 | **Orion crew vehicle** | Launched to Mun orbit (rendezvous-equivalent with the parked lander), **returned to Kerbin**, survived **reentry** behind a heat shield, and **recovered under parachute at −1.4 m/s**. |
-
-Each milestone has a standalone driver that ASTRA invokes, so you can also fly any one of them on its
-own (see [Project layout](#project-layout)).
-
-### Delegate control to MechJeb + kRPC — don't reinvent it
-
-The agent's job is to **orchestrate and delegate**, not to compute guidance. The in-game
-`KspAutomationBridge` plugin now wraps **MechJeb's** own autopilots behind HTTP endpoints
-(`/mj-rendezvous`, `/mj-dock`, `/mj-status`), compiled against the installed `MechJeb2.dll` for
-compile-time safety. The LLM picks the autopilot, sets parameters, starts it, and polls the result —
-MechJeb flies the phasing, approach, port-alignment, and mate that a hand-rolled controller never
-reliably nailed. **kRPC** supplies live telemetry and orbital math (closest-approach prediction,
-relative state, maneuver-node evaluation). See **[docs/USING_KRPC_AND_MECHJEB.md](docs/USING_KRPC_AND_MECHJEB.md)**
-— the project's most important note for any LLM continuing this work. Driver: `tools/fly_mj_dock.py`.
-
----
-
-## How the agent thinks
-
-ASTRA is an agent, not a script: a natural-language front door, a persistent memory of every attempt,
-automatic diagnosis of a failed flight, and bounded retry to ride out the stochastic parts of a live
-simulation.
-
-![ASTRA autonomous loop: interpret, research, design, fly, diagnose, record](docs/diagrams/agent_loop.svg)
-
-**1 · Interpret.** `interpreter.py` turns plain English into a `MissionPlan` (target body +
-ordered capabilities). With `ANTHROPIC_API_KEY` set, Claude does the interpretation; otherwise a
-keyword **heuristic fallback** handles it. Either way the agent runs.
-
-**2 · Research.** `knowledge.py` assembles context from the methodology knowledge base and the
-experience ledger before planning — the same hard-won rules a human would consult.
-
-**3 · Design & fly.** The plan's capabilities map to validated drivers (`relay`,
-`hls_land_return`, `crew_return`). The flight controller designs and renders the craft, then flies it
-live over kRPC.
-
-**4 · Diagnose.** When a flight ends on a failure **marker**, `KnowledgeBase.diagnose()` matches it
-against the ledger's seeded **failure → fix rules** and returns a principle + a concrete fix with a
-confidence label (`known` vs `unknown`). An `unknown` failure stops the loop instead of burning
-retries blindly — the honest move when there's nothing learned to act on.
-
-**5 · Record.** Every attempt — success or failure, with its marker, the fix applied, and a log
-tail — is appended to an **append-only experience ledger** (`runs/astra_experience.jsonl`, mirrored to
-`runs/ASTRA_LEDGER.md`). This is what lets ASTRA get smarter across runs.
-
-### The experience ledger
-
-`ledger.py` ships with a baseline of **hard-won failure → fix rules** distilled from the project's
-real flights (roughly 16 relay attempts plus the HLS and Orion arcs). Each is a `match` pattern paired
-with a principle and a fix. A few representative entries:
-
-| Principle | Fix (abridged) |
-| --- | --- |
-| **Launch TWR margin** | Actual launch TWR < 1 because the estimate ignores accessory mass — lighten upper stages or add thrust until estimated launch TWR ≳ 1.4. |
-| **Attitude authority** *(master root cause)* | Heavy upper stacks need dedicated inline reaction-wheel torque before any finite burn; hold energy-removal burns on the engine gimbal, re-pointed every tick. |
-| **Falcon-9 hoverslam landing** | Maximize freefall, then full-throttle brake on surface-retrograde tracking the reference curve to null all velocity at the ground. |
-| **Return craft need a heat shield** | An uncrewed return craft still needs a heat shield + parachute for Kerbin reentry. |
-
-Live attempts append to this ledger, so any fix that turns a failure into a later success is available
-to future runs as a learned rule.
-
----
-
-## The Falcon-9 hoverslam landing
-
-The Mun touchdown uses a **suicide burn** (a.k.a. "hoverslam"): keep the engine **off** to maximize
-freefall, then fire a **single full-throttle burn** on surface-retrograde that nulls all velocity
-*exactly* at the ground. It's pre-computed, fuel-optimal, and time-optimal — no hovering, no waste.
-
-The craft coasts until its speed meets a reference curve, then brakes along it:
-
-$$v_\text{ref}(h) = \sqrt{2 \,(0.92\,a_\text{max} - g)\, h}$$
-
-This is the largest speed from which a burn at 92% of full thrust can still stop the craft by
-touchdown. Because `v_ref → 0` as `h → 0`, riding the curve down brings the vessel to ~0 m/s right at
-the surface. The reserved top 8% of thrust is headroom in case ignition is a hair late. A reliable
-terminal flare below 70 m takes over for the final settle so the legs touch down level.
-
-**Validated live:** a lander freefell engine-off from 92 km down to 50 km, ignited exactly where its
-speed met the curve, braked from 580 m/s to ~10 m/s riding the curve down, and the flare set it down
-at **−1.35 m/s** vertical / 0.87 m/s horizontal with ~42% fuel to spare.
-
-![Hoverslam descent profile: speed vs altitude](docs/diagrams/hoverslam.svg)
-
-The hoverslam is the highlighted critical node in the live flight state machine — every phase has an
-explicit success gate before the next one is allowed to begin:
-
-![Flight state machine with success gates; hoverslam highlighted](docs/diagrams/flight_state_machine.svg)
-
-The math lives in `src/ksp_lab/guidance.py` (`hoverslam_reference_speed_mps`, `hoverslam_throttle`,
-plus vis-viva / Hohmann / capture-burn helpers) and is exercised by `tests/test_guidance.py`.
+**Claude Code is required.** It is the orchestrator that turns one sentence into a sequence of
+correctly-chosen autopilot calls. Without it there is no task division, no API selection, no
+diagnosis, no learning — just the tools it drives.
 
 ---
 
 ## Architecture
 
-![LLM-native architecture](docs/diagrams/llm_native_architecture.svg)
+**Claude Code (task division + API selection) → Python tools → the C# bridge plugin → MechJeb2 + kRPC
+→ live KSP 1.** The bridge wraps MechJeb's autopilots behind HTTP; kRPC supplies telemetry and orbital
+math. The agent uses the bridge to *control* and kRPC to *measure*.
 
-- **Interpreter** parses the command into a mission spec.
-- **Architect** (`craft_writer.render()`) generates the `.craft` file for each phase.
-- **Flight Controller** flies it live in KSP1 via kRPC and the C# `KspAutomationBridge` plugin.
-- **Experience Ledger**, **Methodology KB**, and **Guidance math** feed the diagnose-and-retry loop.
+![ASTRA architecture: Claude Code to tools to bridge to MechJeb and kRPC to KSP](docs/architecture.svg)
 
-The full vector diagram is at the top of this README (`docs/diagrams/architecture.svg`).
+| Layer | What it is | Role |
+| --- | --- | --- |
+| **Claude Code** | the LLM orchestrator (required) | divide task · pick API · design ship · retry · record |
+| **Python tools** | `tools/*.py` + `BridgeClient` / kRPC client | one driver per phase; start an autopilot, poll the result |
+| **C# bridge** | `KspAutomationBridge`, HTTP `127.0.0.1:48500` | wraps MechJeb autopilots; spawns craft/crew; loads & launches |
+| **kRPC** | RPC server `127.0.0.1:50000` (stream `50001`) | telemetry · reference frames · orbit prediction · node planning · warp · staging · set target |
+| **MechJeb2** | `MechJeb2.dll` autopilots | Ascent · NodeExecutor · Rendezvous · Docking · Landing |
+| **KSP 1.12.5** | the live game | where everything actually flies |
+
+The bridge is compiled against the *installed* `MechJeb2.dll`, so a renamed MechJeb member is a
+compile error rather than a silent runtime no-op — see
+[`docs/USING_KRPC_AND_MECHJEB.md`](docs/USING_KRPC_AND_MECHJEB.md) §5.
+
+---
+
+## How the agent thinks
+
+Given a task, Claude Code runs this loop, delegating the flying at every step:
+
+![ASTRA mission loop: divide, research, pick API, design ship, fly autopilot, verify, record](docs/mission-flow.svg)
+
+1. **Divide the task.** Split the one-line goal into ordered flight steps — ascent, TMI, capture,
+   rendezvous, dock, land, return.
+2. **Research.** Work out how each step is normally done (KSP/MechJeb knowledge + the experience
+   notebook).
+3. **Pick the API.** Choose the right tool for that step — ascent → MechJeb ascent; phasing → MechJeb
+   rendezvous; mate → MechJeb docking; touchdown → MechJeb landing; measurement and decisions → kRPC.
+4. **Design the ship.** `src/ksp_lab/craft_writer.py` renders a minimal `.craft` that can do the step;
+   the bridge loads and launches it.
+5. **Fly the autopilot — one at a time.** Start the chosen autopilot, then **poll** kRPC / `/mj-status`
+   for the outcome. **Warp wisely:** for a long boring coast, step rails-warp down (e.g. to ~80 km on a
+   reentry) and then hand control back to MechJeb for the precise phase.
+6. **Verify.** Check the result against the step's success predicate.
+7. **Record the lesson.** Append what failed and the fix to the notebook / ledger. On failure,
+   diagnose, **adjust one thing**, and retry within a bounded budget.
+
+> **The hardest-won lesson: never hand-roll reentry or parachute timing.** Hand-rolled descent code
+> killed six kerbals (a `warp_to(periapsis)` that hangs on a sub-atmosphere periapsis; chutes armed
+> too low; a reentry loop that timed out above chute-arm). MechJeb's **Landing Autopilot** already
+> *calculates* the deorbit, the deceleration ("recoil") burn timing, and the parachute deployment
+> timing — hand it the whole descent and **monitor only**. (Full write-up in the notebook §7.)
+
+---
+
+## Tool catalogue
+
+The main `tools/` drivers and the MechJeb / kRPC capability each one delegates to. Every driver is the
+"pick an autopilot, start it, poll the result" pattern; none reimplement guidance.
+
+| Tool | What it does | Delegates to |
+| --- | --- | --- |
+| `tools/astra.py` | **The agent.** One line of NL → mission plan → flies each capability, diagnoses, retries, records. | the whole loop below |
+| `tools/mj_to_orbit.py` | Launch an Artemis vehicle and reach a parking orbit. | **MechJeb Ascent** (`/mj-ascent`, gravity turn + autostage + circularize); kRPC kicks the first stage off the pad |
+| `tools/mj_to_mun.py` | LKO → low Mun orbit. | kRPC plans the TMI + capture nodes; **MechJeb NodeExecutor** (`/mj-execute-node`) flies the TMI; a kRPC retrograde burn does the SOI capture |
+| `tools/fly_mj_dock.py` | Autonomous rendezvous + dock + crew transfer between two vessels. | **MechJeb Rendezvous** (`/mj-rendezvous`, main engine close) → **MechJeb Docking** (`/mj-dock`, RCS mate); kRPC sets target & measures distance; `/transfer-crew` moves a kerbal |
+| `tools/mj_land_vessel.py` | Reentry + soft landing — deorbit through chutes. | **MechJeb Landing Autopilot** (`/mj-land`, calculates deorbit, decel burn, chute timing); kRPC warp-assists the high coast down to ~80 km only |
+| `tools/fly_relay_once.py` | Milestone driver: relay comsat to a high Mun orbit. | the ascent → TMI → capture chain |
+| `tools/fly_hls_predeploy.py` · `fly_hls_sortie.py` | Fly the HLS lander to Mun orbit; then descend, land, science, ascend. | ascent + transfer + the hoverslam landing |
+| `tools/fly_orion.py` | Crew vehicle: launch → Mun orbit → return → reentry → recover. | ascent + return + **MechJeb landing** for the recovery |
+| `tools/astra_daemon.py` | In-game UX: polls the bridge window for the player's typed command and streams status back. | the agent, driven from inside KSP |
+
+`BridgeClient` (`src/ksp_lab/bridge_client.py`) is the Python wrapper for the bridge endpoints
+(`mj_ascent`, `mj_execute_node`, `mj_rendezvous`, `mj_dock`, `mj_land`, `mj_status`, `mj_disable`,
+`refuel_vessel`, `spawn_crew`, `transfer_crew`). kRPC is used directly for telemetry and node math.
+
+---
+
+## Achievements (flown live in KSP 1.12.5)
+
+- **Full Artemis-style architecture, flown live.** Ascent → trans-Munar injection → Mun capture →
+  lunar rendezvous & docking → crew transfer → Mun landing → return & reentry — each phase flown in
+  the running game.
+- **Autonomous rendezvous + docking + crew transfer** between two Orions: MechJeb's rendezvous AP
+  closed ~1078 → 60 m and matched velocity, the docking AP did the port-aligned mate (part count
+  21 → 42 as the vessels merged), and a kerbal transferred across. Driver: `tools/fly_mj_dock.py`.
+- **Relay comsat** deployed to a high Mun orbit (~2041 × 101 km).
+- **HLS lander** flew to Mun orbit, performed a soft powered landing (touchdown ~ −0.1 m/s) via a
+  Falcon-9-style **hoverslam** (suicide burn), ran surface science, and ascended back to lunar orbit.
+- **Orion crew vehicle** launched to Mun orbit, returned to Kerbin, survived reentry behind a heat
+  shield, and recovered under parachute (~ −1.4 m/s) — landing flown by MechJeb's Landing Autopilot.
+- **ASTRA** — the one-line-natural-language agent (`tools/astra.py`) that orchestrates all of the
+  above behind a single command, with diagnosis and retry.
+
+---
+
+## Setup
+
+**Requirements**
+
+- **KSP 1.12.5** open, with the **kRPC** mod server listening on `127.0.0.1:50000` (stream `50001`).
+- **MechJeb2** installed, plus the `MechJebForAll.cfg` ModuleManager patch so every command pod
+  carries a `MechJebCore` (generated craft have no MechJeb part otherwise). See notebook §4.
+- The project's C# **`KspAutomationBridge`** plugin serving on `http://127.0.0.1:48500`
+  (build with `scripts/build_bridge.ps1 -KspRoot "<KSP>"`, install the DLL, reload KSP).
+- **Python 3.13** and the [`krpc`](https://pypi.org/project/krpc/) package.
+- Paths come from `configs/local-ksp.yaml`.
+
+**Run the agent (zero config — no API key needed):**
+
+```bash
+PYTHONPATH=src python tools/astra.py "land a relay in high Mun orbit and bring a crew home"
+```
+
+That uses the built-in heuristic interpreter, so it runs with no credentials. To let Claude do the
+natural-language interpretation, set `ANTHROPIC_API_KEY` (and optionally `ASTRA_MODEL`, default
+`claude-opus-4-8`).
+
+**Useful flags:** `--dry-run` (plan only, don't fly) · `--max-attempts N` (retries per phase, default
+`2`) · `--no-llm` (force the heuristic interpreter) · `--config PATH`.
+
+**Run a single phase directly:**
+
+```bash
+PYTHONPATH=src python tools/mj_to_orbit.py  configs/local-ksp.yaml hls 90
+PYTHONPATH=src python tools/mj_to_mun.py    configs/local-ksp.yaml AI-HLS-Artemis
+PYTHONPATH=src python tools/fly_mj_dock.py  configs/local-ksp.yaml <CHASER> <TARGET>
+PYTHONPATH=src python tools/mj_land_vessel.py configs/local-ksp.yaml Orion
+```
+
+**Play it in-game:** run `PYTHONPATH=src python tools/astra_daemon.py configs/local-ksp.yaml`; it polls
+the bridge's in-game window for a typed mission and streams live status back to the panel — no
+alt-tabbing out of the game.
 
 ---
 
@@ -196,88 +193,46 @@ The full vector diagram is at the top of this README (`docs/diagrams/architectur
 
 ```text
 ksp1-automation-lab/
-├── tools/
-│   ├── astra.py                 # the agent CLI — "one sentence in"
-│   ├── fly_relay_once.py        # Milestone 1 driver — relay to high Mun orbit
-│   ├── fly_hls_predeploy.py     # Milestone 2a — fly the HLS lander to Mun orbit
-│   ├── fly_hls_sortie.py        # Milestone 2b — descend, land, science, ascend
-│   └── fly_orion.py             # Milestone 3 — crew vehicle launch → return → recover
+├── tools/                         # one driver per phase + the agent CLI
+│   ├── astra.py                   # the agent — "one sentence in"
+│   ├── astra_daemon.py            # in-game command/status loop
+│   ├── mj_to_orbit.py             # MechJeb ascent to parking orbit
+│   ├── mj_to_mun.py               # TMI (MechJeb node executor) + kRPC capture
+│   ├── fly_mj_dock.py             # MechJeb rendezvous + docking + crew transfer
+│   ├── mj_land_vessel.py          # MechJeb Landing Autopilot reentry + touchdown
+│   └── fly_relay_once.py / fly_hls_*.py / fly_orion.py   # milestone drivers
 ├── src/ksp_lab/
-│   ├── astra/
-│   │   ├── interpreter.py       # NL → MissionPlan (Claude API + heuristic fallback)
-│   │   ├── ledger.py            # append-only experience memory + seeded failure→fix rules
-│   │   ├── knowledge.py         # methodology KB + the diagnoser
-│   │   └── agent.py             # the autonomous interpret→fly→diagnose→retry loop
-│   ├── flight_controller.py     # ~3,500-line live kRPC flight brain (ascent, transfer,
-│   │                            #   capture, hoverslam landing, return)
-│   ├── craft_writer.py          # generates .craft files via render()
-│   ├── guidance.py              # Δv / TWR / hoverslam math
-│   ├── artemis.py, parts.py, models.py, runner.py
-├── csharp/KspAutomationBridge/  # C# KSP plugin (state, craft load, launch, revert, reset)
-├── configs/                     # local-ksp.yaml and friends
-├── docs/diagrams/               # the SVGs embedded above
-└── tests/                       # 53 passing tests
-```
-
-`KnowledgeBase` also looks for a transferable **`GENERALIZED_AEROSPACE_METHODOLOGY.md`** — the
-human-readable methodology that is ASTRA's knowledge base — and folds it into the planning context
-when present.
-
-**Per-phase drivers** are the proven flight core ASTRA orchestrates. Run any of them directly:
-
-```bash
-PYTHONPATH=src python tools/fly_relay_once.py   configs/local-ksp.yaml
-PYTHONPATH=src python tools/fly_hls_predeploy.py configs/local-ksp.yaml
-PYTHONPATH=src python tools/fly_hls_sortie.py    configs/local-ksp.yaml
-PYTHONPATH=src python tools/fly_orion.py         configs/local-ksp.yaml
+│   ├── astra/                     # interpreter · ledger · knowledge · agent (the loop)
+│   ├── bridge_client.py           # Python wrapper for the bridge HTTP endpoints
+│   ├── flight_controller.py       # live kRPC flight helpers (frames, nodes, capture)
+│   ├── craft_writer.py            # renders .craft files for each phase
+│   ├── guidance.py                # Δv / TWR / hoverslam math
+│   └── artemis.py, parts.py, models.py, runner.py, telemetry.py …
+├── csharp/KspAutomationBridge/    # the C# plugin: /mj-* autopilot wrappers + craft/crew
+├── configs/                       # local-ksp.yaml and friends
+├── docs/                          # USING_KRPC_AND_MECHJEB.md (the notebook) + diagrams
+└── tests/
 ```
 
 ---
 
-## Roadmap
+## The experience notebook
 
-- **Automated docking & crew transfer — full machinery built, attempted live, one geometry left.**
-  Docking-capable crewed craft (Clamp-O-Tron + RV-105 RCS + monoprop + an inline probe core so a
-  crewed pod still launches headless), a `run_dock_and_transfer` routine with **plane-match →
-  orbit-match → phasing-drift → RCS proximity → dock → undock**, real crew via the bridge's
-  `/spawn-crew` + `/transfer-crew` endpoints, and the `tools/fly_dock.py` driver. Flown live, it
-  matched the target orbit and closed the along-track gap **from 477 km to ~79 km**; the dock itself
-  was blocked because that test chaser happened to **capture retrograde (174° relative inclination)**
-  to the surface-ascended target — a near-orbit-reversal that needs ~1140 m/s of plane change the
-  craft didn't carry. The plane-match step is now in for the general (small-inclination) case; the
-  clean fix for the extreme case is a **prograde, coplanar capture**, which is the next step.
-- **Visual fidelity.** Docking craft already drop the nose cone for a flush port; further nose-cone
-  fairings and real mod craft would make generated vehicles *look* like a Saturn V / Starship.
-- **More target bodies.** Generalize the guidance and mission planner beyond the Mun.
-
----
-
-## Honest limitations
-
-This project values ruthless honesty over polish. The real state of things:
-
-- **Crew add + transfer: verified live; the two-ships-via-rendezvous version is the open piece.**
-  `tools/crew_demo.py` launched a crewed craft, **added three astronauts** to it with `/spawn-crew`
-  (one in the command pod, two in the crew cabin) and **transferred one between modules** with
-  `/transfer-crew` — confirmed in the running game. The *mechanic* is done. What remains is chaining
-  it to a successful two-vehicle dock (`prograde-coplanar capture → dock → transfer to the other
-  ship`), which is gated on the autonomous-rendezvous work above.
-- **"Mission complete" was a chain of four separately-driven phases.** ASTRA now orchestrates those
-  drivers behind one command, but the phases were validated independently. Run-to-run variance —
-  especially the trans-Munar injection — is **absorbed by retries, not eliminated.**
-- **Visual realism is functional, not pixel-perfect.** Generated craft prioritize flyability over
-  looking like their real-world inspirations. No fairings or detailed mod parts yet.
-- **The design Δv / TWR estimator ignores small accessory masses.** A craft's own quoted figures are
-  therefore slight **upper bounds**. This is mitigated by a TWR safety margin (and is itself one of the
-  seeded ledger rules), but it's a known approximation, not exact bookkeeping.
+[`docs/USING_KRPC_AND_MECHJEB.md`](docs/USING_KRPC_AND_MECHJEB.md) is the most important file for any
+LLM continuing this work. It records the hard-won lessons from flying a full Mun mission with MechJeb:
+the reference-frame rule that cost ~13 docking attempts, why rendezvous (main engine) must come before
+docking (RCS), why the node executor needs a kRPC warp-assist, why a basic probe core can't hold SAS
+retrograde, and why reentry/parachute timing must be delegated to MechJeb. The principle throughout:
+**use the API, calculate when you must fly by hand, and write down what you learn.**
 
 ---
 
 ## Acknowledgements
 
 - [**Kerbal Space Program**](https://www.kerbalspaceprogram.com/) — the simulator everything flies in.
-- [**kRPC**](https://krpc.github.io/krpc/) — the remote-procedure-call mod that makes live control possible.
-- [**Anthropic Claude**](https://www.anthropic.com/) — optional natural-language interpretation of the mission command.
+- [**MechJeb2**](https://github.com/MuMech/MechJeb2) — the production-grade autopilots ASTRA delegates the flying to.
+- [**kRPC**](https://krpc.github.io/krpc/) — the remote-procedure-call mod for live telemetry and control.
+- [**Anthropic Claude**](https://www.anthropic.com/) — the orchestrating brain (and optional NL interpretation).
 
 ---
 
