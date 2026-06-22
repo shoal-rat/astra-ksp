@@ -66,3 +66,17 @@ if ($msbuild) {
         throw "csc.exe failed with exit code $LASTEXITCODE"
     }
 }
+
+# Install the freshly-built DLL into GameData so KSP actually loads it. This step was MISSING: the
+# build only compiled to bin\$Configuration, so KSP kept loading whatever stale DLL was last copied
+# into GameData by hand — a new /mj-plan etc. would never appear in-game even after a restart. Always
+# install here. (A KSP restart is still required to load a newly-installed bridge: plugins load once
+# at startup.)
+$builtDll = Join-Path (Split-Path $project) "bin\$Configuration\KspAutomationBridge.dll"
+if (-not (Test-Path $builtDll)) {
+    throw "Build reported success but the output DLL is missing: $builtDll"
+}
+$pluginDir = Join-Path $KspRoot "GameData\KspAutomationBridge\Plugins"
+New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+Copy-Item -Path $builtDll -Destination (Join-Path $pluginDir "KspAutomationBridge.dll") -Force
+Write-Host "Installed bridge DLL -> $pluginDir ($((Get-Item $builtDll).Length) bytes). Restart KSP to load it."
