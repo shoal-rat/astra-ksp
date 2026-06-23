@@ -58,6 +58,10 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     if not d.feasible:
         log(f"DESIGN INFEASIBLE — refusing to launch: {d.infeasible_reasons}")
         return False
+    from ksp_lab.design import separation_sequence
+    log("SEPARATION SEQUENCE + control logic (separators placed by calculated inverse-stage):")
+    for e in separation_sequence(d, req):
+        log("   - " + e)
     runner.writer.write(d, runner._craft_dir(), template_path=None)
     log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}; "
         f"aero Cd={d.drag_cd} dragloss={d.ascent_drag_loss_mps}m/s margin={d.static_margin_m}m stable={d.ascent_stable}; launching ...")

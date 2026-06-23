@@ -229,3 +229,26 @@ def test_propulsive_vs_parachute_diverge_on_chutes():
 def _bus_mass_of(design, req: ShipRequirements) -> float:
     from ksp_lab.design import _bus_mass
     return _bus_mass(req)
+
+
+def test_separation_sequence_and_staging_metrics():
+    """The separation SEQUENCE is established with control logic, and each stage reports its
+    post-separation mass, structural coefficient, and single-stage Δv ceiling (the add-a-stage limit)."""
+    from ksp_lab.design import staging_plan, separation_sequence
+    req = ShipRequirements(
+        name="seq", crew=0, payload_t=0.3,
+        phases=[Phase("booster", dv_mps=4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
+                Phase("insertion", dv_mps=1300.0)],
+        landing=None, max_engine_count=1,
+    )
+    d = design_ship(req)
+    plan = staging_plan(d, req)
+    for p in plan:
+        assert p["post_separation_mass_t"] >= 0.0
+        assert 0.0 < p["struct_coeff_eps"] < 1.0
+        assert p["single_stage_dv_ceiling_mps"] > p["dv_mps"]   # the stage is within its own ceiling
+    seq = separation_sequence(d, req)
+    assert any("LIFTOFF" in e for e in seq)
+    assert any("FIRE" in e and "separator" in e for e in seq)   # at least one separation event
+    assert any("FAIRING JETTISON" in e for e in seq)
+    assert any("DEPLOY solar" in e for e in seq)                # deploy only after orbit

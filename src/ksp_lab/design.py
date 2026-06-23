@@ -398,6 +398,25 @@ def _split_phases(phases: list[Phase]) -> list[Phase]:
     return out
 
 
+def separation_sequence(design: RocketDesign, req: ShipRequirements) -> list[str]:
+    """The ordered ascent / SEPARATION / deploy EVENTS with the control logic that triggers each — the
+    'establish the separation sequence' deliverable. Separator PLACEMENT is by craft_writer: each
+    inter-stage TD-12 decoupler is given KSP inverse-stage = render_index-1 so it fires AFTER its stage
+    is spent (never at liftoff); the controller fires the next event on a MEASURED condition (booster
+    propellant exhausted -> the consecutive-dry guard -> decouple + ignite the next engine). Payload
+    solar/antennas deploy ONLY after orbit + fairing jettison, never exposed at launch."""
+    plan = staging_plan(design, req)
+    ev: list[str] = ["T0 LIFTOFF: ignite stage 1 (booster) at full thrust; payload STOWED in the fairing"]
+    for p in plan:
+        if str(p["separator"]).startswith("TD-12"):
+            ev.append(f"MECO stage {p['stage']}: propellant exhausted (consecutive-dry guard, 3 polls) -> FIRE "
+                      f"its TD-12 separator -> drop {p['burnout_mass_t']} t -> ignite stage {p['stage']+1}")
+    ev.append("FAIRING JETTISON: only when altitude > 70 km (above the atmosphere) AND the upper stage is burning")
+    ev.append("SECO / ORBIT INSERTION: circularise at the parking orbit")
+    ev.append("PAYLOAD: detumble (reaction wheels) -> DEPLOY solar panels -> DEPLOY + point antenna -> commission as Relay")
+    return ev
+
+
 def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict[str, float]:
     """Total wet mass, per-stage and total Δv (rocket equation), launch TWR, chute count — calculated."""
     from .parts import stage_masses
