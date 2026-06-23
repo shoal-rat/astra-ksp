@@ -71,20 +71,19 @@ def design_starship(bm: dict, *, crew: int = 4, name: str = "AI-Starship-Mars") 
         phases=[
             Phase("booster", launch_dv, twr_body_g=K["g"], min_twr=1.4),
             Phase("transfer", eject_dv + capture_dv, twr_body_g=0.0, min_twr=0.0),
-            # Lander: surface TWR>=2 for a controllable hoverslam AND a WIDE 2.5 m tank — a low CoG +
-            # wide base so the legs give a >=35 deg tip-over angle (the no-leg/high-CoG needle tipped
-            # over and killed the crew). The 2.5 m tank picks a Skipper-class engine automatically.
-            Phase("lander", lander_dv, twr_body_g=D["g"], min_twr=2.0, min_diameter_m=2.5),
+            # Lander: surface TWR>=2 for a controllable hoverslam. Its FULL fuel tank (refuelled for the
+            # ascent) sits low and keeps the CoG down, so the calculated wide legs give a >=35 deg
+            # tip-over angle even on the light 1.25 m tank — no need for a heavier 2.5 m tank that would
+            # push the stack past what a single Mainsail can lift.
+            Phase("lander", lander_dv, twr_body_g=D["g"], min_twr=2.0),
         ],
         landing=None,                 # propulsive — no parachutes (the whole point)
         needs_legs=True,              # but it STILL needs landing legs (decoupled from parachutes)
         needs_heatshield=True,        # Duna entry + Kerbin reentry
         needs_docking=True,           # orbital refuel rendezvous
-        max_engine_count=4,           # engine CLUSTER for real launch thrust (Super-Heavy style): a
-                                      # single Mainsail gives only TWR ~1.0 under the wide 2.5 m lander
-                                      # stack; a 2-3 engine cluster reaches TWR>=1.4. cmd_launch ignites
-                                      # every booster engine by name + stages explicitly, so the cluster
-                                      # lights and drops cleanly (a 3x Skipper cluster launched before).
+        max_engine_count=1,           # SINGLE Mainsail booster — the proven launch (a clustered booster's
+                                      # surface-mounted satellite engines starve mid-ascent and the stack
+                                      # falls back; one Mainsail crossfeeds the whole stack cleanly).
     )
     d = design.design_ship(req)
     log("design: " + " | ".join(f"{s.role}={s.engine_count}x{s.engine}+{s.tank_count}{s.tank}" for s in d.stages))
