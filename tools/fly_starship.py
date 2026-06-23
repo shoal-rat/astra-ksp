@@ -69,15 +69,22 @@ def design_starship(bm: dict, *, crew: int = 4, name: str = "AI-Starship-Mars") 
     req = ShipRequirements(
         name=name, mission_type="duna_propulsive_round_trip", crew=crew, payload_t=0.3,
         phases=[
-            Phase("booster", launch_dv, twr_body_g=K["g"], min_twr=1.3),
+            Phase("booster", launch_dv, twr_body_g=K["g"], min_twr=1.4),
             Phase("transfer", eject_dv + capture_dv, twr_body_g=0.0, min_twr=0.0),
-            Phase("lander", lander_dv, twr_body_g=D["g"], min_twr=2.0),
+            # Lander: surface TWR>=2 for a controllable hoverslam AND a WIDE 2.5 m tank — a low CoG +
+            # wide base so the legs give a >=35 deg tip-over angle (the no-leg/high-CoG needle tipped
+            # over and killed the crew). The 2.5 m tank picks a Skipper-class engine automatically.
+            Phase("lander", lander_dv, twr_body_g=D["g"], min_twr=2.0, min_diameter_m=2.5),
         ],
         landing=None,                 # propulsive — no parachutes (the whole point)
+        needs_legs=True,              # but it STILL needs landing legs (decoupled from parachutes)
         needs_heatshield=True,        # Duna entry + Kerbin reentry
         needs_docking=True,           # orbital refuel rendezvous
-        max_engine_count=1,           # allow an engine cluster for real launch thrust (a single live
-                                      # Mainsail makes only ~1042 kN, too weak for this 4-crew stack).
+        max_engine_count=4,           # engine CLUSTER for real launch thrust (Super-Heavy style): a
+                                      # single Mainsail gives only TWR ~1.0 under the wide 2.5 m lander
+                                      # stack; a 2-3 engine cluster reaches TWR>=1.4. cmd_launch ignites
+                                      # every booster engine by name + stages explicitly, so the cluster
+                                      # lights and drops cleanly (a 3x Skipper cluster launched before).
     )
     d = design.design_ship(req)
     log("design: " + " | ".join(f"{s.role}={s.engine_count}x{s.engine}+{s.tank_count}{s.tank}" for s in d.stages))
@@ -363,7 +370,16 @@ def cmd_return(sc, cfg, bridge) -> int:
         log("  ISRU refuel on the surface (tanks topped off)")
     except Exception as exc:
         log(f"  refuel note: {exc}")
-    # 2) Ascend to a low Duna orbit (MechJeb ascent + direct engine ignition, like the launch).
+    # 2) PRE-IGNITION GUARD then ascend to a low Duna orbit. NEVER fire the ascent engines unless the
+    # craft is UPRIGHT and at rest: a tipped lander throttling to 1.0 drives its engines into the ground
+    # and is destroyed (this is exactly how the last crew was lost). Abort + log instead of self-destruct.
+    tilt, hspd, vspd = execute.attitude(v)
+    legs = execute.count_legs(v)
+    n_parts = len(v.parts.all)
+    if tilt > 15.0:
+        log(f"  ABORT ascent: craft is TILTED {tilt:.0f} deg (tipped over?) — refusing to fire into the ground")
+        return 2
+    log(f"  pre-ignition OK: upright (tilt={tilt:.0f} deg), at rest (h={hspd:.1f} v={vspd:.1f} m/s), {legs} legs, {n_parts} parts")
     park = b.atmosphere_depth + 12_000.0 if b.has_atmosphere else b.equatorial_radius * 0.05
     try:
         log(f"  mj-ascent (Duna) -> {bridge.mj_ascent(altitude=park, inclination=0.0)}")
@@ -416,8 +432,30 @@ def cmd_return(sc, cfg, bridge) -> int:
     log(f"  after trans-Kerbin: body={v.orbit.body.name}")
     # 4) Propulsive Kerbin landing (aerobrake on entry, hoverslam the touchdown — heat shield protects).
     if v.orbit.body.name == "Kerbin":
-        if v.orbit.periapsis_altitude > 20000:
+        kb = v.orbit.body
+        katmo = kb.atmosphere_depth if kb.has_atmosphere else 0.0
+        # We arrive on a hyperbola (flyby). Capture at periapsis into a bound orbit first, else the
+        # craft sails back out of Kerbin's SOI without ever landing.
+        if v.orbit.eccentricity >= 1.0 or v.orbit.apoapsis_altitude <= 0:
+            if v.orbit.time_to_periapsis > 200:
+                execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_periapsis - 150)
+            st = execute.measure(v)
+            dv = astro.capture_dv(st["mu"], st["r_periapsis"], v.orbit.semi_major_axis, st["body_radius"] + 100_000)
+            for nd in list(v.control.nodes):
+                nd.remove()
+            v.control.add_node(sc.ut + max(5.0, v.orbit.time_to_periapsis), prograde=-dv)
+            log(f"  Kerbin capture: retro {dv:.0f} m/s")
+            execute.execute_node(sc, bridge, v)
+            log(f"  captured at Kerbin: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km")
+        # Deorbit only if periapsis is above the atmosphere; warp DOWN to entry (warp_to decelerates —
+        # the stepped rails warp overshoots a high orbit). Same robust path as the Duna landing.
+        if v.orbit.periapsis_altitude > katmo:
+            if v.orbit.time_to_apoapsis > 300:
+                execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_apoapsis - 200)
             execute.deorbit_into_atmosphere(sc, bridge, v, 10000.0)
+        if v.orbit.time_to_periapsis > 600 and v.flight().mean_altitude > katmo * 2.0:
+            log(f"  warping {v.orbit.time_to_periapsis/3600:.1f} h down to Kerbin entry")
+            execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_periapsis - 400)
         execute.propulsive_landing(sc, bridge, v)
         log(f"=== CREW HOME: {v.name} sit={str(v.situation).split('.')[-1]} crew={v.crew_count} ===")
         try:

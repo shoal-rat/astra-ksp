@@ -31,6 +31,7 @@ class Phase:
     dv_mps: float                 # Δv requirement (calculated by plan.py / astro.py from live state)
     twr_body_g: float = 0.0       # surface gravity where TWR matters (launch/landing); 0 = vacuum
     min_twr: float = 0.0          # required TWR at ignition mass (launch ~1.4, powered landing ~2.0)
+    min_diameter_m: float = 0.0   # force a wider tank for this stage (2.5 m for a low-CoG lander base)
 
 
 @dataclass(slots=True)
@@ -51,6 +52,10 @@ class ShipRequirements:
     landing: LandingSite | None = None
     needs_heatshield: bool = False
     needs_docking: bool = False
+    # Landing legs are needed by ANY craft that touches down — a PROPULSIVE lander (no parachutes) needs
+    # them just as much as a chute lander. Kept separate from `landing` (which means a chute touchdown)
+    # so the no-chute Starship still gets legs (the bug that let it tip over and kill the crew).
+    needs_legs: bool = False
     chute_part: str = "parachuteSingle"
     # Cap the engine cluster size. The .craft renderer's radial cluster does not yet feed/stage
     # reliably (a clustered booster auto-staged early in live test), so callers can force a single
@@ -138,11 +143,16 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_e
     m0 = mass_above_t + wet
     achieved_twr = astro.twr(thrust_one * n_eng, m0, phase.twr_body_g) if phase.twr_body_g > 0 else math.inf
     actual_dv = astro.rocket_dv(eng.isp_vac_s, m0, mass_above_t + dry)
+    # Honour a minimum tank diameter (a powered lander wants a WIDE 2.5 m tank for a low CoG + wide base,
+    # not a tall 1.25 m needle that tips over). A too-narrow tank is rejected as a candidate.
+    diameter_ok = phase.min_diameter_m <= 0 or tank.diameter_m >= phase.min_diameter_m - 1e-6
     return {
         "engine": eng_name, "engine_count": n_eng, "tank": TANK_FOR_ENGINE[eng_name], "tanks": tanks,
+        "diameter_m": tank.diameter_m,
         "twr": round(achieved_twr, 2), "stage_dv": round(actual_dv, 0), "m0_t": round(m0, 2),
         "wet_t": round(wet, 2), "parts": n_eng + tanks,
-        "ok": tanks < 9000 and actual_dv >= dv * 0.995 and (phase.min_twr <= 0 or achieved_twr >= phase.min_twr),
+        "ok": tanks < 9000 and actual_dv >= dv * 0.995 and diameter_ok
+              and (phase.min_twr <= 0 or achieved_twr >= phase.min_twr),
     }
 
 
@@ -161,7 +171,8 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
         dv_ok = [m for m in capped if m["stage_dv"] >= dv * 0.995]
         chosen = max(dv_ok or capped or candidates, key=lambda m: m["twr"])
     spec = StageSpec(phase.name, chosen["engine"], chosen["tank"], chosen["tanks"],
-                     decoupler_above=True, engine_count=chosen["engine_count"])
+                     decoupler_above=True, engine_count=chosen["engine_count"],
+                     diameter_m=chosen.get("diameter_m", 1.25))
     return spec, chosen
 
 
@@ -207,7 +218,7 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
         stages=stages,
         heatshield=req.needs_heatshield,
         docking_port=req.needs_docking,
-        landing_legs=req.landing is not None,
+        landing_legs=(req.landing is not None) or req.needs_legs,
         tags=["calculated", "requirements-driven"],
         notes="DESIGN LOG (every count from physics):\n  " + "\n  ".join(log),
         source="design.design_ship",

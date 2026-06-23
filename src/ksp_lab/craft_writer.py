@@ -366,6 +366,7 @@ class CraftWriter:
         rendered_stages = list(reversed(design.stages))
         bottom_tank: CraftNode | None = None
         lander_tank: CraftNode | None = None  # tank of the top stage that STAYS (the lander)
+        lander_engine: CraftNode | None = None  # engine of the lander stage (footpads must clear its bell)
         for render_index, stage in enumerate(rendered_stages, start=1):
             if stage.decoupler_above:
                 # The inter-stage decoupler must ACTIVATE one stage later than the engine/tanks it
@@ -388,6 +389,8 @@ class CraftWriter:
             engine = new_node(stage.engine, render_index)
             self._attach(current, engine, "bottom", "top")
             nodes.append(engine)
+            if render_index == 1:
+                lander_engine = engine  # bottom of the kept stack — legs' footpads go below this bell
             # CALCULATED engine cluster: design.py sizes engine_count for the phase's TWR. The central
             # engine is node-attached on the stack axis; the rest clip into a ring around it on the
             # bottom tank, all pointing down (identity rotation) and crossfeeding from the tank — the
@@ -490,8 +493,16 @@ class CraftWriter:
                     break
             fin_count = max(4, fin_count)
             cop_final = (a_mom + fin_count * part(fin_name).fin_area_m2 * fin_y) / (a_sum + fin_count * part(fin_name).fin_area_m2)
+            static_margin = com_y - cop_final
             self.last_stability = {"com_y": round(com_y, 2), "cop_y": round(cop_final, 2),
-                                   "static_margin_m": round(com_y - cop_final, 2), "fins": f"{fin_count}x {fin_name}"}
+                                   "static_margin_m": round(static_margin, 2), "fins": f"{fin_count}x {fin_name}"}
+            # Persist onto the design so the result is gateable/serialisable, not a transient attribute.
+            # ascent_stable iff CoP sits at least one calibre below CoM (else the fin cap was hit and the
+            # stack launches understabilised — the caller should treat that as an invalid design).
+            design.static_margin_m = round(static_margin, 2)
+            design.ascent_stable = static_margin >= margin - 1e-6
+            if design.stages:
+                design.stages[0].fin_count = fin_count  # fins sit on the first-firing (booster) stage
             fin_r = part(bottom_tank.part_name).diameter_m * 0.5 + 0.4
             for k in range(fin_count):
                 th = 2.0 * math.pi * k / fin_count
@@ -500,22 +511,34 @@ class CraftWriter:
                 self._attach_surface(bottom_tank, fin, (fin_r * math.cos(th), fin_y, fin_r * math.sin(th)), rot)
                 nodes.append(fin)
 
-        # Landing legs for a lander (HLS): four legs around the LANDER stage tank (the top stage
-        # that stays after the booster/transfer drop), so the craft can touch down on its own
-        # descent engine. inverse-stage 0 = always deployed/kept with the lander.
+        # Landing legs — CALCULATED for landed TIP-OVER stability (the fix for the crew that tipped over
+        # and was lost). The industry rule: footpad SPAN >= center-of-gravity HEIGHT, i.e. the tip-over
+        # angle theta = atan(half_span / CoG_height) must be large (target >= 35-45 deg). A propulsive
+        # (no-chute) lander needs legs just as much as a chute lander — `landing_legs` now covers it.
+        # We compute the LANDED CoG height of the parts that STAY (bus + lander stage, inverse-stage 0/1,
+        # after the booster + transfer drop) above the footpad plane, then splay the legs wide enough
+        # that span = 1.4 x CoG height (theta ~ 35 deg) — so it cannot topple on touchdown.
         if design.landing_legs and lander_tank is not None and can_emit("landingLeg1"):
-            leg_radius = part(lander_tank.part_name).height_m * 0.12 + 1.35
-            leg_y = lander_tank.y - part(lander_tank.part_name).height_m * 0.45
-            sqrt_half = 0.70710678
-            leg_layout = [
-                ((leg_radius, leg_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
-                ((-leg_radius, leg_y, 0.0), (0.0, 1.0, 0.0, 0.0)),
-                ((0.0, leg_y, leg_radius), (0.0, sqrt_half, 0.0, sqrt_half)),
-                ((0.0, leg_y, -leg_radius), (0.0, sqrt_half, 0.0, -sqrt_half)),
-            ]
-            for pos, rot in leg_layout:
+            eng_h = part(lander_engine.part_name).height_m if lander_engine is not None else 1.0
+            anchor = lander_engine if lander_engine is not None else lander_tank
+            foot_y = anchor.y - eng_h * 0.5 - 0.2            # footpad plane just below the engine bell
+            kept = [n for n in nodes if not n.is_surface and getattr(n, "stage_index", 0) in (0, 1)]
+            mk = sum(part(n.part_name).wet_mass_t for n in kept) or 1.0
+            cog_y = sum(part(n.part_name).wet_mass_t * n.y for n in kept) / mk
+            h_cog = max(0.5, cog_y - foot_y)                 # CoG height above the footpad plane
+            hull_r = part(lander_tank.part_name).diameter_m * 0.5
+            leg_radius = max(hull_r + 0.4, 0.85 * h_cog)     # span ~1.7 x CoG height -> ~40 deg tip-over
+            leg_count = 6 if (mk > 12.0 or h_cog > 6.0) else 4   # hexagon base for tall/heavy landers
+            theta = math.degrees(math.atan2(leg_radius, h_cog))
+            design.cog_height_m = round(h_cog, 2)
+            design.leg_span_m = round(2.0 * leg_radius, 2)
+            design.tipover_angle_deg = round(theta, 1)
+            design.landed_stable = theta >= 35.0
+            for k in range(leg_count):
+                th = 2.0 * math.pi * k / leg_count
+                rot = (0.0, math.sin(th / 2.0), 0.0, math.cos(th / 2.0))  # yaw the footpad outward
                 leg = new_node("landingLeg1", 0)
-                self._attach_surface(lander_tank, leg, pos, rot)
+                self._attach_surface(lander_tank, leg, (leg_radius * math.cos(th), foot_y, leg_radius * math.sin(th)), rot)
                 nodes.append(leg)
 
         if design.docking_port and can_emit("dockingPort2"):

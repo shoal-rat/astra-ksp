@@ -37,6 +37,9 @@ class StageSpec:
     decoupler_above: bool = True
     notes: str = ""
     engine_count: int = 1  # calculated cluster size (N engines) for the TWR the phase demands
+    diameter_m: float = 1.25  # body diameter of this stage's tank (2.5 m for a wide/low-CoG lander)
+    leg_count: int = 0        # calculated landing-leg count placed on this stage (0 = none)
+    fin_count: int = 0        # calculated ascent-stabiliser fin count on this stage (0 = none)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -61,6 +64,15 @@ class RocketDesign:
     landing_legs: bool = False
     heatshield: bool = False
     docking_port: bool = False
+    # Calculated stability metrics (written by craft_writer after the stack geometry is known) — the
+    # numbers that gate "this craft will not tip on landing / tumble on ascent". CoG height + leg span
+    # give the tip-over angle; static margin is CoG-above-CoP in body diameters.
+    cog_height_m: float = 0.0
+    leg_span_m: float = 0.0
+    tipover_angle_deg: float = 0.0
+    static_margin_m: float = 0.0
+    ascent_stable: bool = True
+    landed_stable: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

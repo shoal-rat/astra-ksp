@@ -69,6 +69,28 @@ def _ignite(vessel) -> None:
             pass
 
 
+def attitude(vessel) -> tuple[float, float, float]:
+    """Return (tilt_deg, horizontal_mps, vertical_mps). tilt = angle between the vessel's nose and the
+    local 'up' (radial, away from the body centre) — 0 deg is perfectly upright. Used to detect a
+    tip-over on landing and to gate a surface ignition (never fire a tilted rocket into the ground)."""
+    b = vessel.orbit.body
+    rf = b.reference_frame
+    f = vessel.flight(rf)
+    pos = vessel.position(rf)
+    n = math.sqrt(sum(x * x for x in pos)) or 1.0
+    up = tuple(x / n for x in pos)
+    d = vessel.direction(rf)
+    dot = max(-1.0, min(1.0, sum(a * c for a, c in zip(up, d))))
+    return math.degrees(math.acos(dot)), abs(f.horizontal_speed), abs(f.vertical_speed)
+
+
+def count_legs(vessel) -> int:
+    try:
+        return sum(1 for p in vessel.parts.all if "landingLeg" in (p.name or "") or "leg" in (p.name or "").lower())
+    except Exception:
+        return 0
+
+
 def warp_to_ut(sc, target_ut: float, chunk_days: float = 30.0) -> None:
     """Chunked warp to a COMPUTED universal time. Chunking lands on the target precisely; a single
     stepped rails-warp overshoots because the ramp-down lags the poll."""
@@ -185,14 +207,26 @@ def propulsive_landing(sc, bridge, vessel, *, touchdown_mps: float = 2.0, ignite
     g = b.surface_gravity
     ap = vessel.auto_pilot
     body_rf = b.reference_frame
-    _log(f"propulsive landing on {b.name}: g={g:.2f}, no chutes")
+    legs = count_legs(vessel)
+    _log(f"propulsive landing on {b.name}: g={g:.2f}, no chutes, {legs} landing leg(s)")
+    if legs == 0:
+        _log("  WARNING: NO landing legs detected — high tip-over risk (gear=True will be a no-op)")
+    vessel.control.gear = True  # deploy + lock legs early so they are down well before touchdown
     while True:
         refuel(bridge, vessel)
         _ignite(vessel)
         sit = str(vessel.situation).split(".")[-1].lower()
         if sit in ("landed", "splashed"):
-            _log(f"TOUCHDOWN on {b.name}: crew={vessel.crew_count} alive")
             vessel.control.throttle = 0.0
+            # POST-LANDING SETTLE: let the suspension settle, then VERIFY it did not tip over. A
+            # tipped craft must NOT be reported as a good landing — the caller would fire the ascent
+            # engines into the ground and kill the crew (exactly what happened before).
+            time.sleep(3.0)
+            tilt, hs, vs = attitude(vessel)
+            if tilt > 25.0:
+                _log(f"  TIPPED OVER on touchdown (tilt={tilt:.0f} deg) — NOT a safe landing")
+                return False
+            _log(f"TOUCHDOWN on {b.name}: crew={vessel.crew_count} alive, upright (tilt={tilt:.0f} deg)")
             return True
         f = vessel.flight(body_rf)
         alt = f.surface_altitude
@@ -205,10 +239,16 @@ def propulsive_landing(sc, bridge, vessel, *, touchdown_mps: float = 2.0, ignite
             time.sleep(2)
             continue
         sc.rails_warp_factor = 0
-        # Point retrograde to the surface velocity so the burn opposes the fall.
         ap.reference_frame = body_rf
         try:
-            ap.target_direction = tuple(-x for x in f.velocity)
+            # While moving fast, point RETROGRADE (kills horizontal AND vertical velocity together, so
+            # there is no sideways drift to catch a leg/skirt and topple it). Near the ground / near
+            # rest, point straight UP (radial) so it settles VERTICAL, not at the velocity vector's tilt.
+            if speed > 12.0:
+                ap.target_direction = tuple(-x for x in f.velocity)
+            else:
+                pos = vessel.position(body_rf)
+                ap.target_direction = pos  # radial-out = local up -> vertical touchdown
             ap.engage()
         except Exception:
             pass

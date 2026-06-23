@@ -29,9 +29,10 @@ def _starship_mars_requirements() -> ShipRequirements:
         phases=[
             Phase("booster", dv_mps=3400.0, twr_body_g=KERBIN_G, min_twr=1.4),
             Phase("transfer", dv_mps=1371.0),                                   # vacuum, no TWR floor
-            Phase("lander", dv_mps=2700.0, twr_body_g=DUNA_G, min_twr=2.0),     # propulsive landing
+            Phase("lander", dv_mps=2700.0, twr_body_g=DUNA_G, min_twr=2.0, min_diameter_m=2.5),  # wide, low-CoG propulsive lander
         ],
         landing=None,           # propulsive: the hoverslam law lands it, so ZERO parachutes
+        needs_legs=True,        # but it STILL needs landing legs (decoupled from parachutes)
         needs_heatshield=True,
         needs_docking=True,     # orbital refuelling rendezvous
     )
@@ -119,6 +120,33 @@ def test_parachute_duna_lander_gets_multichute_pack():
     n_chute = design.estimates["parachutes"]
     assert n_chute >= 8.0, (n_chute, design.notes)
     assert design.landing_legs is True
+
+
+def test_propulsive_lander_gets_legs_and_does_not_tip():
+    """A PROPULSIVE (no-chute) lander must still get landing legs (the decoupled `needs_legs`), and once
+    the stack geometry is rendered the legs must splay wide enough that it cannot topple: footpad SPAN
+    >= center-of-gravity HEIGHT (tip-over angle >= 35 deg). This is the exact failure that tipped the
+    craft over and killed the crew — lock it so it cannot regress."""
+    from ksp_lab.craft_writer import CraftWriter
+    design = design_ship(_starship_mars_requirements())
+    assert design.landing_legs is True, "propulsive lander must have legs"
+    craft = CraftWriter().render(design)
+    assert craft.count("part = landingLeg1") >= 4, "expected >= 4 landing legs in the .craft"
+    # span >= CoG height (ratio >= 1.0) and tip-over angle past the 35 deg industry floor.
+    assert design.cog_height_m > 0.0 and design.leg_span_m > 0.0, design.to_dict()
+    assert design.leg_span_m >= design.cog_height_m, (design.leg_span_m, design.cog_height_m)
+    assert design.tipover_angle_deg >= 35.0, design.tipover_angle_deg
+    assert design.landed_stable is True
+    assert design.ascent_stable is True, design.static_margin_m
+
+
+def test_propulsive_lander_uses_a_wide_low_cog_tank():
+    """The lander stage must pick a WIDE 2.5 m tank (a low CoG + wide base), not a tall 1.25 m needle —
+    the min_diameter_m constraint. The lander is the kept top stage (stages[-1])."""
+    design = design_ship(_starship_mars_requirements())
+    lander = design.stages[-1]
+    assert lander.role == "lander"
+    assert lander.diameter_m >= 2.5, lander.to_dict()
 
 
 def test_propulsive_vs_parachute_diverge_on_chutes():
