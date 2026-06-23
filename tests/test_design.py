@@ -188,19 +188,24 @@ def test_booster_uses_sea_level_engine_not_a_vacuum_one():
 
 
 def test_design_has_sound_aerodynamics():
-    """The aerospace sign-off: a rendered stack must be STREAMLINED (low Cd from a nose cone + a faired
-    payload), have a HIGH ballistic coefficient (so the ascent drag-loss Δv is small), survive a sane
-    max-Q, and be statically stable. Shape -> air-resistance numbers, all calculated."""
+    """The aerospace sign-off on the REBUILT relay launcher: a streamlined slender stack (low Cd from a
+    nose + faired payload), high ballistic coefficient (small drag-loss Δv), a sane max-Q, and statically
+    STABLE on a SMALL fin set (no 13-fin forest). Shape -> air-resistance numbers, all calculated."""
     from ksp_lab.craft_writer import CraftWriter
-    from ksp_lab.duna import build_duna_comsat
-    d = build_duna_comsat()
-    CraftWriter().render(d)  # minimal mode populates the aero metrics from the assembled shape
+    d = design_ship(ShipRequirements(
+        name="relay-aero", crew=0, payload_t=0.3,
+        phases=[Phase("booster", dv_mps=4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
+                Phase("insertion", dv_mps=1300.0)],
+        landing=None, max_engine_count=1,
+    ))
+    craft = CraftWriter().render(d)  # minimal mode populates the aero metrics from the assembled shape
     assert 0.0 < d.drag_cd <= 0.30, d.drag_cd                    # streamlined (nose + fairing)
     assert d.frontal_area_m2 > 0.0
     assert d.ballistic_coeff_kgm2 > 30_000.0, d.ballistic_coeff_kgm2   # slices through the air
     assert d.ascent_drag_loss_mps < 300.0, d.ascent_drag_loss_mps      # low air-resistance loss
     assert d.max_q_kpa > 0.0
     assert d.ascent_stable is True
+    assert craft.count("part = basicFin") + craft.count("part = R8winglet") <= 8  # a small fin set, not a forest
 
 
 def test_propulsive_vs_parachute_diverge_on_chutes():

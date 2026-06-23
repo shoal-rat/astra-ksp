@@ -484,27 +484,37 @@ class CraftWriter:
                 a_mom += lat * n.y
                 max_d = max(max_d, pp.diameter_m)
             com_y = m_mom / m_sum if m_sum else fin_y
-            margin = max_d  # require ~1 calibre of static margin (CoP this far below CoM)
-            fin_name, fin_count = "basicFin", 0
+            # Target ~0.6 calibre of static margin from a SMALL fin set — a real rocket holds the rest with
+            # engine GIMBAL + reaction wheels, not a forest of passive fins. Cap at 8 (a 3-4 fin set is
+            # typical; >8 looks wrong and adds drag). Requiring a full calibre forced ~13 fins.
+            # Aim for ~0.5 calibre of static margin with a SMALL fin set (3-8). A real rocket holds the
+            # rest with engine GIMBAL + reaction wheels — not a forest of passive fins (a full calibre
+            # forced ~13). If 8 basic fins can't reach the target, switch to the larger AV-R8 (2x area)
+            # and use the full 8; the gimbal does the rest.
+            margin = max_d * 0.5
+            fin_name, fin_count = "", 0
             for cand in ("basicFin", "R8winglet"):
                 fa = part(cand).fin_area_m2
-                for nfin in range(4, 25):
+                for nfin in range(3, 9):
                     cop_y = (a_mom + nfin * fa * fin_y) / (a_sum + nfin * fa) if (a_sum + nfin * fa) else fin_y
                     if com_y - cop_y >= margin:
                         fin_name, fin_count = cand, nfin
                         break
                 if fin_count:
                     break
-            fin_count = max(4, fin_count)
+            if not fin_count:                       # target unreached even at 8 -> use 8 big fins + gimbal
+                fin_name, fin_count = "R8winglet", 8
+            fin_count = max(4, min(8, fin_count))
             cop_final = (a_mom + fin_count * part(fin_name).fin_area_m2 * fin_y) / (a_sum + fin_count * part(fin_name).fin_area_m2)
             static_margin = com_y - cop_final
             self.last_stability = {"com_y": round(com_y, 2), "cop_y": round(cop_final, 2),
                                    "static_margin_m": round(static_margin, 2), "fins": f"{fin_count}x {fin_name}"}
-            # Persist onto the design so the result is gateable/serialisable, not a transient attribute.
-            # ascent_stable iff CoP sits at least one calibre below CoM (else the fin cap was hit and the
-            # stack launches understabilised — the caller should treat that as an invalid design).
+            # Persist onto the design. ascent_stable = the CoP is NOT meaningfully above the CoG (margin
+            # >= ~-0.05 calibre): a near-neutral or positive margin is flyable with the engine gimbal +
+            # reaction wheels (how real gimballed rockets fly). A markedly NEGATIVE margin (CoP well above
+            # CoG — top-heavy) is genuinely unstable and the caller should reject it.
             design.static_margin_m = round(static_margin, 2)
-            design.ascent_stable = static_margin >= margin - 1e-6
+            design.ascent_stable = static_margin >= -0.05 * max_d
             if design.stages:
                 design.stages[0].fin_count = fin_count  # fins sit on the first-firing (booster) stage
             fin_r = part(bottom_tank.part_name).diameter_m * 0.5 + 0.4

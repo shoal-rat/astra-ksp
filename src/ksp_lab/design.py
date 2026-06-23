@@ -28,10 +28,28 @@ from .parts import part, payload_bus_mass
 class Phase:
     """One propulsive phase the ship flies on its own engines."""
     name: str
-    dv_mps: float                 # Δv requirement (calculated by plan.py / astro.py from live state)
+    dv_mps: float                 # Δv REQUIREMENT (calculated by plan.py / astro.py from live state)
     twr_body_g: float = 0.0       # surface gravity where TWR matters (launch/landing); 0 = vacuum
     min_twr: float = 0.0          # required TWR at ignition mass (launch ~1.4, powered landing ~2.0)
     min_diameter_m: float = 0.0   # force a wider tank for this stage (2.5 m for a low-CoG lander base)
+    # FUEL RESERVE: the stage is sized for dv_mps*(1+reserve_frac) so it carries propellant BEYOND the
+    # nominal requirement (a real rocket never plans to burn to depletion). Defaults are the standard
+    # per-role margins (ascent fights the most gravity/steering loss); callers override via design_reserve().
+    reserve_frac: float = 0.05
+
+    def design_dv(self) -> float:
+        """The Δv the stage is actually SIZED for = requirement + reserve."""
+        return self.dv_mps * (1.0 + max(0.0, self.reserve_frac))
+
+
+def default_reserve_frac(twr_body_g: float, is_landing: bool = False) -> float:
+    """Standard fuel-reserve fraction by role: ascent/landing burns lose the most to gravity/steering/
+    throttle dispersion + must never run dry, vacuum transfers least. +2% unusable residual folded in."""
+    if is_landing:
+        return 0.10            # 8% suicide-burn margin + 2% residual: the hoverslam must not flame out
+    if twr_body_g > 5.0:
+        return 0.12            # ascent: 10% gravity/drag/steering + 2% residual
+    return 0.07               # vacuum transfer/capture: 5% + 2% residual
 
 
 @dataclass(slots=True)
@@ -205,13 +223,16 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     log: list[str] = [f"bus(command+crew+heatshield+payload)={bus:.2f}t"]
     # Process phases last-firing first so each lower stage carries the wet mass of the ones above it.
     for phase in reversed(req.phases):
-        spec, metrics = _size_stage(phase.dv_mps, mass_above, phase, req.max_engine_count)
+        # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
+        # burn-to-depletion (a real rocket never plans to land on empty tanks).
+        spec, metrics = _size_stage(phase.design_dv(), mass_above, phase, req.max_engine_count)
         stages_rev.append(spec)
         metrics_rev.append(metrics)
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
         log.append(
-            f"{phase.name}: need {phase.dv_mps:.0f}m/s twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} "
-            f"+ {metrics['tanks']} {metrics['tank']} = {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
+            f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve -> size {phase.design_dv():.0f}) "
+            f"twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} + {metrics['tanks']} {metrics['tank']} "
+            f"= {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
         )
     stages = list(reversed(stages_rev))  # back to fire order (launch first)
 
@@ -260,8 +281,11 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     elif lt > 2.4:
         reasons.append(f"WARN liftoff TWR {lt} > 2.4 — over-thrust: wasted engine mass + drag/flip risk")
     required_dv = sum(p.dv_mps for p in req.phases)
-    if est["total_delta_v_mps"] < required_dv * 0.98:
-        reasons.append(f"total Δv {est['total_delta_v_mps']} < required {required_dv:.0f} m/s — short of the target orbit")
+    # RESERVE FLOOR (not a short-tolerance): the design must carry at least 5% Δv beyond the bare
+    # requirement, so it never plans to burn to depletion.
+    if est["total_delta_v_mps"] < required_dv * 1.05:
+        reasons.append(f"total Δv {est['total_delta_v_mps']} < required+reserve {required_dv*1.05:.0f} m/s "
+                       f"(req {required_dv:.0f} + 5% floor) — no fuel reserve")
     # UNIFORM DIAMETER (aerodynamics): the stack fires bottom-up (stages[0] = booster at the base), so
     # diameters should be NON-INCREASING upward — the booster is the widest. A stage wider than the one
     # below it leaves an exposed flat shoulder (drag + a node an adapter should smooth).

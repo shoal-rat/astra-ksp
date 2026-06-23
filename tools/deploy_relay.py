@@ -41,15 +41,17 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE, margin ~2.5 m),
     # unlike a short single-stage probe (margin ~0.2 m, would flip). The bus adds the RA-100 relay + a
     # service-bay FAIRING + nose cone + CoP-sized fins. design.staging_plan records the per-stage masses.
-    from ksp_lab.design import Phase, ShipRequirements, design_ship
+    from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
         # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss
         # eat ~3400 of this, leaving the craft fast + high), so the weak high-Isp upper only has to nudge
         # the apoapsis and circularise — not fly the whole second half of the ascent on 60 kN (which
         # stalled the climb). Upper Δv covers circularisation + the keo raise.
-        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.5),
-                Phase("insertion", 1300.0, twr_body_g=0.0, min_twr=0.0)],
+        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
+                      reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
+                Phase("insertion", 1300.0, twr_body_g=0.0, min_twr=0.0,
+                      reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
     )
     d = design_ship(req)
