@@ -98,6 +98,11 @@ STOCK_PARTS: dict[str, StockPart] = {
     "asasmodule1-2": StockPart("asasmodule1-2", "Advanced Reaction Wheel Module (attitude authority)", 0.05, 0.05, 2100, 0.3),
     "landingLeg1": StockPart("landingLeg1", "LT-2 Landing Strut", 0.1, 0.1, 440, 0.5),
     "noseCone": StockPart("noseCone", "Aerodynamic Nose Cone (streamlining)", 0.03, 0.03, 240, 0.7),
+    # Conical ADAPTER bridging a 2.5 m lower stage to a 1.25 m upper stage so there is no exposed flat
+    # shoulder at the diameter step (the aerodynamic + structural fix the uniform-diameter rule wants).
+    # diameter_m is the WIDE (lower) end; the cone tapers to 1.25 m on top.
+    "adapterSize2-Size1": StockPart("adapterSize2-Size1", "Rockomax Brand Adapter (2.5 -> 1.25 m)",
+                                    0.8, 0.8, 800, 1.6, diameter_m=2.5),
 }
 
 

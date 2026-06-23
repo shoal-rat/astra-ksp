@@ -141,7 +141,7 @@ class CraftWriter:
         # RelayAntenna100 (RA-100) MUST be harvested or the bus_layout silently falls back to the weak
         # longAntenna (Communotron 16) — which is exactly why the relays could not hold the Kerbin<->Duna
         # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
-        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2"})
+        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2", "adapterSize2-Size1"})
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
@@ -371,6 +371,7 @@ class CraftWriter:
         bottom_tank: CraftNode | None = None
         lander_tank: CraftNode | None = None  # tank of the top stage that STAYS (the lander)
         lander_engine: CraftNode | None = None  # engine of the lander stage (footpads must clear its bell)
+        prev_dia: float | None = None          # diameter of the stage ABOVE (for the adapter step check)
         for render_index, stage in enumerate(rendered_stages, start=1):
             if stage.decoupler_above:
                 # The inter-stage decoupler must ACTIVATE one stage later than the engine/tanks it
@@ -382,6 +383,15 @@ class CraftWriter:
                 self._attach(current, decoupler, "bottom", "top")
                 nodes.append(decoupler)
                 current = decoupler
+            # ADAPTER at a diameter STEP: this (lower) stage is WIDER than the one above it (the common
+            # 2.5 m booster under a 1.25 m upper) -> insert the conical Rockomax adapter (1.25 m top mating
+            # the decoupler, 2.5 m base mating the wide tank) so there is no exposed flat shoulder.
+            if (prev_dia is not None and abs(stage.diameter_m - 2.5) < 0.1 and abs(prev_dia - 1.25) < 0.1
+                    and (part_bodies is None or "adapterSize2-Size1" in part_bodies)):
+                adapter = new_node("adapterSize2-Size1", render_index)
+                self._attach(current, adapter, "bottom", "top")
+                nodes.append(adapter)
+                current = adapter
             for _ in range(stage.tank_count):
                 tank = new_node(stage.tank, render_index)
                 self._attach(current, tank, "bottom", "top")
@@ -408,6 +418,7 @@ class CraftWriter:
                     self._attach_surface(current, sat, (ring_r * math.cos(ang), engine.y, ring_r * math.sin(ang)))
                     nodes.append(sat)
             current = engine
+            prev_dia = stage.diameter_m  # the next (lower) stage compares its diameter to this one
 
         def can_emit(part_name: str) -> bool:
             # Only attach a part when a real serialization is available (or in minimal mode),

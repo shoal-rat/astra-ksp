@@ -220,9 +220,14 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     mass_above = bus
     stages_rev: list[StageSpec] = []
     metrics_rev: list[dict] = []
+    # ADD-A-STAGE: split any phase that exceeds the single-stage Δv ceiling into equal-Δv sub-stages
+    # BEFORE sizing, so no single stage is asked for more Δv than its engine+tank can physically deliver.
+    phases = _split_phases(req.phases)
     log: list[str] = [f"bus(command+crew+heatshield+payload)={bus:.2f}t"]
+    if len(phases) != len(req.phases):
+        log.append(f"add-a-stage: split {len(req.phases)} requested phases into {len(phases)} stages (Δv ceiling)")
     # Process phases last-firing first so each lower stage carries the wet mass of the ones above it.
-    for phase in reversed(req.phases):
+    for phase in reversed(phases):
         # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
         # burn-to-depletion (a real rocket never plans to land on empty tanks).
         spec, metrics = _size_stage(phase.design_dv(), mass_above, phase, req.max_engine_count)
@@ -317,17 +322,26 @@ def staging_plan(design: RocketDesign, req: ShipRequirements) -> list[dict]:
     from .parts import stage_masses, part
     bus = _bus_mass(req)
     stage_wet = [stage_masses(s)[1] for s in design.stages]
+    # design.stages were built from the add-a-stage-SPLIT phases, so align to those (not req.phases,
+    # which may be fewer after a split).
+    phases = _split_phases(req.phases)
     plan: list[dict] = []
     for i, stage in enumerate(design.stages):
         dry, wet, thrust_asl, _isp_asl, isp_vac = stage_masses(stage)
         mass_above = bus + sum(stage_wet[i + 1:])          # flies on after this stage's separator fires
         m0, m1 = mass_above + wet, mass_above + dry
-        phase = req.phases[i]
+        phase = phases[i] if i < len(phases) else phases[-1]
         g = phase.twr_body_g or 9.81
         # ASL thrust for an in-atmosphere stage (booster), vacuum thrust otherwise — matches _size_one.
         thrust_n = (thrust_asl if phase.twr_body_g > 5.0 else
                     part(stage.engine).thrust_kn_vac * max(1, stage.engine_count)) * 1000.0
         is_last = i == len(design.stages) - 1
+        # Structural coefficient eps = inert/(inert+propellant) = stage_dry/stage_wet (the stage's OWN
+        # masses), and the single-stage Δv CEILING = Isp*g0*ln(1/eps) = the most Δv this stage's engine+
+        # tank can ever deliver (at infinite tank count). A phase needing more than this MUST be split
+        # into more stages (the add-a-stage trigger; see _split_phases).
+        eps = dry / wet if wet > 0 else 1.0
+        dv_ceiling = isp_vac * astro.G0 * math.log(1.0 / eps) if 0.0 < eps < 1.0 else 0.0
         plan.append({
             "stage": i + 1,
             "role": stage.role,
@@ -340,11 +354,48 @@ def staging_plan(design: RocketDesign, req: ShipRequirements) -> list[dict]:
             "dv_mps": round(astro.rocket_dv(isp_vac, m0, m1), 0),
             "twr_ignition": round(astro.twr(thrust_n, m0, g), 2),
             "twr_burnout": round(astro.twr(thrust_n, m1, g), 2),
+            "struct_coeff_eps": round(eps, 3),
+            "single_stage_dv_ceiling_mps": round(dv_ceiling, 0),
             "separator": "TD-12 Decoupler (fires when spent)" if stage.decoupler_above else "none — stays with payload",
             "separation_trigger": ("final stage — no separation" if is_last
                                    else "propellant exhausted -> decouple this stage -> ignite next"),
         })
     return plan
+
+
+def _single_stage_ceiling(phase: Phase) -> float:
+    """The most Δv a SINGLE stage can deliver for this phase's role: max over the engine pool of
+    Isp_vac*g0*ln(tank_wet/tank_dry) — the rocket-equation limit at infinite tank count for that engine's
+    paired tank. A phase needing more than this cannot close on one stage at ANY tank count."""
+    best = 0.0
+    for e in engine_pool(phase):
+        tk = part(TANK_FOR_ENGINE[e])
+        eng = part(e)
+        if tk.dry_mass_t > 0 and tk.wet_mass_t > tk.dry_mass_t:
+            best = max(best, eng.isp_vac_s * astro.G0 * math.log(tk.wet_mass_t / tk.dry_mass_t))
+    return best
+
+
+def _split_phases(phases: list[Phase]) -> list[Phase]:
+    """ADD-A-STAGE optimization: split any phase whose (reserved) Δv exceeds the single-stage ceiling
+    into N equal-Δv sub-phases — the restricted-staging optimum (equal Ve, equal eps => equal Δv per
+    stage). Each sub-phase becomes its own stage with its own separator. The FIRST-firing sub-stage
+    (bottom) keeps the role's TWR floor; the upper sub-stages fly in vacuum. Most missions don't trigger
+    this (LKO ~3.4 km/s << a ~6.7 km/s ceiling); it catches the big legs (a Duna round-trip lander)."""
+    out: list[Phase] = []
+    for ph in phases:
+        ceil = _single_stage_ceiling(ph)
+        need = ph.design_dv()
+        if ceil > 0 and need > ceil * 0.95:
+            n = max(2, math.ceil(need / (ceil * 0.9)))
+            for k in range(n):                       # k=0 fires first (bottom) -> keeps the TWR floor
+                out.append(Phase(f"{ph.name}{k+1}", ph.dv_mps / n,
+                                 twr_body_g=ph.twr_body_g if k == 0 else 0.0,
+                                 min_twr=ph.min_twr if k == 0 else 0.0,
+                                 min_diameter_m=ph.min_diameter_m, reserve_frac=ph.reserve_frac))
+        else:
+            out.append(ph)
+    return out
 
 
 def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict[str, float]:
