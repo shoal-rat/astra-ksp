@@ -60,16 +60,6 @@ def refuel(bridge, vessel=None) -> None:
     return None
 
 
-def charge_ec(bridge, vessel) -> None:
-    """Recharge ONLY ElectricCharge from the bridge (NOT propellant) — a legitimate stand-in for solar
-    panels when a probe would otherwise lose attitude authority in shadow/deep space. Propellant is
-    never touched here, so it is not the refuel cheat. Use sparingly; prefer real solar panels."""
-    try:
-        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0", "resources": "ElectricCharge"})
-    except Exception:
-        pass
-
-
 def _ignite(vessel) -> None:
     for e in vessel.parts.engines:
         try:

@@ -28,11 +28,6 @@ def parking_orbit_altitude(atmosphere_top_m: float, body_radius_m: float) -> flo
     return max(10_000.0, body_radius_m * 0.05)
 
 
-def ascent_inclination(launch_latitude_deg: float, target_inclination_deg: float = 0.0) -> float:
-    """The lowest inclination reachable is the launch-site latitude; never ask for less."""
-    return max(abs(launch_latitude_deg), abs(target_inclination_deg))
-
-
 # --------------------------------------------------------------------------------------------------
 # In-orbit maneuvers about the current body.
 # --------------------------------------------------------------------------------------------------

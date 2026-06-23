@@ -17,7 +17,6 @@ import yaml
 
 from ksp_lab import execute, plan
 from ksp_lab.bridge_client import BridgeClient
-from ksp_lab.duna import build_duna_comsat
 from ksp_lab.runner import AutomationRunner
 
 

@@ -88,7 +88,6 @@ class ShipRequirements:
 # Each pool is ordered small -> large so the designer still picks the LIGHTEST that meets TWR + Δv.
 BOOSTER_ENGINES = ["liquidEngine", "liquidEngine2", "engineLargeSkipper", "liquidEngineMainsail.v2"]  # Reliant/Swivel/Skipper/Mainsail
 VACUUM_ENGINES = ["liquidEngine3.v2", "engineLargeSkipper", "liquidEngineMainsail.v2"]                # Terrier (Isp 345) then thrustier
-ENGINE_LADDER = BOOSTER_ENGINES + ["liquidEngine3.v2"]  # back-compat alias (any code importing the flat list)
 
 
 def engine_pool(phase: "Phase") -> list[str]:
