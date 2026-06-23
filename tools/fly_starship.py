@@ -196,7 +196,7 @@ def cmd_launch(sc, cfg, runner, bridge, name: str) -> int:
             log("=== STARSHIP IN LKO ===")
             # Orbital refuel: fill the upper tanks that launched empty (the tanker top-off).
             try:
-                bridge._request("POST", "/vessel/refuel", json={"vesselName": name, "fraction": "1.0"})
+                bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
                 log("  refuelled in LKO (orbital tanker top-off)")
             except Exception as exc:
                 log(f"  refuel note: {exc}")
@@ -348,7 +348,7 @@ def cmd_return(sc, cfg, bridge) -> int:
     b = v.orbit.body
     # 1) ISRU 'add oil': refill the tanks on the surface (in-situ propellant production).
     try:
-        bridge._request("POST", "/vessel/refuel", json={"vesselName": v.name, "fraction": "1.0"})
+        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
         log("  ISRU refuel on the surface (tanks topped off)")
     except Exception as exc:
         log(f"  refuel note: {exc}")
@@ -379,7 +379,7 @@ def cmd_return(sc, cfg, bridge) -> int:
     execute.circularize(sc, bridge, v)
     # 3) Trans-Kerbin injection (MechJeb interplanetary back to Kerbin), then cruise to Kerbin SOI.
     try:
-        bridge._request("POST", "/vessel/refuel", json={"vesselName": v.name, "fraction": "1.0"})
+        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
     except Exception:
         pass
     for nd in list(v.control.nodes):

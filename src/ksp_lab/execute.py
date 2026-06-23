@@ -56,7 +56,7 @@ def refuel(bridge, vessel) -> None:
     """Restore propellant AND ElectricCharge (the probe is power-starved far from the Sun — dead
     reaction wheels otherwise). Idempotent; safe to call every loop."""
     try:
-        bridge._request("POST", "/vessel/refuel", json={"vesselName": vessel.name, "fraction": "1.0"})
+        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
     except Exception:
         pass
 
