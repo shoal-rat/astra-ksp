@@ -44,7 +44,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     from ksp_lab.design import Phase, ShipRequirements, design_ship
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
-        phases=[Phase("booster", 3500.0, twr_body_g=9.81, min_twr=1.5),
+        # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss
+        # eat ~3400 of this, leaving the craft fast + high), so the weak high-Isp upper only has to nudge
+        # the apoapsis and circularise — not fly the whole second half of the ascent on 60 kN (which
+        # stalled the climb). Upper Δv covers circularisation + the keo raise.
+        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.5),
                 Phase("insertion", 1300.0, twr_body_g=0.0, min_twr=0.0)],
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
     )
