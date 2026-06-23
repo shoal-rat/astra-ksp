@@ -149,6 +149,22 @@ def test_propulsive_lander_uses_a_wide_low_cog_tank():
     assert lander.diameter_m >= 2.5, lander.to_dict()
 
 
+def test_design_has_sound_aerodynamics():
+    """The aerospace sign-off: a rendered stack must be STREAMLINED (low Cd from a nose cone + a faired
+    payload), have a HIGH ballistic coefficient (so the ascent drag-loss Δv is small), survive a sane
+    max-Q, and be statically stable. Shape -> air-resistance numbers, all calculated."""
+    from ksp_lab.craft_writer import CraftWriter
+    from ksp_lab.duna import build_duna_comsat
+    d = build_duna_comsat()
+    CraftWriter().render(d)  # minimal mode populates the aero metrics from the assembled shape
+    assert 0.0 < d.drag_cd <= 0.30, d.drag_cd                    # streamlined (nose + fairing)
+    assert d.frontal_area_m2 > 0.0
+    assert d.ballistic_coeff_kgm2 > 30_000.0, d.ballistic_coeff_kgm2   # slices through the air
+    assert d.ascent_drag_loss_mps < 300.0, d.ascent_drag_loss_mps      # low air-resistance loss
+    assert d.max_q_kpa > 0.0
+    assert d.ascent_stable is True
+
+
 def test_propulsive_vs_parachute_diverge_on_chutes():
     """The same designer, given landing=None vs a LandingSite, must return ZERO vs a multi-chute pack.
     This is the requirements -> calculated-count contract in one assertion."""

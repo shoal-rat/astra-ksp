@@ -73,6 +73,14 @@ class RocketDesign:
     static_margin_m: float = 0.0
     ascent_stable: bool = True
     landed_stable: bool = True
+    # Aerodynamic / air-resistance metrics (shape -> numbers), computed by craft_writer from the
+    # assembled stack: drag coefficient, frontal area, ballistic coefficient, the ascent drag-loss Δv,
+    # and peak dynamic pressure (max-Q). The aerospace sign-off that the vehicle is streamlined enough.
+    drag_cd: float = 0.0
+    frontal_area_m2: float = 0.0
+    ballistic_coeff_kgm2: float = 0.0
+    ascent_drag_loss_mps: float = 0.0
+    max_q_kpa: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import astro
 from .models import RocketDesign
 from .parts import STOCK_PARTS, part
 
@@ -556,6 +557,25 @@ class CraftWriter:
             nose = new_node("noseCone", 0)
             self._attach(chute, nose, "top", "bottom", up=True)
             nodes.append(nose)
+
+        # AERODYNAMIC sign-off — turn the assembled SHAPE into air-resistance numbers (the aerospace
+        # refinement): a streamlined nose (cone or docking port) + a faired payload (service bay) give a
+        # low Cd; the widest tank sets the frontal area; the launch wet mass sets the ballistic
+        # coefficient and the ascent drag-loss Δv; max-Q is what the airframe/fairing must survive.
+        has_nose = any(n.part_name in ("noseCone", "dockingPort2") for n in nodes)
+        faired = any(n.part_name == "ServiceBay.125.v2" for n in nodes)
+        fin_n = sum(1 for n in nodes if n.part_name in ("basicFin", "R8winglet"))
+        max_dia = max((part(n.part_name).diameter_m for n in nodes if not n.is_surface), default=1.25)
+        cd = astro.drag_coefficient(has_nose, faired, fin_n)
+        fa = astro.frontal_area(max_dia)
+        wet_t = float(design.estimates.get("wet_mass_t", 0.0)) or sum(
+            part(n.part_name).wet_mass_t for n in nodes if not n.is_surface)
+        design.drag_cd = round(cd, 3)
+        design.frontal_area_m2 = round(fa, 2)
+        design.ballistic_coeff_kgm2 = round(astro.ballistic_coefficient(wet_t, cd, fa), 0)
+        # Ascent drag loss + max-Q at the LAUNCH body (Kerbin sea level: rho 1.225, atmosphere 70 km).
+        design.ascent_drag_loss_mps = round(astro.ascent_drag_loss(wet_t, cd, fa, 1.225, 70_000.0), 0)
+        design.max_q_kpa = round(astro.max_dynamic_pressure(1.225) / 1000.0, 1)
 
         return nodes
 

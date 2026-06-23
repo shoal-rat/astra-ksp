@@ -206,6 +206,60 @@ def surface_to_orbit_dv(mu: float, r_surface: float, r_low_orbit: float) -> floa
 
 
 # --------------------------------------------------------------------------------------------------
+# AERODYNAMICS — the shape / air-resistance layer an aerospace designer sizes before building.
+# Drag is NOT just "atmosphere depth": it is set by the vehicle's BALLISTIC COEFFICIENT
+# beta = m / (Cd * A). A streamlined (nose cone), faired, dense, slender stack has a high beta and
+# barely notices the air; a blunt, draggy, light one with an exposed payload bleeds hundreds of m/s
+# and can be aerodynamically unstable. These functions turn the vehicle's SHAPE into numbers.
+# --------------------------------------------------------------------------------------------------
+
+def frontal_area(diameter_m: float) -> float:
+    """Cross-sectional (frontal) area of a cylindrical stack, m^2 — what the airflow actually sees."""
+    return math.pi * (diameter_m * 0.5) ** 2
+
+
+def drag_coefficient(has_nose_cone: bool, payload_faired: bool, fin_count: int = 0) -> float:
+    """Effective drag coefficient Cd of the ascent stack from its SHAPE. A pointed nose cone over a
+    clean cylinder flies at ~0.20; a blunt flat top spoils the flow (~0.45); an exposed radial payload
+    (antenna dish, panels) adds form drag + turbulence; fins add a little skin/interference drag but buy
+    stability. These are the standard slender-body ranges an aero designer assumes pre-CFD."""
+    cd = 0.20 if has_nose_cone else 0.45      # streamlined nose vs blunt top
+    if not payload_faired:
+        cd += 0.12                            # exposed antenna/solar = form drag + wake
+    cd += 0.004 * max(0, fin_count)           # fin skin/interference drag (small; stability >> this)
+    return cd
+
+
+def ballistic_coefficient(mass_t: float, cd: float, frontal_area_m2: float) -> float:
+    """beta = m / (Cd * A) in kg/m^2. HIGH beta = slices through the air (low drag loss); LOW beta =
+    draggy. The single number that says how aerodynamic a stack is for its mass."""
+    if cd <= 0 or frontal_area_m2 <= 0:
+        return float("inf")
+    return mass_t * 1000.0 / (cd * frontal_area_m2)
+
+
+def ascent_drag_loss(mass_t: float, cd: float, frontal_area_m2: float, rho0: float,
+                     atmosphere_top_m: float) -> float:
+    """Δv lost to AIR RESISTANCE climbing to orbit, from the ballistic coefficient. Δv_drag scales as
+    1/beta * (rho0 * H): doubling beta halves the loss; a thicker/denser atmosphere costs more. Calibrated
+    (K=160) so a typical 2.5 m Kerbin rocket (~50 t, Cd 0.3) loses ~400 m/s, and streamlining/fairing
+    (Cd 0.3 -> 0.20) visibly buys ~150 m/s back. Airless -> 0."""
+    if atmosphere_top_m <= 0:
+        return 0.0
+    beta = ballistic_coefficient(mass_t, cd, frontal_area_m2)
+    if beta == float("inf") or beta <= 0:
+        return 0.0
+    return 160.0 * rho0 * atmosphere_top_m / beta
+
+
+def max_dynamic_pressure(rho0: float, v_at_maxq: float = 380.0) -> float:
+    """Peak aerodynamic pressure q = 0.5 * rho * v^2 (Pa) the airframe + payload must survive (max-Q).
+    Default v ~ the speed near the dense lower atmosphere where q peaks on a Kerbin gravity turn; a
+    fairing exists precisely to keep the payload below the q a bare dish would feel."""
+    return 0.5 * rho0 * v_at_maxq * v_at_maxq
+
+
+# --------------------------------------------------------------------------------------------------
 # Atmospheric descent — terminal velocity, parachute sizing, and the suicide-burn / hoverslam law.
 # rho is the LIVE atmospheric density (kg/m^3) measured from kRPC `body.density_at(altitude)`.
 # --------------------------------------------------------------------------------------------------
