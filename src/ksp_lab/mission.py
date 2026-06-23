@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from . import budget
 from .models import MissionSpec
 
 
@@ -14,6 +15,12 @@ class MissionPlanner:
 
     This is intentionally deterministic. It converts natural language into a
     concrete contract that an external AI provider or local optimizer can use.
+
+    The Δv budget on each MissionSpec is no longer a flat hand-picked number: it is CALCULATED by
+    `budget.total_budget_mps` from `astro.py` + the stock-body catalogue (ascent + transfer + capture
+    + descent + surface-ascent + return, only the phases the mission needs). The same `budget` module
+    feeds the optimizer's per-phase design requirements, so the mission's Δv requirement and the
+    design's Δv target are one physics.
     """
 
     def interpret(self, goal: str) -> MissionSpec:
@@ -41,7 +48,7 @@ class MissionPlanner:
                 "recover crew and score the architecture",
                 "iterate vehicle and guidance changes",
             ]
-            return MissionSpec(
+            spec = MissionSpec(
                 goal=goal,
                 mission_type="artemis_hls_orion_return",
                 target_body="Mun",
@@ -52,9 +59,10 @@ class MissionPlanner:
                 require_return=True,
                 reusable=reusable,
                 reliability_trials=2,
-                delta_v_budget_mps=9200,
                 phases=phases,
             )
+            spec.delta_v_budget_mps = budget.total_budget_mps(spec)
+            return spec
 
         if "mun" in text or "moon" in text:
             phases = [
@@ -67,7 +75,7 @@ class MissionPlanner:
                 "re-entry and recovery",
                 "score and iterate",
             ]
-            return MissionSpec(
+            spec = MissionSpec(
                 goal=goal,
                 mission_type="mun_landing_return",
                 target_body="Mun",
@@ -78,9 +86,10 @@ class MissionPlanner:
                 require_return=True,
                 reusable=reusable,
                 reliability_trials=2,
-                delta_v_budget_mps=7500,
                 phases=phases,
             )
+            spec.delta_v_budget_mps = budget.total_budget_mps(spec)
+            return spec
 
         if "orbit" in text:
             phases = [
@@ -92,7 +101,7 @@ class MissionPlanner:
                 "evaluate orbit and payload delivery",
                 "score and iterate",
             ]
-            return MissionSpec(
+            spec = MissionSpec(
                 goal=goal,
                 mission_type="kerbin_orbit",
                 target_body="Kerbin",
@@ -101,9 +110,10 @@ class MissionPlanner:
                 crewed=crewed,
                 reusable=reusable,
                 reliability_trials=2 if reusable else 1,
-                delta_v_budget_mps=4500,
                 phases=phases,
             )
+            spec.delta_v_budget_mps = budget.total_budget_mps(spec)
+            return spec
 
         phases = [
             "design prototype",
@@ -113,15 +123,18 @@ class MissionPlanner:
             "record telemetry",
             "score and iterate",
         ]
-        return MissionSpec(
+        spec = MissionSpec(
             goal=goal,
             mission_type="generic",
             payload_mass_t=payload_t,
             crewed=crewed,
             reusable=reusable,
-            delta_v_budget_mps=5000,
             phases=phases,
         )
+        # Generic missions default to a Kerbin low-orbit ascent budget (the safest proven profile),
+        # calculated rather than the old flat 5000.
+        spec.delta_v_budget_mps = budget.total_budget_mps(spec)
+        return spec
 
     @staticmethod
     def _payload_mass_t(text: str) -> float:

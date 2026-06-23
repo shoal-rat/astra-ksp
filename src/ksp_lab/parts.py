@@ -23,6 +23,10 @@ class StockPart:
     liquid_fuel: float = 0.0
     oxidizer: float = 0.0
     solid_fuel: float = 0.0
+    # Fully-deployed parachute drag area Cd*A (m^2), 0 for non-chutes. Used by astro.terminal_velocity
+    # to size chute counts for a target body's live atmospheric density. Calibrated from the live
+    # datum "one Mk16 lands ~1.2 t at ~6.5 m/s at Kerbin sea level (rho=1.14)": Cd*A = 2 m g / (rho v^2).
+    drag_area_m2: float = 0.0
 
     @property
     def propellant_mass_t(self) -> float:
@@ -32,7 +36,7 @@ class StockPart:
 STOCK_PARTS: dict[str, StockPart] = {
     "mk1pod.v2": StockPart("mk1pod.v2", "Mk1 Command Pod", 0.84, 0.84, 600, 1.2),
     "probeCoreOcto.v2": StockPart("probeCoreOcto.v2", "Probodobodyne OKTO", 0.1, 0.1, 450, 0.25),
-    "parachuteSingle": StockPart("parachuteSingle", "Mk16 Parachute", 0.1, 0.1, 422, 0.35),
+    "parachuteSingle": StockPart("parachuteSingle", "Mk16 Parachute", 0.1, 0.1, 422, 0.35, drag_area_m2=489.0),
     "dockingPort2": StockPart("dockingPort2", "Clamp-O-Tron Docking Port", 0.05, 0.05, 280, 0.28),
     "crewCabin": StockPart("crewCabin", "Mk1 Crew Cabin", 1.0, 1.0, 600, 1.275),
     "RCSBlock": StockPart("RCSBlock", "RV-105 RCS Thruster Block", 0.04, 0.04, 620, 0.2),
@@ -102,9 +106,10 @@ def payload_bus_mass(payload_mass_t: float, crewed: bool) -> float:
 def stage_masses(stage: StageSpec) -> tuple[float, float, float, float, float]:
     engine = part(stage.engine)
     tank = part(stage.tank)
-    dry = engine.dry_mass_t + tank.dry_mass_t * stage.tank_count
-    wet = engine.wet_mass_t + tank.wet_mass_t * stage.tank_count
-    thrust_asl = engine.thrust_kn_asl
+    n_eng = max(1, stage.engine_count)
+    dry = engine.dry_mass_t * n_eng + tank.dry_mass_t * stage.tank_count
+    wet = engine.wet_mass_t * n_eng + tank.wet_mass_t * stage.tank_count
+    thrust_asl = engine.thrust_kn_asl * n_eng
     isp_asl = engine.isp_asl_s
     isp_vac = engine.isp_vac_s
     if stage.decoupler_above:

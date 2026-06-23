@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -286,15 +287,21 @@ class CraftWriter:
         root = new_node("mk1pod.v2" if design.crewed else "probeCoreOcto.v2", 0)
         nodes = [root]
 
-        chute = new_node("parachuteSingle", 0)
-        if design.docking_port:
-            # Docking craft reserve the nose (top node) for the docking port — the mating surface —
-            # so the recovery chute mounts radially on the command pod instead of on the nose.
-            chute_r = part(root.part_name).height_m * 0.55 + 0.15
-            self._attach_surface(root, chute, (chute_r, root.y, 0.0))
-        else:
-            self._attach(root, chute, "top", "bottom", up=True)
-        nodes.append(chute)
+        # CALCULATED parachute count: design.py sizes it for the target body's LIVE atmospheric density
+        # (estimates["parachutes"]); a propulsive Starship-style lander gets 0. Designs without the
+        # field default to 1 (Kerbin recovery), preserving older craft.
+        n_chute = int(round(design.estimates.get("parachutes", 1)))
+        chute_r = part(root.part_name).height_m * 0.55 + 0.15
+        for i in range(n_chute):
+            chute = new_node("parachuteSingle", 0)
+            if i == 0 and not design.docking_port:
+                # First chute on the nose unless the docking port reserves it.
+                self._attach(root, chute, "top", "bottom", up=True)
+            else:
+                # Remaining chutes distributed radially around the command pod.
+                ang = 2.0 * math.pi * i / max(1, n_chute)
+                self._attach_surface(root, chute, (chute_r * math.cos(ang), root.y, chute_r * math.sin(ang)))
+            nodes.append(chute)
 
         current = root
         if design.crewed or design.heatshield:
@@ -378,6 +385,18 @@ class CraftWriter:
             engine = new_node(stage.engine, render_index)
             self._attach(current, engine, "bottom", "top")
             nodes.append(engine)
+            # CALCULATED engine cluster: design.py sizes engine_count for the phase's TWR. The central
+            # engine is node-attached on the stack axis; the rest clip into a ring around it on the
+            # bottom tank, all pointing down (identity rotation) and crossfeeding from the tank — the
+            # Starship / Super-Heavy way to make thrust without a single impossibly-large engine.
+            n_extra = max(0, stage.engine_count - 1)
+            if n_extra > 0:
+                ring_r = 0.5 + 0.12 * n_extra
+                for k in range(n_extra):
+                    ang = 2.0 * math.pi * k / n_extra
+                    sat = new_node(stage.engine, render_index)
+                    self._attach_surface(current, sat, (ring_r * math.cos(ang), engine.y, ring_r * math.sin(ang)))
+                    nodes.append(sat)
             current = engine
 
         def can_emit(part_name: str) -> bool:

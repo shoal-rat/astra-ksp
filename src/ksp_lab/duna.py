@@ -41,3 +41,30 @@ def build_duna_comsat() -> RocketDesign:
     )
     comsat.estimates = estimate_design(comsat)
     return comsat
+
+
+def build_route_depot() -> RocketDesign:
+    """A dedicated route refueling station: a large fuel reserve + capture engine placed in orbit.
+    One in LKO (Earth/Kerbin departure refuel) and one in Duna orbit (Mars arrival refuel) bracket the
+    route, Musk-depot style. Ships top up from it (the orbital-refuel model moves the propellant). It
+    is heavier than a comsat, so a bigger launch core + transfer stage; the station module carries the
+    big reserve and the engine it uses to capture at Duna."""
+    depot = RocketDesign(
+        name="AI-Route-Depot",
+        mission_type="route_depot",
+        payload_mass_t=1.0,
+        crewed=False,
+        stages=[
+            StageSpec("depot_launch_core", "liquidEngineMainsail.v2", "Rockomax32.BW", 3, True),
+            StageSpec("depot_transfer_stage", "engineLargeSkipper", "Rockomax16.BW", 2, True),
+            StageSpec("depot_station_module", "liquidEngine3.v2", "fuelTank.long", 3, False),
+        ],
+        tags=["duna", "mars", "depot", "refuel-station", "interplanetary"],
+        notes=(
+            "Route refuel station: big fuel reserve + capture engine. Place one in LKO (departure) and "
+            "one in Duna orbit (arrival). Orbital-refuel model handles propellant transfer to ships."
+        ),
+        source="duna-program-depot",
+    )
+    depot.estimates = estimate_design(depot)
+    return depot

@@ -1,3 +1,20 @@
+"""Calculated guidance math — the closed-form physics layer (no heuristics).
+
+Every function below the orbital-mechanics / hoverslam sections is DERIVED from physics: vis-viva and
+the Oberth ejection (`circular_speed_mps`, `vis_viva_speed_mps`, `hohmann_*`,
+`ejection_burn_delta_v_mps`, `capture_burn_estimate`), the rocket-equation burn timing
+(`burn_duration_s`, `finite_burn_lead_s`), and the suicide-burn / hoverslam reference law
+(`suicide_burn_distance_m`, `hoverslam_reference_speed_mps`, `hoverslam_throttle`). Body constants
+(GM, radius, surface gravity, density) are never hardcoded here — they are measured live from kRPC and
+passed in, so the same code is correct for Kerbin, the Mun, Duna, or any modded body.
+
+`ksp_lab.astro` is the CANONICAL home of this calculated core (it carries the same physics with the
+project's newer `_t`/SI signatures and adds the rocket-equation stage-sizing and terminal-velocity /
+parachute helpers). This module is kept as the stable import surface for `flight_controller.py`,
+`tools/`, and the tests, which depend on these exact names and signatures. New calculated code should
+prefer `astro.py`; the functions here may be re-implemented as thin wrappers over it without changing
+their signatures.
+"""
 from __future__ import annotations
 
 import math
@@ -172,6 +189,19 @@ def hoverslam_throttle(
     correction = max(0.0, error + deadband_mps) * 0.6
     return max(0.0, min(1.0, gravity_hold + correction))
 
+
+# --------------------------------------------------------------------------------------------------
+# LEGACY HEURISTIC LADDERS (migration target — NOT closed-form physics).
+#
+# The functions below are magic-number step-functions (altitude bands 60/30/12 m, throttle caps
+# 0.24/0.45/0.75, lateral_floor ladders) — exactly what the calculated mandate forbids. They are kept
+# ONLY because `flight_controller._land_on_mun` still calls `terminal_descent_target_vertical_mps` +
+# `vertical_landing_throttle` for its sub-70 m terminal flare, and `tests/test_guidance.py` covers all
+# three. They are LIVE imports — deleting them now breaks the live Mun-landing controller and the test
+# suite. To finish de-heuristicizing: migrate the flare in `_land_on_mun` onto the hoverslam reference
+# law (`hoverslam_reference_speed_mps` / `hoverslam_throttle`, which already track v_ref -> 0 at the
+# ground), update `tests/test_guidance.py`, then delete this whole block.
+# --------------------------------------------------------------------------------------------------
 
 def vertical_landing_throttle(
     *,

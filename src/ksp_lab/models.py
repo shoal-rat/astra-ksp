@@ -36,6 +36,7 @@ class StageSpec:
     tank_count: int
     decoupler_above: bool = True
     notes: str = ""
+    engine_count: int = 1  # calculated cluster size (N engines) for the TWR the phase demands
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

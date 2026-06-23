@@ -1,4 +1,4 @@
-<svg viewBox="0 0 980 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg viewBox="0 0 980 700" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
@@ -9,76 +9,103 @@
   </defs>
 
   <style>
-    .box   { rx: 12; stroke-width: 2; }
-    .title { font-size: 17px; font-weight: 700; fill: #ffffff; }
-    .sub   { font-size: 12.5px; fill: #e2e8f0; }
-    .lab   { font-size: 12px; fill: #64748b; font-weight: 600; }
-    .layer { font-size: 12px; fill: #94a3b8; font-weight: 700; letter-spacing: .08em; }
-    .flow  { stroke: #64748b; stroke-width: 2.2; fill: none; }
-    .flowtel { stroke: #0e7490; stroke-width: 2.2; fill: none; stroke-dasharray: 6 4; }
+    .box    { rx: 12; stroke-width: 2; }
+    .title  { font-size: 17px; font-weight: 700; fill: #ffffff; }
+    .sub    { font-size: 12.5px; fill: #e2e8f0; }
+    .lab    { font-size: 12px; fill: #64748b; font-weight: 600; }
+    .layer  { font-size: 12px; fill: #94a3b8; font-weight: 700; letter-spacing: .08em; }
+    .eqn    { font-size: 12.5px; fill: #d9f99d; font-style: italic; }
+    .eqnhd  { font-size: 12.5px; font-weight: 700; fill: #ffffff; }
+    .apisub { font-size: 11.5px; fill: #ecfeff; }
   </style>
 
+  <!-- ===== PEOPLE'S COMMAND ===== -->
+  <text x="40" y="30" class="layer">PEOPLE'S COMMAND</text>
+  <rect x="40" y="42" width="900" height="58" class="box" fill="#334155" stroke="#1e293b"/>
+  <text x="64" y="68" class="title" font-size="15px">One-line natural-language goal</text>
+  <text x="64" y="88" class="sub">"Build a 3-sat comsat ring around Duna, refuel in LKO, land crew on Duna and bring them home."</text>
+
   <!-- ===== BRAIN: Claude Code ===== -->
-  <text x="40" y="34" class="layer">ORCHESTRATOR</text>
-  <rect x="40" y="46" width="900" height="92" class="box" fill="#6d28d9" stroke="#4c1d95"/>
-  <text x="64" y="78" class="title">Claude Code  —  the brain (required)</text>
-  <text x="64" y="103" class="sub">Divide the task into steps · research how each is normally done · pick the right MechJeb / kRPC API for each step</text>
-  <text x="64" y="123" class="sub">Design a minimal ship (craft_writer) · fly autopilots one-by-one · retry on failure · record every lesson in the notebook</text>
+  <text x="40" y="138" class="layer">THE LLM BRAIN</text>
+  <rect x="40" y="150" width="900" height="92" class="box" fill="#6d28d9" stroke="#4c1d95"/>
+  <text x="64" y="182" class="title">Claude Code  —  divide · design · plan · retry · record</text>
+  <text x="64" y="207" class="sub">Splits the mission into steps, then for each step it calls a CALCULATED API and lets it run to completion.</text>
+  <text x="64" y="227" class="sub">No guessed magic numbers, no trial-and-error ladders — every value is derived from physics, then verified.</text>
 
-  <!-- ===== TOOLS layer ===== -->
-  <text x="40" y="178" class="layer">PYTHON TOOLS  (tools/, src/ksp_lab/)</text>
-  <rect x="40" y="190" width="900" height="84" class="box" fill="#1d4ed8" stroke="#1e3a8a"/>
-  <text x="64" y="220" class="title">tools/ drivers  +  BridgeClient / kRPC client</text>
-  <text x="64" y="244" class="sub">mj_to_orbit · mj_to_mun · fly_mj_dock · mj_land_vessel · astra (one-line agent) · fly_relay/hls/orion</text>
-  <text x="64" y="263" class="sub">Each driver picks an autopilot, sets params, starts it, then polls telemetry/status for the result.</text>
+  <!-- ===== CALCULATED API LAYER ===== -->
+  <text x="40" y="280" class="layer">CALCULATED APIs  (src/ksp_lab/)  —  numbers in, physics out</text>
+  <rect x="40" y="292" width="900" height="150" class="box" fill="#0f766e" stroke="#115e59"/>
+  <text x="64" y="318" class="eqnhd">f(x)  every number is solved from first principles, never hardcoded or guessed</text>
 
-  <!-- ===== BRIDGE layer ===== -->
-  <text x="40" y="314" class="layer">C# BRIDGE PLUGIN</text>
-  <rect x="40" y="326" width="430" height="96" class="box" fill="#0f766e" stroke="#115e59"/>
-  <text x="64" y="356" class="title">KspAutomationBridge</text>
-  <text x="64" y="379" class="sub">HTTP server · 127.0.0.1:48500</text>
-  <text x="64" y="399" class="sub">/mj-ascent /mj-execute-node /mj-rendezvous</text>
-  <text x="64" y="416" class="sub">/mj-dock /mj-land · spawn-crew · craft load/launch</text>
+  <!-- four API columns -->
+  <rect x="60" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
+  <text x="74" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">astro.py</text>
+  <text x="74" y="375" class="apisub">physics core</text>
+  <text x="74" y="392" class="eqn">vis-viva · Oberth</text>
+  <text x="74" y="408" class="eqn">rocket eqn · hoverslam</text>
+  <text x="74" y="423" class="apisub">GM/R/&#961; measured live</text>
 
-  <!-- kRPC server box (sits beside the bridge, telemetry path) -->
-  <rect x="510" y="326" width="430" height="96" class="box" fill="#0e7490" stroke="#155e75"/>
-  <text x="534" y="356" class="title">kRPC server</text>
-  <text x="534" y="379" class="sub">RPC · 127.0.0.1:50000  (stream 50001)</text>
-  <text x="534" y="399" class="sub">telemetry · reference frames · orbit prediction</text>
-  <text x="534" y="416" class="sub">maneuver-node planning · warp · staging · set target</text>
+  <rect x="277" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
+  <text x="291" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">design.py</text>
+  <text x="291" y="375" class="apisub">calculated ship</text>
+  <text x="291" y="392" class="eqn">&#916;v &#8594; tank count</text>
+  <text x="291" y="408" class="eqn">TWR &#8594; engine cluster</text>
+  <text x="291" y="423" class="eqn">&#961; &#8594; chute / propulsive</text>
 
-  <!-- ===== MECHJEB layer ===== -->
-  <text x="40" y="462" class="layer">MECHJEB 2  AUTOPILOTS  (wrapped by the bridge)</text>
-  <rect x="40" y="474" width="430" height="58" class="box" fill="#b45309" stroke="#92400e"/>
-  <text x="64" y="500" class="title" font-size="15px">MechJeb2.dll autopilots</text>
-  <text x="64" y="520" class="sub">Ascent · NodeExecutor · Rendezvous · Docking · Landing</text>
+  <rect x="494" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
+  <text x="508" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">plan.py</text>
+  <text x="508" y="375" class="apisub">maneuver planners</text>
+  <text x="508" y="392" class="eqn">circularize · deorbit</text>
+  <text x="508" y="408" class="eqn">capture · transfer</text>
+  <text x="508" y="423" class="eqn">landing burn</text>
+
+  <rect x="711" y="334" width="209" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
+  <text x="725" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">execute.py</text>
+  <text x="725" y="375" class="apisub">calculated executors</text>
+  <text x="725" y="392" class="eqn">measure(vessel) live</text>
+  <text x="725" y="408" class="eqn">finite-burn lead · warp&#8594;ut</text>
+  <text x="725" y="423" class="eqn">hoverslam descent</text>
+
+  <!-- ===== MECHJEB / kRPC layer ===== -->
+  <text x="40" y="482" class="layer">DELEGATED CONTROL  &amp;  TELEMETRY</text>
+  <rect x="40" y="494" width="430" height="72" class="box" fill="#b45309" stroke="#92400e"/>
+  <text x="64" y="520" class="title" font-size="15px">MechJeb 2 autopilots</text>
+  <text x="64" y="540" class="sub">Ascent · NodeExecutor · Rendezvous · Docking</text>
+  <text x="64" y="558" class="sub">closed-loop control where MechJeb already calculates well</text>
+
+  <rect x="510" y="494" width="430" height="72" class="box" fill="#0e7490" stroke="#155e75"/>
+  <text x="534" y="520" class="title" font-size="15px">kRPC telemetry / nodes</text>
+  <text x="534" y="540" class="sub">live state · reference frames · orbit prediction</text>
+  <text x="534" y="558" class="sub">maneuver nodes · warp · staging · set target</text>
 
   <!-- ===== GAME ===== -->
-  <rect x="510" y="474" width="430" height="58" class="box" fill="#334155" stroke="#1e293b"/>
-  <text x="534" y="500" class="title" font-size="15px">Live Kerbal Space Program 1  (v1.12.5)</text>
-  <text x="534" y="520" class="sub">the simulator everything actually flies in</text>
+  <text x="40" y="606" class="layer">LIVE SIMULATOR</text>
+  <rect x="40" y="618" width="900" height="58" class="box" fill="#334155" stroke="#1e293b"/>
+  <text x="64" y="644" class="title" font-size="15px">Live Kerbal Space Program 1  (v1.12.5)</text>
+  <text x="64" y="664" class="sub">the simulator every calculated burn actually flies in — ships, refuel depots, landers</text>
 
   <!-- ===== FLOW ARROWS ===== -->
-  <!-- brain -> tools -->
-  <path d="M490,138 L490,190" class="flow" marker-end="url(#arrow)"/>
-  <text x="500" y="170" class="lab">delegate</text>
+  <!-- command -> brain -->
+  <path d="M490,100 L490,150" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+  <text x="500" y="128" class="lab">command</text>
 
-  <!-- tools -> bridge (control, MechJeb) -->
-  <path d="M255,274 L255,326" class="flow" marker-end="url(#arrow)"/>
-  <text x="265" y="304" class="lab">HTTP control</text>
+  <!-- brain -> apis -->
+  <path d="M490,242 L490,292" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+  <text x="500" y="270" class="lab">call calculated step</text>
 
-  <!-- tools -> kRPC (telemetry) -->
-  <path d="M725,274 L725,326" class="flowtel" marker-end="url(#arrowUp)"/>
-  <text x="735" y="304" class="lab" fill="#0e7490">telemetry / math</text>
+  <!-- apis -> mechjeb (control) -->
+  <path d="M255,442 L255,494" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+  <text x="265" y="472" class="lab">fly node / autopilot</text>
 
-  <!-- bridge -> mechjeb -->
-  <path d="M255,422 L255,474" class="flow" marker-end="url(#arrow)"/>
-  <text x="265" y="455" class="lab">enable AP</text>
+  <!-- apis -> kRPC (telemetry / math) -->
+  <path d="M725,442 L725,494" stroke="#0e7490" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/>
+  <text x="735" y="472" class="lab" fill="#0e7490">measure / plan nodes</text>
 
-  <!-- mechjeb -> game -->
-  <path d="M470,503 L510,503" class="flow" marker-end="url(#arrow)"/>
+  <!-- mechjeb -> game (commands the ship) -->
+  <path d="M255,566 L255,618" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+  <text x="265" y="596" class="lab">commands ship</text>
 
-  <!-- kRPC <-> game (telemetry back up) -->
-  <path d="M725,474 L725,422" class="flowtel" marker-end="url(#arrowUp)"/>
-  <text x="735" y="455" class="lab" fill="#0e7490">reads game</text>
+  <!-- game -> kRPC (reads live state back up) -->
+  <path d="M725,618 L725,566" stroke="#0e7490" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/>
+  <text x="735" y="596" class="lab" fill="#0e7490">reads live state</text>
 </svg>

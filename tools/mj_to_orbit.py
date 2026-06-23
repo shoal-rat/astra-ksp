@@ -35,6 +35,9 @@ def main() -> int:
     if vehicle == "duna_comsat":
         from ksp_lab.duna import build_duna_comsat
         design = build_duna_comsat()
+    elif vehicle == "route_depot":
+        from ksp_lab.duna import build_route_depot
+        design = build_route_depot()
     else:
         design = deepcopy(build_artemis_architecture(mission).vehicle(vehicle).design)
     name = sys.argv[4] if len(sys.argv) > 4 else f"AI-{vehicle.upper()}-MJ-{suffix}"
