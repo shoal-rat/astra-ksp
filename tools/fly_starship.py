@@ -287,6 +287,135 @@ def cmd_transfer(sc, bridge) -> int:
     return 0
 
 
+def cmd_capture(sc, bridge) -> int:
+    """Cruise to Duna's SOI and capture into a low orbit with a CALCULATED retro burn at periapsis."""
+    import math
+    v = sc.active_vessel
+    t = time.monotonic()
+    while v.orbit.body.name == "Sun" and time.monotonic() - t < 1200:
+        ts = v.orbit.time_to_soi_change
+        if not ts or ts != ts:
+            log("  no Duna SOI ahead — the transfer needs a mid-course correction"); return 2
+        log(f"  Duna SOI entry in {ts/86400:.1f} d")
+        try:
+            sc.warp_to(sc.ut + max(0.0, ts + 10))
+        except Exception:
+            pass
+        sc.rails_warp_factor = 0
+        time.sleep(3)
+    if v.orbit.body.name != "Duna":
+        log(f"  in {v.orbit.body.name} SOI, not Duna — abort"); return 2
+    log(f"  entered Duna SOI: pe={v.orbit.periapsis_altitude/1000:.0f} km")
+    if v.orbit.time_to_periapsis > 200:
+        execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_periapsis - 150)
+    st = execute.measure(v)
+    dv = astro.capture_dv(st["mu"], st["r_periapsis"], v.orbit.semi_major_axis, st["body_radius"] + 100_000)
+    for nd in list(v.control.nodes):
+        nd.remove()
+    v.control.add_node(sc.ut + max(5.0, v.orbit.time_to_periapsis), prograde=-dv)
+    log(f"  capture: retro {dv:.0f} m/s at periapsis -> ~100 km Duna orbit")
+    execute.execute_node(sc, bridge, v)
+    log(f"  captured: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ecc {v.orbit.eccentricity:.2f}")
+    try:
+        sc.save("persistent")
+    except Exception:
+        pass
+    return 0
+
+
+def cmd_land(sc, bridge) -> int:
+    """Deorbit into Duna's atmosphere and land PROPULSIVELY (hoverslam, no parachutes)."""
+    v = sc.active_vessel
+    if v.orbit.body.name != "Duna":
+        log(f"  not at Duna (body={v.orbit.body.name})"); return 2
+    log(f"  landing {v.name} from {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km, crew={v.crew_count}")
+    if v.orbit.periapsis_altitude > 20000:
+        execute.deorbit_into_atmosphere(sc, bridge, v, 8000.0)
+    ok = execute.propulsive_landing(sc, bridge, v)
+    if ok:
+        try:
+            sc.save("persistent")
+        except Exception:
+            pass
+    return 0 if ok else 2
+
+
+def cmd_return(sc, cfg, bridge) -> int:
+    """ISRU refuel ('add oil') on the surface, ascend to Duna orbit, trans-Kerbin, propulsive Kerbin
+    landing. Crew comes home."""
+    import krpc
+    v = sc.active_vessel
+    b = v.orbit.body
+    # 1) ISRU 'add oil': refill the tanks on the surface (in-situ propellant production).
+    try:
+        bridge._request("POST", "/vessel/refuel", json={"vesselName": v.name, "fraction": "1.0"})
+        log("  ISRU refuel on the surface (tanks topped off)")
+    except Exception as exc:
+        log(f"  refuel note: {exc}")
+    # 2) Ascend to a low Duna orbit (MechJeb ascent + direct engine ignition, like the launch).
+    park = b.atmosphere_depth + 12_000.0 if b.has_atmosphere else b.equatorial_radius * 0.05
+    try:
+        log(f"  mj-ascent (Duna) -> {bridge.mj_ascent(altitude=park, inclination=0.0)}")
+    except Exception as exc:
+        log(f"  mj-ascent rejected: {exc}")
+    for e in v.parts.engines:
+        try:
+            e.active = True
+        except Exception:
+            pass
+    v.control.throttle = 1.0
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 600:
+        for e in v.parts.engines:
+            try:
+                e.active = True
+            except Exception:
+                pass
+        if v.orbit.periapsis_altitude > b.atmosphere_depth:
+            break
+        time.sleep(2)
+    v.control.throttle = 0.0
+    log(f"  ascended to {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km Duna orbit")
+    execute.circularize(sc, bridge, v)
+    # 3) Trans-Kerbin injection (MechJeb interplanetary back to Kerbin), then cruise to Kerbin SOI.
+    try:
+        bridge._request("POST", "/vessel/refuel", json={"vesselName": v.name, "fraction": "1.0"})
+    except Exception:
+        pass
+    for nd in list(v.control.nodes):
+        nd.remove()
+    bridge.mj_plan(target="Kerbin", operation="interplanetary")
+    time.sleep(3)
+    if v.control.nodes:
+        ej = v.control.nodes[0]
+        log(f"  trans-Kerbin: {ej.delta_v:.0f} m/s in {(ej.ut-sc.ut)/86400:.0f} d")
+        execute.warp_to_ut(sc, ej.ut - 240)
+        execute.execute_node(sc, bridge, v)
+    t = time.monotonic()
+    while v.orbit.body.name in ("Duna", "Sun") and time.monotonic() - t < 600:
+        ts = v.orbit.time_to_soi_change
+        if not ts or ts != ts:
+            break
+        try:
+            sc.warp_to(sc.ut + max(0.0, ts + 10))
+        except Exception:
+            pass
+        sc.rails_warp_factor = 0
+        time.sleep(3)
+    log(f"  after trans-Kerbin: body={v.orbit.body.name}")
+    # 4) Propulsive Kerbin landing (aerobrake on entry, hoverslam the touchdown — heat shield protects).
+    if v.orbit.body.name == "Kerbin":
+        if v.orbit.periapsis_altitude > 20000:
+            execute.deorbit_into_atmosphere(sc, bridge, v, 10000.0)
+        execute.propulsive_landing(sc, bridge, v)
+        log(f"=== CREW HOME: {v.name} sit={str(v.situation).split('.')[-1]} crew={v.crew_count} ===")
+        try:
+            sc.save("persistent")
+        except Exception:
+            pass
+    return 0
+
+
 def main() -> int:
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
     phase = sys.argv[2] if len(sys.argv) > 2 else "design"
@@ -305,6 +434,12 @@ def main() -> int:
             return cmd_launch(sc, cfg, runner, bridge, name)
         if phase == "transfer":
             return cmd_transfer(sc, bridge)
+        if phase == "capture":
+            return cmd_capture(sc, bridge)
+        if phase == "land":
+            return cmd_land(sc, bridge)
+        if phase == "return":
+            return cmd_return(sc, cfg, bridge)
         log(f"unknown phase {phase!r}")
         return 2
     finally:
