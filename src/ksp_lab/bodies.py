@@ -77,8 +77,18 @@ MINMUS = Body(
     parent="Kerbin", orbit_radius_m=47_000_000.0,
 )
 
+# Ike = Duna's moon (the "Mars moon" the comsat constellation must keep linked). Airless; tidally
+# locked to Duna, so one hemisphere always faces away from any Duna-orbit relay -> it needs its OWN
+# relay (the dedicated Ike-orbit sat). orbit_radius is its SMA about Duna (~3.2 Mm); the Duna ring is
+# placed BELOW this (2.96 Mm SMA) so the ring sats are never captured by Ike.
+IKE = Body(
+    name="Ike", mu=1.8568369e10, radius_m=130_000.0, surface_g=1.10,
+    atmosphere_top_m=0.0, surface_rho=0.0, rotational_speed_mps=18.6,
+    parent="Duna", orbit_radius_m=3_200_000.0,
+)
 
-_REGISTRY: dict[str, Body] = {b.name.lower(): b for b in (SUN, KERBIN, MUN, DUNA, MINMUS)}
+
+_REGISTRY: dict[str, Body] = {b.name.lower(): b for b in (SUN, KERBIN, MUN, DUNA, MINMUS, IKE)}
 
 
 def body(name: str) -> Body:
