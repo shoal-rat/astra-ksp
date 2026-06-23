@@ -237,9 +237,25 @@ def cmd_transfer(sc, bridge) -> int:
         dv = astro.vis_viva_speed(st["mu"], r_pe, a_new) - astro.circular_speed(st["mu"], r_pe)
         for nd in list(v.control.nodes):
             nd.remove()
-        v.control.add_node(sc.ut + v.orbit.time_to_periapsis, prograde=dv)
-        log(f"  raise apoapsis: {dv:.0f} m/s -> 2500 km")
+        # Burn NOW, not at periapsis: a circular LKO has no well-defined periapsis so the executor
+        # would coast up to a full period (~30 min). Oberth efficiency is irrelevant here (fuel is
+        # free via refuel); we just need a high apsis to unlock fast warp.
+        v.control.add_node(sc.ut + 12, prograde=dv)
+        log(f"  raise apsis: {dv:.0f} m/s (immediate) -> ~2500 km")
         execute.execute_node(sc, bridge, v)
+    # 1b) CIRCULARIZE at the high apsis. Ejecting from the eccentric 100x2500 orbit gave a huge
+    # ~1400 m/s node that drained the tanks without escaping; from a CIRCULAR 2500 km orbit the
+    # interplanetary ejection is ~700 m/s and fits the (refuelled) transfer stage. (Each burn refuels
+    # while pointing, so the circularize and the ejection each start with a full tank.)
+    if v.orbit.eccentricity > 0.05:
+        for nd in list(v.control.nodes):
+            nd.remove()
+        bridge.mj_plan(target="Duna", operation="circularize")
+        time.sleep(2)
+        if v.control.nodes:
+            execute.warp_to_ut(sc, v.control.nodes[0].ut - 90)
+            log(f"  circularize at apsis: {v.control.nodes[0].remaining_delta_v:.0f} m/s")
+            execute.execute_node(sc, bridge, v)
     # 2) MechJeb interplanetary ejection toward Duna (it computes the precise node + window).
     for nd in list(v.control.nodes):
         nd.remove()
