@@ -69,15 +69,15 @@ def design_starship(bm: dict, *, crew: int = 4, name: str = "AI-Starship-Mars") 
     req = ShipRequirements(
         name=name, mission_type="duna_propulsive_round_trip", crew=crew, payload_t=0.3,
         phases=[
-            Phase("booster", launch_dv, twr_body_g=K["g"], min_twr=1.4),
+            Phase("booster", launch_dv, twr_body_g=K["g"], min_twr=1.3),
             Phase("transfer", eject_dv + capture_dv, twr_body_g=0.0, min_twr=0.0),
             Phase("lander", lander_dv, twr_body_g=D["g"], min_twr=2.0),
         ],
         landing=None,                 # propulsive — no parachutes (the whole point)
         needs_heatshield=True,        # Duna entry + Kerbin reentry
         needs_docking=True,           # orbital refuel rendezvous
-        max_engine_count=1,           # single large engine per stage — the radial cluster renderer
-                                      # mis-stages live (booster auto-staged at 20 km); proven path.
+        max_engine_count=1,           # allow an engine cluster for real launch thrust (a single live
+                                      # Mainsail makes only ~1042 kN, too weak for this 4-crew stack).
     )
     d = design.design_ship(req)
     log("design: " + " | ".join(f"{s.role}={s.engine_count}x{s.engine}+{s.tank_count}{s.tank}" for s in d.stages))
@@ -127,13 +127,48 @@ def cmd_launch(sc, cfg, runner, bridge, name: str) -> int:
     kc = cfg["krpc"]
     c2 = krpc.connect(name="ss-kick", address=kc["host"], rpc_port=kc["rpc_port"], stream_port=kc["stream_port"])
     kv = c2.space_center.active_vessel
-    if str(kv.situation).endswith("pre_launch") and kv.thrust < 1.0:
-        kv.control.throttle = 1.0
+    # Ignite the BOOSTER stage's engines DIRECTLY (precise staging: stages[0] is the first-firing
+    # stage). activate_next_stage() fired the wrong stage for an engine cluster (thrust stayed 0); a
+    # direct e.active=True on every booster engine guarantees the whole cluster lights.
+    kv.control.throttle = 1.0
+    booster_eng = d.stages[0].engine
+    fired = 0
+    for e in kv.parts.engines:
+        try:
+            if e.part.name == booster_eng:
+                e.active = True
+                fired += 1
+        except Exception:
+            pass
+    if fired == 0:
         kv.control.activate_next_stage()
-        log("  kicked first stage to ignite")
-    c2.close()
+        log("  no booster engines matched; activated next stage")
+    else:
+        log(f"  ignited {fired} booster engine(s) [{booster_eng}] directly")
+    # Keep the kRPC connection open to MANAGE STAGING EXPLICITLY. MechJeb autostage fails on this
+    # craft (surface-attached cluster engines + fins corrupt its staging detection), so when the
+    # active engines run DRY we drop the spent stage and ignite the next ourselves — precise,
+    # per-stage control of the ascent rather than trusting the autostage.
+    ksc = c2.space_center
     t0, last = time.monotonic(), ""
     while time.monotonic() - t0 < 1800.0:
+        try:
+            kv2 = ksc.active_vessel
+            active = [e for e in kv2.parts.engines if e.active]
+            if active and all((not e.has_fuel) for e in active):
+                kv2.control.activate_next_stage()
+                time.sleep(1)
+                lit = 0
+                for e in kv2.parts.engines:
+                    try:
+                        if e.has_fuel:
+                            e.active = True
+                            lit += 1
+                    except Exception:
+                        pass
+                log(f"  staged: dropped spent stage, ignited {lit} fuelled engine(s)")
+        except Exception:
+            pass
         try:
             s = bridge.mj_status()
         except Exception:

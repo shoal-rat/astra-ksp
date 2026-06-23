@@ -27,6 +27,12 @@ class StockPart:
     # to size chute counts for a target body's live atmospheric density. Calibrated from the live
     # datum "one Mk16 lands ~1.2 t at ~6.5 m/s at Kerbin sea level (rho=1.14)": Cd*A = 2 m g / (rho v^2).
     drag_area_m2: float = 0.0
+    # Body diameter (m), used with height to estimate the lateral (side-on) area for the centre-of-
+    # pressure / static-margin calculation in craft_writer. Stock stacks are 1.25 m or 2.5 m.
+    diameter_m: float = 1.25
+    # Side-on lift/drag reference area (m^2) for an aero surface (fin/winglet), 0 for body parts. This
+    # is the area the centre-of-pressure calculation places at the part's position to stabilise the stack.
+    fin_area_m2: float = 0.0
 
     @property
     def propellant_mass_t(self) -> float:
@@ -58,10 +64,10 @@ STOCK_PARTS: dict[str, StockPart] = {
     ),
     "Rockomax16.BW": StockPart(
         "Rockomax16.BW", "Rockomax X200-16 Fuel Tank", 1.0, 9.0, 1550, 3.75, liquid_fuel=720, oxidizer=880
-    ),
+    , diameter_m=2.5),
     "Rockomax32.BW": StockPart(
         "Rockomax32.BW", "Rockomax X200-32 Fuel Tank", 2.0, 18.0, 3000, 7.5, liquid_fuel=1440, oxidizer=1760
-    ),
+    , diameter_m=2.5),
     "liquidEngine": StockPart(
         "liquidEngine", "LV-T30 Reliant", 1.25, 1.25, 1100, 1.5, 205, 240, 265, 310
     ),
@@ -73,17 +79,17 @@ STOCK_PARTS: dict[str, StockPart] = {
     ),
     "engineLargeSkipper": StockPart(
         "engineLargeSkipper", "RE-I5 Skipper", 3.0, 3.0, 5300, 2.2, 568.75, 650, 280, 320
-    ),
+    , diameter_m=2.5),
     "liquidEngineMainsail.v2": StockPart(
         "liquidEngineMainsail.v2", "RE-M3 Mainsail", 6.0, 6.0, 13000, 2.8, 1379.03, 1500, 285, 310
-    ),
+    , diameter_m=2.5),
     # Avionics / payload accessories (no propellant; mass/cost for the budget only).
     "longAntenna": StockPart("longAntenna", "Communotron 16 (direct antenna)", 0.005, 0.005, 300, 0.3),
     "RelayAntenna5": StockPart("RelayAntenna5", "Communotron 16-S (relay antenna)", 0.015, 0.015, 600, 0.3),
     "solarPanels5": StockPart("solarPanels5", "SP-W 3x2 Photovoltaic Panels", 0.0175, 0.0175, 380, 0.3),
     "batteryBankMini": StockPart("batteryBankMini", "Z-200 Rechargeable Battery Bank", 0.01, 0.01, 360, 0.3),
-    "R8winglet": StockPart("R8winglet", "AV-R8 Winglet (active control surface)", 0.08, 0.08, 640, 0.5),
-    "basicFin": StockPart("basicFin", "Basic Fin (passive aero stabiliser)", 0.01, 0.01, 25, 0.5),
+    "R8winglet": StockPart("R8winglet", "AV-R8 Winglet (active control surface)", 0.08, 0.08, 640, 0.5, fin_area_m2=2.0),
+    "basicFin": StockPart("basicFin", "Basic Fin (passive aero stabiliser)", 0.01, 0.01, 25, 0.5, fin_area_m2=1.0),
     "asasmodule1-2": StockPart("asasmodule1-2", "Advanced Reaction Wheel Module (attitude authority)", 0.05, 0.05, 2100, 0.3),
     "landingLeg1": StockPart("landingLeg1", "LT-2 Landing Strut", 0.1, 0.1, 440, 0.5),
     "noseCone": StockPart("noseCone", "Aerodynamic Nose Cone (streamlining)", 0.03, 0.03, 240, 0.7),

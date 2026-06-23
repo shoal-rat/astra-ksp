@@ -450,24 +450,50 @@ class CraftWriter:
                 self._attach_surface(root, tank, (0.0, root.y - 0.4, rcs_r))
                 nodes.append(tank)
 
-        # Aerodynamic stabilisers: four PASSIVE base fins put the centre-of-pressure behind the
-        # centre-of-mass so the gravity turn is stable. Passive fins (basicFin), not active control
-        # surfaces (AV-R8): a weak probe-core autopilot driving large control surfaces over-rotates
-        # and tumbles the stack on launch.
+        # Aerodynamic stabilisers — CALCULATED static margin. A rocket is stable on ascent only if its
+        # centre of pressure (CoP, the lateral-area centroid) sits BELOW its centre of mass (CoM, the
+        # mass centroid) along the flight axis. We compute both from the assembled stack and add just
+        # enough passive base fins to push the CoP at least one body-diameter below the CoM. This is the
+        # missing factor that let a marginal-TWR stack tumble; the proven Orion launched at the same TWR
+        # because it happened to be stable. Passive fins (not active AV-R8) — a weak probe autopilot
+        # over-rotates large control surfaces and tumbles the stack.
         if bottom_tank is not None and can_emit("basicFin"):
-            # Mount fins just outboard of the tank wall (Rockomax/large tanks are ~2.5 m across).
-            fin_radius = 1.5
             fin_y = bottom_tank.y - part(bottom_tank.part_name).height_m * 0.25
-            sqrt_half = 0.70710678
-            fin_layout = [
-                ((fin_radius, fin_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
-                ((-fin_radius, fin_y, 0.0), (0.0, 1.0, 0.0, 0.0)),
-                ((0.0, fin_y, fin_radius), (0.0, sqrt_half, 0.0, sqrt_half)),
-                ((0.0, fin_y, -fin_radius), (0.0, sqrt_half, 0.0, -sqrt_half)),
-            ]
-            for pos, rot in fin_layout:
-                fin = new_node("basicFin", bottom_tank.stage_index)
-                self._attach_surface(bottom_tank, fin, pos, rot)
+            # CoM (mass-weighted) and body CoP (lateral-area-weighted) over the stacked structural parts.
+            m_sum = m_mom = a_sum = a_mom = 0.0
+            max_d = 1.25
+            for n in nodes:
+                if n.is_surface:
+                    continue  # radial accessories do not define the stack axis
+                pp = part(n.part_name)
+                m_sum += pp.wet_mass_t
+                m_mom += pp.wet_mass_t * n.y
+                lat = pp.height_m * pp.diameter_m
+                a_sum += lat
+                a_mom += lat * n.y
+                max_d = max(max_d, pp.diameter_m)
+            com_y = m_mom / m_sum if m_sum else fin_y
+            margin = max_d  # require ~1 calibre of static margin (CoP this far below CoM)
+            fin_name, fin_count = "basicFin", 0
+            for cand in ("basicFin", "R8winglet"):
+                fa = part(cand).fin_area_m2
+                for nfin in range(4, 25):
+                    cop_y = (a_mom + nfin * fa * fin_y) / (a_sum + nfin * fa) if (a_sum + nfin * fa) else fin_y
+                    if com_y - cop_y >= margin:
+                        fin_name, fin_count = cand, nfin
+                        break
+                if fin_count:
+                    break
+            fin_count = max(4, fin_count)
+            cop_final = (a_mom + fin_count * part(fin_name).fin_area_m2 * fin_y) / (a_sum + fin_count * part(fin_name).fin_area_m2)
+            self.last_stability = {"com_y": round(com_y, 2), "cop_y": round(cop_final, 2),
+                                   "static_margin_m": round(com_y - cop_final, 2), "fins": f"{fin_count}x {fin_name}"}
+            fin_r = part(bottom_tank.part_name).diameter_m * 0.5 + 0.4
+            for k in range(fin_count):
+                th = 2.0 * math.pi * k / fin_count
+                rot = (0.0, math.sin(th / 2.0), 0.0, math.cos(th / 2.0))  # yaw the fin to face outward
+                fin = new_node(fin_name, bottom_tank.stage_index)
+                self._attach_surface(bottom_tank, fin, (fin_r * math.cos(th), fin_y, fin_r * math.sin(th)), rot)
                 nodes.append(fin)
 
         # Landing legs for a lander (HLS): four legs around the LANDER stage tank (the top stage
