@@ -111,6 +111,19 @@ def cmd_design(sc) -> int:
 
 
 def cmd_launch(sc, cfg, runner, bridge, name: str) -> int:
+    # Clear the launchpad first: a vessel left landed at KSC gives Pre-Flight "LaunchSiteClear: FAIL"
+    # which silently blocks every launch (the scene stays in the EDITOR). Recover any landed-Kerbin
+    # craft so the pad is free.
+    cleared = 0
+    for vsl in list(sc.vessels):
+        try:
+            if vsl.orbit.body.name == "Kerbin" and str(vsl.situation).split(".")[-1] in ("landed", "pre_launch", "splashed"):
+                vsl.recover()
+                cleared += 1
+        except Exception:
+            pass
+    if cleared:
+        log(f"  cleared {cleared} landed-Kerbin vessel(s) off the pad/world before launch")
     d = design_starship(measure_bodies(sc), name=name)
     runner.writer.write(d, runner._craft_dir(), template_path=None)  # keeps estimates["parachutes"]=0
     log(f"craft written; loading + launching {name} (refuel-through-ascent works around the render-craft "

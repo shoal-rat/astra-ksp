@@ -94,6 +94,9 @@ def execute_node(sc, bridge, vessel, *, isp_vac_s: float = 0.0, timeout_s: float
     st = measure(vessel)
     timing = plan.node_burn_time(st["mass_t"], st["thrust_n"], node.remaining_delta_v, isp_vac_s)
     lead = timing["lead_s"]
+    # Size the burn-window to the actual burn time (the 60 kN Terrier needs ~400 s for the trans-Duna
+    # ejection — a fixed 360 s timeout cut it short and left the craft bound).
+    timeout_s = max(timeout_s, timing["burn_time_s"] * 1.8 + 30.0)
     refuel(bridge, vessel)
     vessel.control.sas = False
     ap = vessel.auto_pilot
@@ -124,8 +127,9 @@ def execute_node(sc, bridge, vessel, *, isp_vac_s: float = 0.0, timeout_s: float
     while time.monotonic() - t < timeout_s:
         _ignite(vessel)
         ap.target_direction = (0.0, 1.0, 0.0)
-        if int(time.monotonic() - t) % 15 == 0:
-            refuel(bridge, vessel)
+        # NO refuel mid-burn: /vessel/refuel throttles the engine to ~74%, which stretched the burn
+        # past its timeout. The tank was filled while pointing; the engine alternator holds EC while it
+        # fires. Full thrust completes the burn.
         try:
             rem = node.remaining_delta_v
         except Exception:
