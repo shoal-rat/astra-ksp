@@ -64,7 +64,10 @@ MUN = Body(
 
 DUNA = Body(
     name="Duna", mu=3.0136321e11, radius_m=320_000.0, surface_g=2.94,
-    atmosphere_top_m=50_000.0, surface_rho=0.07, rotational_speed_mps=29.36,
+    # surface_rho is DENSITY (kg/m^3), measured live from kRPC density_at(0)=0.13334 — NOT the 0.0677
+    # atm surface pressure. This is the number the parachute sizing depends on; getting it wrong is
+    # what made a single-chute lander look survivable on Duna when it was not.
+    atmosphere_top_m=50_000.0, surface_rho=0.13334, rotational_speed_mps=29.36,
     parent="Sun", orbit_radius_m=20_726_155_264.0,
 )
 

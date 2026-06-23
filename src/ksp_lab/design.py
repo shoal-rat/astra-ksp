@@ -52,6 +52,10 @@ class ShipRequirements:
     needs_heatshield: bool = False
     needs_docking: bool = False
     chute_part: str = "parachuteSingle"
+    # Cap the engine cluster size. The .craft renderer's radial cluster does not yet feed/stage
+    # reliably (a clustered booster auto-staged early in live test), so callers can force a single
+    # large engine per stage (max_engine_count=1) until that is fixed, trading some TWR headroom.
+    max_engine_count: int = 8
 
 
 # Candidate engines/tanks, small -> large. The designer picks the smallest that meets TWR+Δv, so the
@@ -111,9 +115,10 @@ def _tank_count_for_dv(dv: float, mass_above_t: float, eng_dry_wet: tuple[float,
     return max(1, math.ceil(M * (R - 1.0) / denom))
 
 
-def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase) -> dict:
+def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8) -> dict:
     """Solve (engine_count, tank_count) for one engine type: closed-form tank count for `dv`, plus a
-    clustering fixed-point so thrust meets min_twr at the resulting ignition mass."""
+    clustering fixed-point so thrust meets min_twr at the resulting ignition mass — capped at
+    max_engine_count (beyond which it accepts the lower TWR rather than cluster further)."""
     eng = part(eng_name)
     tank = part(TANK_FOR_ENGINE[eng_name])
     thrust_one = (eng.thrust_kn_asl if phase.twr_body_g > 5.0 and eng.thrust_kn_asl > 0 else eng.thrust_kn_vac) * 1000.0
@@ -123,7 +128,7 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase) -> di
                                    tank.dry_mass_t, tank.wet_mass_t, eng.isp_vac_s)
         m0 = mass_above_t + eng.wet_mass_t * n_eng + tank.wet_mass_t * tanks
         if phase.min_twr > 0 and phase.twr_body_g > 0 and thrust_one > 0:
-            need = math.ceil(phase.min_twr * m0 * 1000.0 * phase.twr_body_g / thrust_one)
+            need = min(max_engine_count, math.ceil(phase.min_twr * m0 * 1000.0 * phase.twr_body_g / thrust_one))
             if need > n_eng:
                 n_eng = need
                 continue
@@ -141,13 +146,20 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase) -> di
     }
 
 
-def _size_stage(dv: float, mass_above_t: float, phase: Phase) -> tuple[StageSpec, dict]:
+def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8) -> tuple[StageSpec, dict]:
     """Search the engine catalogue (each with calculated clustering + closed-form tank count) and pick
     the LIGHTEST valid stage — minimising wet mass minimises the cascade onto the stages below it. Pure
-    calculated selection; no hand-picked engine."""
-    candidates = [_size_one(e, dv, mass_above_t, phase) for e in ENGINE_LADDER]
-    valid = [m for m in candidates if m["ok"] and m["engine_count"] <= 9]
-    chosen = min(valid, key=lambda m: m["wet_t"]) if valid else min(candidates, key=lambda m: -m["stage_dv"])
+    calculated selection; no hand-picked engine. Clusters are capped at max_engine_count."""
+    candidates = [_size_one(e, dv, mass_above_t, phase, max_engine_count) for e in ENGINE_LADDER]
+    valid = [m for m in candidates if m["ok"] and m["engine_count"] <= max_engine_count]
+    if valid:
+        chosen = min(valid, key=lambda m: m["wet_t"])
+    else:
+        # No engine meets min_twr within the cluster cap; pick the most launchable (highest TWR) that
+        # still delivers the required Δv, else the highest TWR available.
+        capped = [m for m in candidates if m["engine_count"] <= max_engine_count]
+        dv_ok = [m for m in capped if m["stage_dv"] >= dv * 0.995]
+        chosen = max(dv_ok or capped or candidates, key=lambda m: m["twr"])
     spec = StageSpec(phase.name, chosen["engine"], chosen["tank"], chosen["tanks"],
                      decoupler_above=True, engine_count=chosen["engine_count"])
     return spec, chosen
@@ -170,7 +182,7 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     log: list[str] = [f"bus(command+crew+heatshield+payload)={bus:.2f}t"]
     # Process phases last-firing first so each lower stage carries the wet mass of the ones above it.
     for phase in reversed(req.phases):
-        spec, metrics = _size_stage(phase.dv_mps, mass_above, phase)
+        spec, metrics = _size_stage(phase.dv_mps, mass_above, phase, req.max_engine_count)
         stages_rev.append(spec)
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
         log.append(
