@@ -328,9 +328,20 @@ def cmd_land(sc, bridge) -> int:
     v = sc.active_vessel
     if v.orbit.body.name != "Duna":
         log(f"  not at Duna (body={v.orbit.body.name})"); return 2
+    b = v.orbit.body
+    atmo = b.atmosphere_depth if b.has_atmosphere else 0.0
     log(f"  landing {v.name} from {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km, crew={v.crew_count}")
-    if v.orbit.periapsis_altitude > 20000:
+    # Deorbit only if the periapsis is still ABOVE the atmosphere (it must dip into the air to land).
+    if v.orbit.periapsis_altitude > atmo:
+        if v.orbit.time_to_apoapsis > 300:
+            log(f"  warping to apoapsis ({v.orbit.time_to_apoapsis/3600:.1f} h) to deorbit")
+            execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_apoapsis - 200)
         execute.deorbit_into_atmosphere(sc, bridge, v, 8000.0)
+    # Warp DOWN to the atmosphere entry with warp_to (it decelerates onto the target — the stepped
+    # rails warp in propulsive_landing overshoots a huge orbit, where periapsis is ~137 h away).
+    if v.orbit.time_to_periapsis > 600 and v.flight().mean_altitude > atmo * 2.0:
+        log(f"  warping {v.orbit.time_to_periapsis/3600:.1f} h down to the atmosphere entry")
+        execute.warp_to_ut(sc, sc.ut + v.orbit.time_to_periapsis - 400)
     ok = execute.propulsive_landing(sc, bridge, v)
     if ok:
         try:
