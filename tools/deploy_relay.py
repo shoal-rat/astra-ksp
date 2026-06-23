@@ -49,6 +49,9 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
     )
     d = design_ship(req)
+    if not d.feasible:
+        log(f"DESIGN INFEASIBLE — refusing to launch: {d.infeasible_reasons}")
+        return False
     runner.writer.write(d, runner._craft_dir(), template_path=None)
     log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}; "
         f"aero Cd={d.drag_cd} dragloss={d.ascent_drag_loss_mps}m/s margin={d.static_margin_m}m stable={d.ascent_stable}; launching ...")

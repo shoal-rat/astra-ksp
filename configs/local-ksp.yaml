@@ -12,7 +12,7 @@ krpc:
   min_autostage_stage: 2
   node_alignment_timeout_s: 25
   node_alignment_error_deg: 6
-  model_orbital_refueling: true
+  model_orbital_refueling: false   # CHEAT DISABLED: in-flight refuel masks dv/thrust shortfalls
   bridge_base_url: "http://127.0.0.1:48500"
   bridge_timeout_s: 30
   orbital_refuel_fraction: 1.0

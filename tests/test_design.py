@@ -149,6 +149,44 @@ def test_propulsive_lander_uses_a_wide_low_cog_tank():
     assert lander.diameter_m >= 2.5, lander.to_dict()
 
 
+def test_feasibility_gate_rejects_underthrust_rocket():
+    """The pipeline must REJECT, not silently ship, a rocket that cannot fly. A heavy payload on a
+    single small booster engine gives liftoff TWR < 1 — design_ship must set feasible=False with a
+    reason. This is the fix for the pad-hang / fall-back failures (the physics was computed but never
+    enforced). A sound 2-stage launcher must stay feasible."""
+    bad = design_ship(ShipRequirements(
+        name="under-thrust", crew=0, payload_t=30.0,
+        phases=[Phase("booster", dv_mps=3500.0, twr_body_g=KERBIN_G, min_twr=1.5)],
+        landing=None, max_engine_count=1,
+    ))
+    assert bad.feasible is False, bad.estimates
+    assert bad.estimates["launch_twr"] < 1.2
+    assert any("TWR" in r or "under-thrust" in r for r in bad.infeasible_reasons)
+
+    good = design_ship(ShipRequirements(
+        name="sound-launcher", crew=0, payload_t=0.3,
+        phases=[Phase("booster", dv_mps=3500.0, twr_body_g=KERBIN_G, min_twr=1.5),
+                Phase("insertion", dv_mps=1300.0)],
+        landing=None, max_engine_count=1,
+    ))
+    assert good.feasible is True, good.infeasible_reasons
+    assert good.estimates["launch_twr"] >= 1.2
+
+
+def test_booster_uses_sea_level_engine_not_a_vacuum_one():
+    """Role-correct engine selection: a liftoff (in-atmosphere) booster must draw from the sea-level
+    thrust pool — never a vacuum Terrier (which gives TWR<1 and won't lift). The vacuum upper stage may."""
+    from ksp_lab.design import BOOSTER_ENGINES
+    good = design_ship(ShipRequirements(
+        name="roles", crew=0, payload_t=0.3,
+        phases=[Phase("booster", dv_mps=3500.0, twr_body_g=KERBIN_G, min_twr=1.5),
+                Phase("insertion", dv_mps=1300.0)],
+        landing=None, max_engine_count=1,
+    ))
+    assert good.stages[0].engine in BOOSTER_ENGINES, good.stages[0].engine
+    assert good.stages[0].engine != "liquidEngine3.v2"  # the Terrier is a vacuum engine, not a booster
+
+
 def test_design_has_sound_aerodynamics():
     """The aerospace sign-off: a rendered stack must be STREAMLINED (low Cd from a nose cone + a faired
     payload), have a HIGH ballistic coefficient (so the ascent drag-loss Δv is small), survive a sane

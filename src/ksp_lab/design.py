@@ -63,9 +63,20 @@ class ShipRequirements:
     max_engine_count: int = 8
 
 
-# Candidate engines/tanks, small -> large. The designer picks the smallest that meets TWR+Δv, so the
-# selection is a calculated search, not a hand-pick.
-ENGINE_LADDER = ["liquidEngine3.v2", "liquidEngine2", "liquidEngine", "engineLargeSkipper", "liquidEngineMainsail.v2"]
+# Engines are selected by ROLE, not one flat ladder (a vacuum Terrier as a booster gives TWR<1 and the
+# rocket won't lift; a low-Isp Mainsail as an upper stage wastes Δv). A stage that fires in the
+# ATMOSPHERE (phase.twr_body_g > 5 -> Kerbin/Eve liftoff) draws from the BOOSTER pool (sized on
+# SEA-LEVEL thrust); a vacuum/upper/landing stage draws from the VACUUM pool (high Isp, modest thrust).
+# Each pool is ordered small -> large so the designer still picks the LIGHTEST that meets TWR + Δv.
+BOOSTER_ENGINES = ["liquidEngine", "liquidEngine2", "engineLargeSkipper", "liquidEngineMainsail.v2"]  # Reliant/Swivel/Skipper/Mainsail
+VACUUM_ENGINES = ["liquidEngine3.v2", "engineLargeSkipper", "liquidEngineMainsail.v2"]                # Terrier (Isp 345) then thrustier
+ENGINE_LADDER = BOOSTER_ENGINES + ["liquidEngine3.v2"]  # back-compat alias (any code importing the flat list)
+
+
+def engine_pool(phase: "Phase") -> list[str]:
+    """The role-correct engine candidates for a phase: BOOSTER (sea-level thrust) for an in-atmosphere
+    liftoff stage, VACUUM (high Isp) for a stage that only fires in space."""
+    return BOOSTER_ENGINES if phase.twr_body_g > 5.0 else VACUUM_ENGINES
 # Each engine class pairs with a tank scale so tank counts stay sane; still verified by the rocket eqn.
 TANK_FOR_ENGINE = {
     "liquidEngine3.v2": "fuelTank.long",
@@ -160,7 +171,7 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
     """Search the engine catalogue (each with calculated clustering + closed-form tank count) and pick
     the LIGHTEST valid stage — minimising wet mass minimises the cascade onto the stages below it. Pure
     calculated selection; no hand-picked engine. Clusters are capped at max_engine_count."""
-    candidates = [_size_one(e, dv, mass_above_t, phase, max_engine_count) for e in ENGINE_LADDER]
+    candidates = [_size_one(e, dv, mass_above_t, phase, max_engine_count) for e in engine_pool(phase)]
     valid = [m for m in candidates if m["ok"] and m["engine_count"] <= max_engine_count]
     if valid:
         chosen = min(valid, key=lambda m: m["wet_t"])
@@ -190,11 +201,13 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     # enough because chute mass is tiny relative to the stack).
     mass_above = bus
     stages_rev: list[StageSpec] = []
+    metrics_rev: list[dict] = []
     log: list[str] = [f"bus(command+crew+heatshield+payload)={bus:.2f}t"]
     # Process phases last-firing first so each lower stage carries the wet mass of the ones above it.
     for phase in reversed(req.phases):
         spec, metrics = _size_stage(phase.dv_mps, mass_above, phase, req.max_engine_count)
         stages_rev.append(spec)
+        metrics_rev.append(metrics)
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
         log.append(
             f"{phase.name}: need {phase.dv_mps:.0f}m/s twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} "
@@ -231,6 +244,30 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
         f"{p['separation_trigger']}" for p in plan)
     est = _estimate(design, req, n_chute)
     design.estimates = est
+
+    # FEASIBILITY GATE — REJECT (do not silently ship) a rocket that cannot fly. This is the fix for the
+    # pad-hang / fall-back failures: the physics was always computed; it just was never enforced.
+    metrics = list(reversed(metrics_rev))
+    reasons: list[str] = []
+    bad_stages = [design.stages[i].role for i, m in enumerate(metrics) if not m.get("ok", True)]
+    if bad_stages:
+        reasons.append(f"stage(s) {bad_stages} cannot meet their Δv+TWR within the engine/cluster cap "
+                       f"(under-thrust or under-tanked)")
+    lt = est["launch_twr"]
+    if lt < 1.2:
+        reasons.append(f"liftoff TWR {lt} < 1.2 — under-thrust: the rocket hangs / falls back (add engines"
+                       f" via max_engine_count, a thrustier booster engine, or cut mass)")
+    elif lt > 2.4:
+        reasons.append(f"WARN liftoff TWR {lt} > 2.4 — over-thrust: wasted engine mass + drag/flip risk")
+    required_dv = sum(p.dv_mps for p in req.phases)
+    if est["total_delta_v_mps"] < required_dv * 0.98:
+        reasons.append(f"total Δv {est['total_delta_v_mps']} < required {required_dv:.0f} m/s — short of the target orbit")
+    hard = [r for r in reasons if not r.startswith("WARN")]
+    design.feasible = len(hard) == 0
+    design.infeasible_reasons = reasons
+    if reasons:
+        design.notes += ("\n\nFEASIBILITY: " + ("PASS (warnings)" if design.feasible else "FAIL — DO NOT LAUNCH")
+                         + ":\n  " + "\n  ".join(reasons))
     return design
 
 

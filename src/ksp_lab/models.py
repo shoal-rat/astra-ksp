@@ -81,6 +81,11 @@ class RocketDesign:
     ballistic_coeff_kgm2: float = 0.0
     ascent_drag_loss_mps: float = 0.0
     max_q_kpa: float = 0.0
+    # Feasibility GATE — the design pipeline must REJECT, not silently ship, a rocket that cannot fly.
+    # feasible=False means a hard constraint failed (liftoff TWR < 1.2, total Δv short of orbit, an
+    # unstable ascent, etc.); callers MUST check this before writing the .craft and launching.
+    feasible: bool = True
+    infeasible_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
