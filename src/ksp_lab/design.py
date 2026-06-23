@@ -223,9 +223,60 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
         notes="DESIGN LOG (every count from physics):\n  " + "\n  ".join(log),
         source="design.design_ship",
     )
+    plan = staging_plan(design, req)
+    design.notes += "\n\nSTAGING PLAN (NO refuel — each stage flies on its own propellant):\n  " + "\n  ".join(
+        f"S{p['stage']} {p['role']}: {p['engines']} + {p['tanks']} | ignite {p['ignition_mass_t']}t"
+        f" -> burnout {p['burnout_mass_t']}t (prop {p['propellant_t']}t) | post-sep {p['post_separation_mass_t']}t"
+        f" | dv {p['dv_mps']} m/s | TWR {p['twr_ignition']}->{p['twr_burnout']} | {p['separator']}; "
+        f"{p['separation_trigger']}" for p in plan)
     est = _estimate(design, req, n_chute)
     design.estimates = est
     return design
+
+
+def staging_plan(design: RocketDesign, req: ShipRequirements) -> list[dict]:
+    """Rigorous per-stage staging analysis — every number from the rocket equation + the assembled
+    stage masses, assuming NO refuelling (each stage flies only on the propellant it carries).
+
+    For each stage, bottom-firing first:
+      - ignition_mass m0   = this stage (wet) + everything that flies above it
+      - burnout_mass  m1   = m0 - this stage's propellant
+      - post_separation_mass = what flies ON after this stage's separator fires (= everything above it);
+        this is the mass the NEXT engine must accelerate, the key staging number
+      - dv it delivers, TWR at ignition and at burnout (the burnout TWR shows the stage isn't dragging
+        dead mass), the separator part + the separation trigger (propellant-exhausted -> drop + ignite next)
+    """
+    from .parts import stage_masses, part
+    bus = _bus_mass(req)
+    stage_wet = [stage_masses(s)[1] for s in design.stages]
+    plan: list[dict] = []
+    for i, stage in enumerate(design.stages):
+        dry, wet, thrust_asl, _isp_asl, isp_vac = stage_masses(stage)
+        mass_above = bus + sum(stage_wet[i + 1:])          # flies on after this stage's separator fires
+        m0, m1 = mass_above + wet, mass_above + dry
+        phase = req.phases[i]
+        g = phase.twr_body_g or 9.81
+        # ASL thrust for an in-atmosphere stage (booster), vacuum thrust otherwise — matches _size_one.
+        thrust_n = (thrust_asl if phase.twr_body_g > 5.0 else
+                    part(stage.engine).thrust_kn_vac * max(1, stage.engine_count)) * 1000.0
+        is_last = i == len(design.stages) - 1
+        plan.append({
+            "stage": i + 1,
+            "role": stage.role,
+            "engines": f"{stage.engine_count}x {stage.engine}",
+            "tanks": f"{stage.tank_count}x {stage.tank} ({stage.diameter_m} m)",
+            "ignition_mass_t": round(m0, 2),
+            "burnout_mass_t": round(m1, 2),
+            "propellant_t": round(wet - dry, 2),
+            "post_separation_mass_t": round(mass_above, 2),
+            "dv_mps": round(astro.rocket_dv(isp_vac, m0, m1), 0),
+            "twr_ignition": round(astro.twr(thrust_n, m0, g), 2),
+            "twr_burnout": round(astro.twr(thrust_n, m1, g), 2),
+            "separator": "TD-12 Decoupler (fires when spent)" if stage.decoupler_above else "none — stays with payload",
+            "separation_trigger": ("final stage — no separation" if is_last
+                                   else "propellant exhausted -> decouple this stage -> ignite next"),
+        })
+    return plan
 
 
 def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict[str, float]:

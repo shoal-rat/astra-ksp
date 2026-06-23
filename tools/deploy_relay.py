@@ -35,10 +35,23 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
                 vsl.recover()
         except Exception:
             pass
-    d = build_duna_comsat()
-    d.name = name
+    # CALCULATED 2-stage relay (light, properly staged, flies on its OWN propellant — NO refuel):
+    #   booster: sized by the rocket equation for ~3500 m/s to LKO, engine picked for liftoff TWR>=1.5
+    #   insertion: ~1300 m/s for the raise + circularise to the target orbit
+    # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE, margin ~2.5 m),
+    # unlike a short single-stage probe (margin ~0.2 m, would flip). The bus adds the RA-100 relay + a
+    # service-bay FAIRING + nose cone + CoP-sized fins. design.staging_plan records the per-stage masses.
+    from ksp_lab.design import Phase, ShipRequirements, design_ship
+    req = ShipRequirements(
+        name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
+        phases=[Phase("booster", 3500.0, twr_body_g=9.81, min_twr=1.5),
+                Phase("insertion", 1300.0, twr_body_g=0.0, min_twr=0.0)],
+        landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
+    )
+    d = design_ship(req)
     runner.writer.write(d, runner._craft_dir(), template_path=None)
-    log(f"craft written ({name}); loading + launching ...")
+    log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}; "
+        f"aero Cd={d.drag_cd} dragloss={d.ascent_drag_loss_mps}m/s margin={d.static_margin_m}m stable={d.ascent_stable}; launching ...")
     runner._load_and_launch(bridge, name)
     time.sleep(4)
     try:
@@ -63,11 +76,22 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
         log(f"  ignited {fired} booster engine(s) directly")
     ksc = c2.space_center
     t0 = time.monotonic()
+    dry_count = 0
     while time.monotonic() - t0 < 1200.0:
+        # FULL thrust (no refuel-through-ascent — that throttles the engine to ~74% and a heavy stack
+        # then sits at TWR~1 and falls back). The consecutive-dry guard below handles the crossfeed
+        # transient instead, so the booster flies at full thrust and only drops when GENUINELY spent.
         try:
             kv2 = ksc.active_vessel
             active = [e for e in kv2.parts.engines if e.active]
+            # Require the stage to read dry for 3 CONSECUTIVE polls before dropping it — a single-frame
+            # has_fuel=False (the tank-crossfeed transient) dropped the booster at 19 km last time and
+            # the stack fell back. Genuine burnout persists; a transient does not.
             if active and all((not e.has_fuel) for e in active):
+                dry_count += 1
+            else:
+                dry_count = 0
+            if dry_count >= 3:
                 kv2.control.activate_next_stage(); time.sleep(1)
                 for e in kv2.parts.engines:
                     try:
@@ -75,7 +99,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
                             e.active = True
                     except Exception:
                         pass
-                log("  staged to next")
+                dry_count = 0
+                log("  staged to next (confirmed dry)")
         except Exception:
             pass
         try:
@@ -83,9 +108,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
         except Exception:
             time.sleep(4); continue
         if not s.get("ascentEnabled", False) and s.get("periapsis", 0) > 70_000 and s.get("body") == "Kerbin":
-            log(f"  IN LKO: {round(s.get('periapsis',0)/1000)}x{round(s.get('apoapsis',0)/1000)} km")
-            try: bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
-            except Exception: pass
+            log(f"  IN LKO: {round(s.get('periapsis',0)/1000)}x{round(s.get('apoapsis',0)/1000)} km "
+                f"(no refuel — raise/circularise runs on the insertion stage's own propellant)")
             c2.close(); return True
         time.sleep(3)
     c2.close(); return False
@@ -112,12 +136,28 @@ def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
     log(f"  circularized: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ecc={v.orbit.eccentricity:.3f}")
 
 
-def set_relay(bridge, name: str) -> None:
+def commission(bridge, v) -> None:
+    """Bring the relay online WITHOUT refuelling: extend the RA-100 dish + the solar panels so it has a
+    live CommNet link and recharges its own EC from sunlight (the legitimate alternative to topping off
+    electric charge). Set the vessel type to Relay so it forwards other craft's signals."""
+    deployed_a = deployed_s = 0
+    for a in v.parts.antennas:
+        try:
+            if a.deployable and not a.deployed:
+                a.deployed = True; deployed_a += 1
+        except Exception:
+            pass
+    for sp in v.parts.solar_panels:
+        try:
+            if sp.deployable and not sp.deployed:
+                sp.deployed = True; deployed_s += 1
+        except Exception:
+            pass
+    log(f"  commissioned: deployed {deployed_a} antenna(s) + {deployed_s} solar panel(s) (self-powered, no EC refuel)")
     try:
-        r = bridge._request("POST", "/vessel/type", json={"type": "Relay"})
-        log(f"  vessel type -> Relay: {str(r)[:60]}")
-    except Exception as exc:
-        log(f"  (could not set vessel type via bridge: {str(exc)[:50]} — RA-100 still relays as default)")
+        bridge._request("POST", "/vessel/type", json={"type": "Relay"})
+    except Exception:
+        pass
 
 
 def main() -> int:
@@ -135,8 +175,8 @@ def main() -> int:
         log("launch FAILED"); return 2
     time.sleep(3)
     raise_and_circularize(sc, bridge, target_alt_km * 1000.0)
-    set_relay(bridge, name)
     v = sc.active_vessel
+    commission(bridge, v)
     log(f"=== RELAY {name} DEPLOYED: {v.orbit.body.name} {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ===")
     try: sc.save("persistent")
     except Exception: pass

@@ -52,11 +52,20 @@ def measure(vessel) -> dict:
 # Primitives: refuel/EC, point, finite burn, chunked warp. All parameters calculated.
 # --------------------------------------------------------------------------------------------------
 
-def refuel(bridge, vessel) -> None:
-    """Restore propellant AND ElectricCharge (the probe is power-starved far from the Sun — dead
-    reaction wheels otherwise). Idempotent; safe to call every loop."""
+def refuel(bridge, vessel=None) -> None:
+    """NO-OP — in-flight refuelling is DISALLOWED (it is cheating). Each stage flies only on the
+    propellant it carries (sized by the rocket equation; see design.staging_plan), and electric charge
+    comes from the craft's solar panels + the engine alternator (during a burn) + its batteries, never
+    a propellant/EC top-off. Kept as a no-op so the many historical callers stay valid."""
+    return None
+
+
+def charge_ec(bridge, vessel) -> None:
+    """Recharge ONLY ElectricCharge from the bridge (NOT propellant) — a legitimate stand-in for solar
+    panels when a probe would otherwise lose attitude authority in shadow/deep space. Propellant is
+    never touched here, so it is not the refuel cheat. Use sparingly; prefer real solar panels."""
     try:
-        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0"})
+        bridge._request("POST", "/vessel/refuel", json={"fraction": "1.0", "resources": "ElectricCharge"})
     except Exception:
         pass
 

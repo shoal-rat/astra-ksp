@@ -552,10 +552,12 @@ class CraftWriter:
             self._attach(root, dock, "top", "bottom", up=True)
             nodes.append(dock)
         elif can_emit("noseCone"):
-            # Nose cone above the parachute for streamlining (owner's aero requirement). Attached to
-            # the chute's top node (the command's top node already holds the chute).
+            # Nose cone for streamlining (the aero requirement): above the parachute if one exists, else
+            # straight on the command pod's top node. A no-chute probe relay has no `chute` node, so guard
+            # on n_chute (referencing `chute` when none was built raised UnboundLocalError).
             nose = new_node("noseCone", 0)
-            self._attach(chute, nose, "top", "bottom", up=True)
+            top = chute if n_chute > 0 else root
+            self._attach(top, nose, "top", "bottom", up=True)
             nodes.append(nose)
 
         # AERODYNAMIC sign-off — turn the assembled SHAPE into air-resistance numbers (the aerospace
