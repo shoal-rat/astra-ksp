@@ -188,3 +188,21 @@ def test_hoverslam_reference_speed_follows_sqrt_2ah_when_thrust_exceeds_weight()
     assert astro.hoverslam_reference_speed(1000.0, mass_t, thrust_n, DUNA_G, throttle) > \
         astro.hoverslam_reference_speed(100.0, mass_t, thrust_n, DUNA_G, throttle)
     assert astro.hoverslam_reference_speed(0.0, mass_t, thrust_n, DUNA_G, throttle) == 0.0
+
+
+def test_mission_characteristics_helpers():
+    """Signal link budget, solar power by distance, gravity assist, and dynamic pressure — all from physics."""
+    import math
+    from ksp_lab import astro
+    # CommNet: RA-100 (100 Gm) vs level-3 DSN (250 Gm) = geometric mean ~158 Gm; closes 34 Gm conjunction.
+    assert round(astro.link_range_m(100e9, 250e9) / 1e9) == 158
+    assert astro.link_closes(34.3e9, 100e9, 250e9) is True
+    assert astro.link_closes(34.3e9, 2e9, 250e9) is False        # weak RA-2 (the old design) does NOT close
+    # Solar inverse-square: full at Kerbin, ~43% at Duna's orbit.
+    assert astro.solar_power_fraction(13_599_840_256.0) == 1.0
+    assert 0.40 < astro.solar_power_fraction(20.726e9) < 0.45
+    # Gravity assist: a Mun flyby bends the path and grants free Δv (positive).
+    bend = astro.flyby_bend_angle_rad(1000.0, 300_000.0, 6.5138398e10)
+    assert bend > 0 and astro.gravity_assist_delta_v(1000.0, bend) > 0
+    # Dynamic pressure q = 0.5 rho v^2.
+    assert abs(astro.dynamic_pressure(1.225, 100.0) - 0.5 * 1.225 * 100.0 ** 2) < 1e-6

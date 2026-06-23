@@ -262,6 +262,13 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     required_dv = sum(p.dv_mps for p in req.phases)
     if est["total_delta_v_mps"] < required_dv * 0.98:
         reasons.append(f"total Δv {est['total_delta_v_mps']} < required {required_dv:.0f} m/s — short of the target orbit")
+    # UNIFORM DIAMETER (aerodynamics): the stack fires bottom-up (stages[0] = booster at the base), so
+    # diameters should be NON-INCREASING upward — the booster is the widest. A stage wider than the one
+    # below it leaves an exposed flat shoulder (drag + a node an adapter should smooth).
+    for i in range(1, len(design.stages)):
+        if design.stages[i].diameter_m > design.stages[i - 1].diameter_m + 1e-6:
+            reasons.append(f"WARN non-uniform diameter: {design.stages[i].role} {design.stages[i].diameter_m}m sits "
+                           f"above the narrower {design.stages[i-1].role} {design.stages[i-1].diameter_m}m — insert an adapter")
     hard = [r for r in reasons if not r.startswith("WARN")]
     design.feasible = len(hard) == 0
     design.infeasible_reasons = reasons

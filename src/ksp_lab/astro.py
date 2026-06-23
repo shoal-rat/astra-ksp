@@ -350,3 +350,54 @@ def burn_time_s(mass_t: float, thrust_n: float, dv: float, isp_vac_s: float = 0.
         m1 = m0 * math.exp(-dv / ve)
         return (m0 - m1) / mdot
     return m0 * dv / thrust_n
+
+
+# --------------------------------------------------------------------------------------------------
+# MISSION characteristics — signal (CommNet link budget), power (solar by distance), gravity assists,
+# and fluid-dynamic pressure. These let the designer SIZE a relay/interplanetary craft and a trajectory
+# from physics instead of guessing: a link either closes or it does not; a panel either powers the
+# craft at the target's distance or it browns out; a flyby either buys Δv or it does not.
+# --------------------------------------------------------------------------------------------------
+
+def link_range_m(antenna_power_m: float, other_power_m: float) -> float:
+    """CommNet combined range = the geometric mean sqrt(A*B) of the two endpoints' antenna power (m).
+    A link exists only when the separation is below this AND no body occludes the straight line."""
+    if antenna_power_m <= 0 or other_power_m <= 0:
+        return 0.0
+    return math.sqrt(antenna_power_m * other_power_m)
+
+
+def link_closes(separation_m: float, antenna_power_m: float, other_power_m: float) -> bool:
+    """True if a relay/DSN link physically closes over `separation_m` (ignoring occlusion, which is a
+    geometry check the caller does separately — e.g. the Sun blocking a Kerbin<->Duna line at conjunction)."""
+    return 0.0 < separation_m <= link_range_m(antenna_power_m, other_power_m)
+
+
+def solar_power_fraction(orbit_radius_m: float, ref_radius_m: float = 13_599_840_256.0) -> float:
+    """Solar-panel output relative to Kerbin's distance, falling off as 1/r^2 with heliocentric radius.
+    At Duna (~20.7 Gm) this is ~(13.6/20.7)^2 ~ 0.43; far past it switch to an RTG. ref = Kerbin orbit (1.0)."""
+    if orbit_radius_m <= 0:
+        return 1.0
+    return (ref_radius_m / orbit_radius_m) ** 2
+
+
+def flyby_bend_angle_rad(v_inf_mps: float, periapsis_m: float, mu: float) -> float:
+    """Hyperbolic flyby turn angle delta: sin(delta/2) = 1/e, e = 1 + r_pe * v_inf^2 / mu. A lower
+    periapsis or a slower approach (smaller v_inf) bends the path more, so the assist is bigger."""
+    if v_inf_mps <= 0 or periapsis_m <= 0 or mu <= 0:
+        return 0.0
+    e = 1.0 + periapsis_m * v_inf_mps * v_inf_mps / mu
+    return 2.0 * math.asin(min(1.0, 1.0 / e))
+
+
+def gravity_assist_delta_v(v_inf_mps: float, bend_angle_rad: float) -> float:
+    """Magnitude of the FREE heliocentric Δv a flyby grants: |Δv| = 2 * v_inf * sin(delta/2). Passing
+    BEHIND/trailing a body adds speed (sends you outward, e.g. toward Duna/Jool); passing in FRONT
+    removes speed (inward). Worth using only when it beats a direct Hohmann — mainly for Jool-and-beyond."""
+    return 2.0 * v_inf_mps * math.sin(bend_angle_rad / 2.0)
+
+
+def dynamic_pressure(rho: float, v_mps: float) -> float:
+    """Aerodynamic (dynamic) pressure q = 0.5 * rho * v^2 (Pa) — the fluid-dynamic load that drives drag
+    force (F = q * Cd * A) and the structural/control stress that peaks at max-Q during ascent."""
+    return 0.5 * rho * v_mps * v_mps
