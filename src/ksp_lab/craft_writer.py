@@ -137,7 +137,10 @@ class CraftWriter:
             names.add("HeatShield1")
         # Avionics/power/comms bus + aero fins added by _build_nodes; harvest their real
         # serializations too so they are not skipped (can_emit) or spliced module-less.
-        names.update({"longAntenna", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2"})
+        # RelayAntenna100 (RA-100) MUST be harvested or the bus_layout silently falls back to the weak
+        # longAntenna (Communotron 16) — which is exactly why the relays could not hold the Kerbin<->Duna
+        # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
+        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2"})
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
