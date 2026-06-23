@@ -413,7 +413,11 @@ class CraftWriter:
         bus_radius = part(root.part_name).height_m * 0.6 + 0.25
         bus_y = root.y - 0.05
         bus_layout = [
-            ("longAntenna", (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
+            # RA-100 relay (not the weak Communotron 16): keeps signal to Kerbin from Duna and lets the
+            # craft relay — the fix for no-signal-at-Duna. Falls back to longAntenna if RA-100 isn't
+            # in the part library.
+            ("RelayAntenna100" if (part_bodies is None or "RelayAntenna100" in part_bodies) else "longAntenna",
+             (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
             ("batteryBankMini", (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
             ("solarPanels5", (0.0, bus_y, bus_radius), (0.0, 0.0, 0.0, 1.0)),
             ("solarPanels5", (0.0, bus_y, -bus_radius), (0.0, 1.0, 0.0, 0.0)),

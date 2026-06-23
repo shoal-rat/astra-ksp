@@ -85,7 +85,12 @@ STOCK_PARTS: dict[str, StockPart] = {
     , diameter_m=2.5),
     # Avionics / payload accessories (no propellant; mass/cost for the budget only).
     "longAntenna": StockPart("longAntenna", "Communotron 16 (direct antenna)", 0.005, 0.005, 300, 0.3),
-    "RelayAntenna5": StockPart("RelayAntenna5", "Communotron 16-S (relay antenna)", 0.015, 0.015, 600, 0.3),
+    "RelayAntenna5": StockPart("RelayAntenna5", "RA-2 Relay (relay antenna)", 0.015, 0.015, 600, 0.3),
+    # RA-100: the strongest stock RELAY antenna (100 Gm). Combined with a level-3 DSN (250 Gm) it
+    # reaches Kerbin from anywhere in the system (~158 Gm) — fixes the no-signal-at-Duna problem; the
+    # weak RA-2 (2 Gm -> ~22 Gm combined) drops out when Duna is past ~22 Gm. Relay antennas also let
+    # the comsat constellation extend the network for other craft.
+    "RelayAntenna100": StockPart("RelayAntenna100", "RA-100 Relay Antenna", 0.65, 0.65, 1000, 0.6),
     "solarPanels5": StockPart("solarPanels5", "SP-W 3x2 Photovoltaic Panels", 0.0175, 0.0175, 380, 0.3),
     "batteryBankMini": StockPart("batteryBankMini", "Z-200 Rechargeable Battery Bank", 0.01, 0.01, 360, 0.3),
     "R8winglet": StockPart("R8winglet", "AV-R8 Winglet (active control surface)", 0.08, 0.08, 640, 0.5, fin_area_m2=2.0),
