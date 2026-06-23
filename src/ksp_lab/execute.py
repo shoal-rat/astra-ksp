@@ -101,9 +101,17 @@ def execute_node(sc, bridge, vessel, *, isp_vac_s: float = 0.0, timeout_s: float
     ap.target_direction = (0.0, 1.0, 0.0)
     ap.engage()
     t = time.monotonic()
-    while time.monotonic() - t < 70 and abs(ap.error) > 3.0:
+    while time.monotonic() - t < 120 and abs(ap.error) > 2.0:
         ap.target_direction = (0.0, 1.0, 0.0)
+        refuel(bridge, vessel)  # keep EC up so the reaction wheels can actually turn the craft
         time.sleep(1.0)
+    # CRITICAL: abort if we did not converge on the node vector. Burning while mis-pointed fired a
+    # node retrograde once and decayed the orbit into a crash. Better to abort and let the caller retry.
+    if abs(ap.error) > 12.0:
+        _log(f"  point FAILED (err={abs(ap.error):.0f} deg) — NOT burning (would fire the wrong way)")
+        ap.disengage()
+        return False
+    _log(f"  pointed at node (err={abs(ap.error):.1f} deg); burning {node.remaining_delta_v:.0f} m/s")
     # Coast to the burn-start time (node UT minus the calculated lead).
     while node.time_to > lead:
         ap.target_direction = (0.0, 1.0, 0.0)

@@ -16,7 +16,7 @@ import time
 
 import yaml
 
-from ksp_lab import astro, design
+from ksp_lab import astro, design, execute, plan
 from ksp_lab.bridge_client import BridgeClient
 from ksp_lab.design import Phase, ShipRequirements
 from ksp_lab.runner import AutomationRunner
@@ -210,6 +210,54 @@ def cmd_launch(sc, cfg, runner, bridge, name: str) -> int:
     return 2
 
 
+def cmd_transfer(sc, bridge) -> int:
+    """Trans-Duna injection from LKO: raise apoapsis for fast warp, MechJeb interplanetary ejection,
+    warp to the node, execute the burn, cruise to Duna's SOI. Uses the proven /mj-plan + the
+    calculated executors (execute.execute_node / warp_to_ut). Every Δv is computed, not guessed."""
+    v = sc.active_vessel
+    log(f"transfer: {v.name} {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f}km crew={v.crew_count}")
+    # 1) raise apoapsis to ~2500 km — LKO caps rails warp ~50x; a high apsis unlocks 100000x.
+    if v.orbit.apoapsis_altitude < 2_000_000:
+        st = execute.measure(v)
+        r_pe = st["r_periapsis"]
+        a_new = (r_pe + st["body_radius"] + 2_500_000) / 2.0
+        dv = astro.vis_viva_speed(st["mu"], r_pe, a_new) - astro.circular_speed(st["mu"], r_pe)
+        for nd in list(v.control.nodes):
+            nd.remove()
+        v.control.add_node(sc.ut + v.orbit.time_to_periapsis, prograde=dv)
+        log(f"  raise apoapsis: {dv:.0f} m/s -> 2500 km")
+        execute.execute_node(sc, bridge, v)
+    # 2) MechJeb interplanetary ejection toward Duna (it computes the precise node + window).
+    for nd in list(v.control.nodes):
+        nd.remove()
+    bridge.mj_plan(target="Duna", operation="interplanetary")
+    time.sleep(3)
+    if not v.control.nodes:
+        log("  /mj-plan produced no ejection node"); return 2
+    ej = v.control.nodes[0]
+    log(f"  ejection node: {ej.delta_v:.0f} m/s in {(ej.ut - sc.ut)/86400:.0f} days")
+    # 3) warp to the node (chunked) and execute the ejection burn.
+    execute.warp_to_ut(sc, ej.ut - 240)
+    execute.execute_node(sc, bridge, v)
+    # 4) cruise: warp to Duna's SOI entry.
+    t = time.monotonic()
+    while v.orbit.body.name == "Kerbin" and time.monotonic() - t < 180:
+        ts = v.orbit.time_to_soi_change
+        if ts and ts == ts:
+            try:
+                sc.warp_to(sc.ut + ts + 10)
+            except Exception:
+                pass
+        sc.rails_warp_factor = 0
+        time.sleep(2)
+    log(f"  after ejection+cruise: body={v.orbit.body.name} ap={v.orbit.apoapsis_altitude/1e9:.2f}Gm")
+    try:
+        sc.save("persistent")
+    except Exception:
+        pass
+    return 0
+
+
 def main() -> int:
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
     phase = sys.argv[2] if len(sys.argv) > 2 else "design"
@@ -226,6 +274,8 @@ def main() -> int:
             return cmd_design(sc)
         if phase == "launch":
             return cmd_launch(sc, cfg, runner, bridge, name)
+        if phase == "transfer":
+            return cmd_transfer(sc, bridge)
         log(f"unknown phase {phase!r}")
         return 2
     finally:
