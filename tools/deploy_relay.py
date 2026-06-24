@@ -179,23 +179,36 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
         try:
             kv2 = ksc.active_vessel
             active = [e for e in kv2.parts.engines if e.active]
-            # 3 consecutive dry polls = genuine burnout (a single-frame has_fuel=False is the tank-crossfeed
-            # transient that once dropped the booster at 19 km). Only then separate.
-            if active and all((not e.has_fuel) for e in active):
-                dry_count += 1
-            else:
-                dry_count = 0
-            if dry_count >= 3 and inter_decs:
-                # The bottom stage is genuinely spent and (since we got here with all engines dry) STILL
-                # ATTACHED. Fire its decoupler EXPLICITLY, then CONFIRM the separation by a part-count drop
-                # BEFORE igniting the next engine — so the next engine can never burn against an un-separated
-                # tank (the reported bug). The payload decoupler is not in this list, so it is never fired.
-                dec = inter_decs.pop(0)
+            # Trigger on the BOTTOM (deepest) active engine being dry — the current booster. Keying on the
+            # bottom (NOT "all active engines dry") is essential: MechJeb autostage may light an UPPER engine
+            # WITHOUT separating, leaving a mixed [dead booster, live upper] set; an "all dry" test never
+            # fires and the upper burns against the still-attached dead booster — exactly how Keo-4 stranded
+            # at ap 691 km dragging the whole booster (25 parts, both engines active, both decouplers unfired).
+            # 3 consecutive dry polls = genuine burnout, not a single-frame tank-crossfeed transient.
+            bottom_dry = False
+            if active:
+                bottom = max(active, key=lambda e: _depth_from_root(e.part))
+                bottom_dry = not bottom.has_fuel
+            dry_count = dry_count + 1 if bottom_dry else 0
+            # inter-stage decouplers still UN-FIRED (MechJeb may already have fired one); deepest-first.
+            # Recomputed each poll from .decoupled (not popped), so an unconfirmed fire simply retries and an
+            # already-MechJeb-fired one is skipped.
+            pending = []
+            for _d in inter_decs:
+                try:
+                    if not _d.decoupled:
+                        pending.append(_d)
+                except Exception:
+                    pass
+            if dry_count >= 3 and pending:
+                # The bottom stage is spent and STILL ATTACHED (its decoupler is un-fired). Fire that
+                # decoupler EXPLICITLY and CONFIRM the separation by a part-count drop. The payload decoupler
+                # is never in this list, so a spent UPPER stage near orbit can never jettison the comsat.
+                dec = pending[0]
                 before = len(kv2.parts.all)
                 try:
-                    if not dec.decoupled:
-                        dec.decouple()
-                        log("  fired inter-stage decoupler (explicit, 3-poll-confirmed dry)")
+                    dec.decouple()
+                    log("  fired inter-stage decoupler explicitly (spent bottom stage was still attached)")
                 except Exception:
                     pass
                 sep = False
@@ -209,8 +222,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
                         pass
                 kv3 = ksc.active_vessel
                 if sep:
-                    # Ignite ONLY the next stage down: the DEEPEST fueled, still-unlit engine — never every
-                    # fueled engine (that lit the upper in-atmosphere and, pre-separation, cooked the tank).
+                    # Make sure the next stage down is lit (MechJeb usually already lit it -> a no-op here).
+                    # The deepest fueled, still-unlit engine = the next stage; never a blanket ignite-all.
                     nxt = [e for e in kv3.parts.engines if e.has_fuel and not e.active]
                     nxt.sort(key=lambda e: -_depth_from_root(e.part))
                     if nxt:
@@ -218,9 +231,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
                             nxt[0].active = True
                         except Exception:
                             pass
-                    log(f"  SEPARATED (dropped {before - len(kv3.parts.all)} parts) -> ignited next stage")
-                else:
-                    log("  separation NOT confirmed yet — next engine HELD OFF (won't cook an attached tank)")
+                    log(f"  SEPARATED (dropped {before - len(kv3.parts.all)} parts) -> next stage burning")
+                # If not confirmed, `dec` stays un-decoupled -> recomputed back into `pending` -> retried.
                 dry_count = 0
         except Exception:
             pass
