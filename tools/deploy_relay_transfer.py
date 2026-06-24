@@ -613,8 +613,12 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # (and correction Δv) low instead of a 1000-node 4-D brute grid.
     coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=520.0, pg_step=30.0, rad_vals=(0.0,), nrm_vals=(0.0,))
     seed = coarse["prograde"] if coarse else 0.0
+    # WIDE radial sweep: the radial component sets how deep the approach passes Duna (the encounter
+    # periapsis). A narrow ±30 left the encounter at ~22,000 km -> no Oberth, capture too costly (ran the
+    # tank dry). A wide radial range finds a LOW periapsis (cheap Oberth retro-capture).
     best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=40.0, pg_step=10.0,
-                                        rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0))
+                                        rad_vals=(-200.0, -140.0, -90.0, -45.0, 0.0, 45.0, 90.0, 140.0, 200.0),
+                                        nrm_vals=(-15.0, 0.0, 15.0))
     if best is not None and not best["encounter"]:           # wider sweep (more UTs + prograde) if still missing
         log("  no encounter after refine — wider prograde + UT sweep ...")
         rem = v.orbit.time_to_apoapsis or 0.0
@@ -622,7 +626,8 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
                                                nrm_vals=(0.0,), ut_offsets=(-rem * 0.2, 0.0, rem * 0.2))
         seed2 = coarse2["prograde"] if coarse2 else seed
         best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed2, pg_width=40.0, pg_step=10.0,
-                                            rad_vals=(-40.0, -20.0, 0.0, 20.0, 40.0), nrm_vals=(-20.0, 0.0, 20.0))
+                                            rad_vals=(-250.0, -180.0, -120.0, -60.0, 0.0, 60.0, 120.0, 180.0, 250.0),
+                                            nrm_vals=(-20.0, 0.0, 20.0))
     if best is None or not best["encounter"] or best["duna_pe_m"] < 60_000.0:
         shown = f"{best['duna_pe_m']/1000:.0f} km" if (best and best["encounter"]) else "no encounter"
         log(f"  ABORT: grid-search could not establish a safe Duna encounter ({shown})"); return False
