@@ -24,6 +24,39 @@ def log(m: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 
+def _depth_from_root(part) -> int:
+    """Tree depth of a part from the root command part. The PAYLOAD decoupler (between the relay bus and
+    the final stage) is the SHALLOWEST decoupler — closest to the root; the inter-stage decouplers that
+    drop spent boosters are DEEPER, down toward the engines."""
+    d, p, seen = 0, part, set()
+    while True:
+        try:
+            parent = p.parent
+        except Exception:
+            break
+        if parent is None or id(parent) in seen:
+            break
+        seen.add(id(parent)); p = parent; d += 1
+    return d
+
+
+def _inter_stage_decouplers(vessel) -> list:
+    """The decouplers ascent staging may fire, DEEPEST-first (the booster decoupler before any upper one),
+    EXCLUDING the payload decoupler. The payload decoupler is the SHALLOWEST decoupler (it separates the
+    comsat from the final stage) — never fired during ascent, so the payload is never jettisoned when the
+    upper stage later runs dry. Returns [] when there is only a payload decoupler (or none)."""
+    try:
+        decs = list(vessel.parts.decouplers)
+    except Exception:
+        return []
+    if len(decs) <= 1:
+        return []
+    payload = min(decs, key=lambda dd: _depth_from_root(dd.part))   # shallowest = the payload decoupler
+    inter = [dd for dd in decs if dd is not payload]
+    inter.sort(key=lambda dd: -_depth_from_root(dd.part))           # deepest (lowest booster) fires first
+    return inter
+
+
 def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit."""
@@ -114,32 +147,67 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     else:
         log(f"  ignited {fired} booster engine(s) directly")
     ksc = c2.space_center
+    # Pre-identify the ascent SEPARATORS once, while every decoupler is still attached: the inter-stage
+    # decouplers ONLY (deepest/booster-most first), EXCLUDING the payload decoupler. We fire these
+    # EXPLICITLY rather than trusting control.activate_next_stage() (the by-name booster ignition desyncs
+    # KSP's stage counter, so it can fire the already-spent stage and skip the booster decoupler) or
+    # MechJeb autostage (which intermittently skips the booster decoupler on this fin geometry). That
+    # guarantees a spent stage is physically separated BEFORE the next engine lights — the fix for "the
+    # next engine just heats the attached tank with no thrust gain" — and the comsat is never jettisoned.
+    inter_decs = _inter_stage_decouplers(kv)
+    log(f"  ascent separators: {len(inter_decs)} inter-stage decoupler(s) to fire explicitly "
+        f"(payload decoupler protected — never fired during ascent)")
     t0 = time.monotonic()
     dry_count = 0
     while time.monotonic() - t0 < 1200.0:
-        # FULL thrust (no refuel-through-ascent — that throttles the engine to ~74% and a heavy stack
-        # then sits at TWR~1 and falls back). The consecutive-dry guard below handles the crossfeed
-        # transient instead, so the booster flies at full thrust and only drops when GENUINELY spent.
+        # FULL thrust (no refuel-through-ascent). The consecutive-dry guard handles the crossfeed transient
+        # so the booster flies at full thrust and only drops when GENUINELY spent.
         try:
             kv2 = ksc.active_vessel
             active = [e for e in kv2.parts.engines if e.active]
-            # Require the stage to read dry for 3 CONSECUTIVE polls before dropping it — a single-frame
-            # has_fuel=False (the tank-crossfeed transient) dropped the booster at 19 km last time and
-            # the stack fell back. Genuine burnout persists; a transient does not.
+            # 3 consecutive dry polls = genuine burnout (a single-frame has_fuel=False is the tank-crossfeed
+            # transient that once dropped the booster at 19 km). Only then separate.
             if active and all((not e.has_fuel) for e in active):
                 dry_count += 1
             else:
                 dry_count = 0
-            if dry_count >= 3:
-                kv2.control.activate_next_stage(); time.sleep(1)
-                for e in kv2.parts.engines:
+            if dry_count >= 3 and inter_decs:
+                # The bottom stage is genuinely spent and (since we got here with all engines dry) STILL
+                # ATTACHED. Fire its decoupler EXPLICITLY, then CONFIRM the separation by a part-count drop
+                # BEFORE igniting the next engine — so the next engine can never burn against an un-separated
+                # tank (the reported bug). The payload decoupler is not in this list, so it is never fired.
+                dec = inter_decs.pop(0)
+                before = len(kv2.parts.all)
+                try:
+                    if not dec.decoupled:
+                        dec.decouple()
+                        log("  fired inter-stage decoupler (explicit, 3-poll-confirmed dry)")
+                except Exception:
+                    pass
+                sep = False
+                for _ in range(8):                        # KSP splits the vessel over several physics frames
+                    time.sleep(0.5)
                     try:
-                        if e.has_fuel:
-                            e.active = True
+                        if len(ksc.active_vessel.parts.all) < before:
+                            sep = True
+                            break
                     except Exception:
                         pass
+                kv3 = ksc.active_vessel
+                if sep:
+                    # Ignite ONLY the next stage down: the DEEPEST fueled, still-unlit engine — never every
+                    # fueled engine (that lit the upper in-atmosphere and, pre-separation, cooked the tank).
+                    nxt = [e for e in kv3.parts.engines if e.has_fuel and not e.active]
+                    nxt.sort(key=lambda e: -_depth_from_root(e.part))
+                    if nxt:
+                        try:
+                            nxt[0].active = True
+                        except Exception:
+                            pass
+                    log(f"  SEPARATED (dropped {before - len(kv3.parts.all)} parts) -> ignited next stage")
+                else:
+                    log("  separation NOT confirmed yet — next engine HELD OFF (won't cook an attached tank)")
                 dry_count = 0
-                log("  staged to next (confirmed dry)")
         except Exception:
             pass
         try:
