@@ -16,6 +16,7 @@ All long warps use sc.warp_to (NOT MechJeb autowarp, which STALLS on far nodes).
 """
 from __future__ import annotations
 
+import math
 import sys
 import time
 from pathlib import Path
@@ -36,6 +37,16 @@ from mj_to_mun import _retro_capture, _wait_node_done
 
 def log(m: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
+
+
+def _incl_log(v, tag: str) -> None:
+    """Log the orbit inclination (deg) to locate where a heliocentric plane error enters the chain.
+    Around Kerbin (0 axial tilt, equatorial LKO == the ecliptic) this should stay ~0 through the in-plane
+    raise/lower; a jump means that phase tilts the orbit and carries through to the Duna miss."""
+    try:
+        log(f"  [DIAG] {tag}: incl {math.degrees(v.orbit.inclination):.2f} deg (around {v.orbit.body.name})")
+    except Exception:
+        pass
 
 
 def _predicted_periapsis_at(v, body_name: str):
@@ -432,6 +443,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         v.control.remove_nodes()
     except Exception:
         pass
+    _incl_log(v, "post-ascent LKO")                          # baseline plane (should be ~equatorial/ecliptic)
     # 1) Plan the ejection just to read the WINDOW time, then drop the node (we re-plan after the warp).
     try:
         r = bridge.mj_plan(target="Duna", operation="interplanetary")
@@ -458,11 +470,11 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  raising apoapsis to ~{target_ap/1000:.0f} km (below the Mun) so the {wait/(426*21600):.2f}-yr wait warps fast ...")
         _raise_apoapsis(sc, v, target_ap)
         log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
+        _incl_log(v, "post-raise")                            # the raise is prograde -> should NOT tilt the plane
     # 3) Warp to NEAR the window (fast now: most of the long orbit sits at the high-warp altitude band).
     # Leave > 1 high-orbit PERIOD of buffer: the lower-to-LKO step below warps to the next periapsis (up to
     # ~1 period of game-time), so warping all the way to node_ut - 1800 would OVERSHOOT the window during the
     # lower and force mj_plan onto the NEXT synodic window (~2 yr later, un-warpable from LKO at cap 3).
-    import math
     period = 2.0 * math.pi * (v.orbit.semi_major_axis ** 3 / v.orbit.body.gravitational_parameter) ** 0.5
     warp_target = node_ut - (period * 1.3 + 1800.0)
     if warp_target > sc.ut:
@@ -476,6 +488,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     if v.orbit.apoapsis_altitude > 400_000.0:
         log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit back to LKO for a clean ejection ...")
         _lower_to_lko(conn, sc, bridge, v)
+        _incl_log(v, "post-lower LKO")                        # last in-Kerbin reading before the ejection plans
     log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
     # 4) Re-plan the ejection from the (now low) orbit and execute.
     try:
