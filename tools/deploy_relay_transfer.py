@@ -603,17 +603,38 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # that LOWERED the orbit instead of escaping (validated: 6906 -> 416 km, no Duna encounter -> abort). The
     # warp strategy is what makes the long wait practical; we just don't eject from the raised orbit. The
     # upper carries ~4,400 m/s so the ~800 m/s round-trip (raise for warp, lower for ejection) is affordable.
-    if v.orbit.apoapsis_altitude > 400_000.0:
-        log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit back to LKO for a clean ejection ...")
-        _lower_to_lko(conn, sc, bridge, v)
-        _incl_log(v, "post-lower LKO")                        # last in-Kerbin reading before the ejection plans
+    # 3b) Lower the warp orbit, but only PARTWAY (to ~100x450 km, mild ecc ~0.24) — NOT all the way to circular.
+    # The full round-trip back to circular LKO wastes ~1,580 m/s (NOT the ~800 the old comment claimed): the
+    # lower-back burns off the raise's ~790 m/s of periapsis speed, then the ejection re-pays the WHOLE ~1,025 m/s
+    # from circular. That left the Duna capture ~250 m/s short (validated: AI-Duna-Ring-U ran dry at ecc 1.61).
+    # Stopping at ~100x450 km keeps ~330 m/s of the raise's Oberth speed, so the ejection costs ~770 m/s instead
+    # of 1,025 — enough margin to capture. SAFETY: mj_plan's retrograde bug was on the 6,900 km orbit; ecc ~0.24
+    # is nearly circular so it should plan a normal prograde ejection, and if it still returns a retrograde node
+    # we fall back to a full circular LKO and re-plan (the proven path — no worse than before).
+    if v.orbit.apoapsis_altitude > 600_000.0:
+        log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit to ~100x450 km (partial — keeps Oberth speed for a cheaper ejection) ...")
+        _lower_to_lko(conn, sc, bridge, v, target_apo_alt_m=450_000.0)
+        _incl_log(v, "post-lower")                            # last in-Kerbin reading before the ejection plans
     log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
-    # 4) Re-plan the ejection from the (now low) orbit and execute.
+    # 4) Re-plan the ejection from the (now low-ish) orbit and execute.
     try:
         r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
-        log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
+    nodes = v.control.nodes
+    if nodes and nodes[0].prograde < 0.0:                     # mj_plan's eccentric-orbit bug -> a retrograde "ejection"
+        log(f"  mj_plan returned a RETROGRADE node ({nodes[0].prograde:.0f} m/s) on the eccentric orbit — lowering fully to circular LKO and re-planning ...")
+        try:
+            v.control.remove_nodes()
+        except Exception:
+            pass
+        _lower_to_lko(conn, sc, bridge, v)                   # full circular LKO (~130 km) — the proven fallback
+        _incl_log(v, "post-lower LKO (fallback)")
+        try:
+            r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
+        except Exception as exc:
+            log(f"  ejection re-plan FAILED: {exc}"); return False
+    log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     # NOTE: an ejection-prograde grid-search (_search_duna_ejection_prograde) is implemented but DISABLED — its
     # scorer (distance_at_closest_approach on the predicted post-escape Sun patch) is INCONSISTENT with the
     # real position-sampled miss (it picked prograde 635 -> "4416 Mm" while the actual 1036 gave 3496 Mm, i.e.
