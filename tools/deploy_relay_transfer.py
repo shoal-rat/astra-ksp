@@ -314,13 +314,16 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0, max_throttle:
     # rotation-independent and counts only the burn's Δv (no gravity contamination).
     applied = 0.0
     t0 = time.monotonic()
-    t_prev = t0
+    ut_prev = sc.ut                                          # integrate over GAME time, not wall-clock
     v.control.throttle = min(max_throttle, 1.0)
     while time.monotonic() - t0 < max_burn_s:
         ap.target_direction = _burn_dir()
-        now = time.monotonic()
-        applied += (v.available_thrust * v.control.throttle / max(v.mass, 1.0)) * (now - t_prev)
-        t_prev = now
+        ut_now = sc.ut
+        # Δv = ∫(thrust·throttle/mass) over PHYSICS time. Under ~3x game lag a wall-clock dt over-counts the
+        # time the thrust actually acted (game advances < wall-clock), cutting the burn short -> a large Duna
+        # phasing miss. sc.ut is the physics clock, so this integral is lag-independent and accurate.
+        applied += (v.available_thrust * v.control.throttle / max(v.mass, 1.0)) * max(0.0, ut_now - ut_prev)
+        ut_prev = ut_now
         rem = dv_total - applied
         if rem < 0.3:
             break
@@ -423,6 +426,7 @@ def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.
     candidate node's patched-conic Duna approach directly and keeps only the best."""
     duna = sc.bodies["Duna"]
     sc.rails_warp_factor = 0
+    time.sleep(2)                                            # let patched-conic predictions settle after warp
     best, best_score, n = None, float("inf"), 0
     for ut_off in ut_offsets:
         ut = mid_ut + ut_off
