@@ -216,6 +216,16 @@ read them last.
   excellent (clean gravity turn, autostage, circularization to the exact target apoapsis) and far more
   reliable than the hand-rolled ascent.
 
+- **Two stagers race — disable MechJeb autostage when you fire decouplers yourself.**
+  *Symptom:* the relay intermittently failed to separate (MechJeb mis-detected staging on the fin
+  geometry) or dropped the booster early on a tank-crossfeed transient.
+  *Cause:* MechJeb's ascent AP autostages AND `tools/deploy_relay.py` fires inter-stage decouplers
+  explicitly — two stagers fighting over the same stack.
+  *Fix:* pass `/mj-ascent` `autostage=false` (bridge sets `MechJebModuleAscentSettings.Autostage`
+  false before enabling the AP, so it never registers with the staging controller). MechJeb still flies
+  the gravity turn + circularises; your explicit-decouple loop is the SOLE stager. `deploy_relay.py`
+  uses `bridge.mj_ascent(..., autostage=False)`; leave it True for flights that want MechJeb to stage.
+
 ### 7.2 Transfer & nodes
 
 - **MechJeb's node executor won't auto-warp to a distant node while it is still orienting.**

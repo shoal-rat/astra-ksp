@@ -89,11 +89,17 @@ class BridgeClient:
             "forceRol": "true" if force_rol else "false",
         })
 
-    def mj_ascent(self, altitude: float = 90000.0, inclination: float = 0.0) -> dict:
-        """Enable MechJeb's ascent autopilot on the ACTIVE vessel to a parking orbit (Classic path)."""
+    def mj_ascent(self, altitude: float = 90000.0, inclination: float = 0.0,
+                  autostage: bool = True) -> dict:
+        """Enable MechJeb's ascent autopilot on the ACTIVE vessel to a parking orbit (Classic path).
+
+        autostage=False disables MechJeb's own ascent autostaging (sets MechJebModuleAscentSettings.Autostage
+        false before enabling the AP), so a caller that fires its own decouplers explicitly is the SOLE
+        stager — no two-stagers race. Leave True for hand-off flights that want MechJeb to autostage."""
         return self._request("POST", "/mj-ascent", json={
             "altitude": str(altitude),
             "inclination": str(inclination),
+            "autostage": "true" if autostage else "false",
         })
 
     def mj_execute_node(self, autowarp: bool = True, all_nodes: bool = False) -> dict:

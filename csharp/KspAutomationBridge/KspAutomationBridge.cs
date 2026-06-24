@@ -1702,16 +1702,25 @@ namespace KspAutomationBridge
                 return CommandResult.Fail("MechJebModuleAscentSettings not present.");
             settings.DesiredOrbitAltitude.Val = GetOptionalDouble(fields, "altitude", 100000.0);
             settings.DesiredInclination.Val = GetOptionalDouble(fields, "inclination", 0.0);
+            // Autostage control: MechJebModuleAscentSettings.Autostage is a plain bool property (verified
+            // against MechJeb2 2.15.0.0). The ascent AP's OnModuleEnabled reads it and only registers with
+            // Core.Staging (MechJebModuleStagingController) when true. Setting it false BEFORE enabling the
+            // AP means MechJeb does NOT autostage, so the Python explicit-decouple loop is the SOLE stager
+            // — eliminating the two-stagers race that intermittently mis-detected the relay's fin geometry
+            // ("no separation") and could drop the booster early on a tank-crossfeed transient.
+            bool autostage = GetOptionalBool(fields, "autostage", true);
+            settings.Autostage = autostage;
             // Classic ascent path = stock-friendly; PVG is for RSS/RO.
             MechJebModuleAscentClassicAutopilot ap = core.GetComputerModule<MechJebModuleAscentClassicAutopilot>();
             if (ap == null)
                 return CommandResult.Fail("Classic ascent autopilot not present.");
-            ap.Users.Add(core);
+            ap.Users.Add(core);   // enables the AP -> OnModuleEnabled runs HERE, reading the Autostage set above
             return CommandResult.Ok(new Dictionary<string, object>
             {
                 { "ascent", true },
                 { "altitude", GetOptionalDouble(fields, "altitude", 100000.0) },
-                { "inclination", GetOptionalDouble(fields, "inclination", 0.0) }
+                { "inclination", GetOptionalDouble(fields, "inclination", 0.0) },
+                { "autostage", autostage }
             });
         }
 

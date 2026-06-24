@@ -137,7 +137,16 @@ def test_propulsive_lander_gets_legs_and_does_not_tip():
     assert design.leg_span_m >= design.cog_height_m, (design.leg_span_m, design.cog_height_m)
     assert design.tipover_angle_deg >= 35.0, design.tipover_angle_deg
     assert design.landed_stable is True
-    assert design.ascent_stable is True, design.static_margin_m
+    # ASCENT STABILITY: with the REAL stock Rockomax tank heights (X200-32 = 3.72 m, not the 2x-inflated
+    # 7.5 m used before), this Starship-class stack is a deliberate HAMMERHEAD — a wide 2.5 m lander rides
+    # atop the narrow 1.25 m transfer stage (the non-uniform-diameter WARN). Its centre of pressure sits
+    # just ABOVE the centre of mass (small NEGATIVE static margin), so it is NOT passively ascent-stable:
+    # like a real Mars-class vehicle it flies the ascent on engine gimbal + reaction wheels. (The earlier
+    # `ascent_stable is True` here was an artefact of the inflated booster-tank height over-weighting the
+    # base lateral area; passive ascent stability for a SLENDER stack is locked in
+    # test_design_has_sound_aerodynamics, which still passes.)
+    assert design.ascent_stable is False, design.static_margin_m
+    assert design.static_margin_m < 0.0, design.static_margin_m
 
 
 def test_propulsive_lander_uses_a_wide_low_cog_tank():

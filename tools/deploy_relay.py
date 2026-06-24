@@ -163,7 +163,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
     runner._load_and_launch(bridge, name)
     time.sleep(4)
     try:
-        log(f"  mj-ascent -> {bridge.mj_ascent(altitude=100_000.0, inclination=0.0)}")
+        # autostage=False: MechJeb flies the gravity turn + circularises but does NOT autostage. The
+        # explicit-decouple loop below (inter-stage decouplers only, payload decoupler protected) is the
+        # SOLE stager, so the two never race — fixes the intermittent "no separation" on the relay's fin
+        # geometry and the early booster drop on a tank-crossfeed transient.
+        log(f"  mj-ascent -> {bridge.mj_ascent(altitude=100_000.0, inclination=0.0, autostage=False)}")
     except Exception as exc:
         log(f"  mj-ascent rejected: {exc}"); return False
     kc = cfg["krpc"]
