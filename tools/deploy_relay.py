@@ -90,7 +90,7 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
 
 
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
-                  insertion_dv_override: float = 0.0) -> bool:
+                  insertion_dv_override: float = 0.0, booster_max_engines: int = 1) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
     the eventual TARGET orbit so it has the propellant to raise + circularise there.
@@ -135,7 +135,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
                       reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
                 Phase("insertion", insertion_dv, twr_body_g=0.0, min_twr=0.0,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
-        landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
+        landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False,
+        max_engine_count=booster_max_engines,
     )
     log(f"  insertion stage sized for {target_alt_km:.0f} km target: {insertion_dv:.0f} m/s "
         f"(raise {dv_raise:.0f} + circ {dv_circ:.0f} + 250 trim)")
