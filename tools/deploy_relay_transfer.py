@@ -259,7 +259,7 @@ def _vnorm(a):
     return (a[0]/m, a[1]/m, a[2]/m) if m > 1e-9 else (0.0, 1.0, 0.0)
 
 
-def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
+def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0, max_throttle: float = 1.0) -> None:
     """Hand-fly the first maneuver node with a kRPC burn. Two problems this works around: (1) MechJeb's node
     executor silently SKIPS close correction nodes (auto-warps to a far ejection node and burns it, but leaves
     a ~6-min node un-burned until the wait times out); (2) kRPC's node.direction()/burn_vector() throw a NULL
@@ -296,11 +296,20 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
     ap.reference_frame = ref
     ap.target_direction = _burn_dir()
     ap.engage()
-    time.sleep(8)
+    # SETTLE: wait until the craft actually points along the burn vector before igniting, so the burn starts
+    # on-axis. Under heavy game lag MechJeb's executor drifts ~2 deg off the (in-plane) node during a long
+    # ejection burn, tilting the heliocentric orbit; aligning first + a capped throttle keeps it on-axis.
+    for _ in range(60):
+        bd = _burn_dir()
+        fwd = v.direction(ref)
+        dot = max(-1.0, min(1.0, fwd[0]*bd[0] + fwd[1]*bd[1] + fwd[2]*bd[2]))
+        if math.degrees(math.acos(dot)) < 1.5:
+            break
+        ap.target_direction = bd
+        time.sleep(0.5)
     v0 = v.velocity(ref)
-    bd0 = _burn_dir()                                        # fixed projection axis (after the craft settles)
+    bd0 = _burn_dir()                                        # fixed projection axis (after alignment)
     t0 = time.monotonic()
-    v.control.throttle = 1.0
     while time.monotonic() - t0 < max_burn_s:
         ap.target_direction = _burn_dir()
         cur = v.velocity(ref)
@@ -310,7 +319,7 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
         rem = dv_total - applied
         if rem < 0.3:
             break
-        v.control.throttle = 1.0 if rem > 15.0 else 0.1
+        v.control.throttle = min(max_throttle, 1.0) if rem > 15.0 else min(max_throttle, 0.1)
         time.sleep(0.1)
     v.control.throttle = 0.0
     try:
@@ -496,8 +505,11 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
-    bridge.mj_execute_node()
-    _wait_node_done(bridge, timeout_s=1800.0, label="Duna ejection")
+    # Execute the ejection OURSELVES (aligned + capped throttle), NOT MechJeb's executor: the node is in-plane
+    # (normal ~= 0), but under the game lag MechJeb drifts ~2 deg off-axis over the 1025 m/s burn, tilting the
+    # heliocentric orbit ~2 deg -> a ~785 Mm Duna miss the remaining fuel can't plane-correct. A slower aligned
+    # burn holds the in-plane vector so the only residual is a small phasing miss the grid-search can close.
+    _execute_node_manually(conn, sc, v, max_burn_s=520.0, max_throttle=0.5)
     # 3c) ESTABLISH the Duna encounter with a deterministic GRID-SEARCH (the SAME method as the working Mun
     # transfer). MechJeb's OperationCourseCorrection only REFINES an existing encounter — on the heliocentric
     # near-miss the ejection leaves (~hundreds of Mm phasing miss) it has nothing to refine, which is why
