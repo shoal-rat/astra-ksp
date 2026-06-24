@@ -208,39 +208,34 @@ def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> boo
     return v.orbit.body.name == "Mun" and v.orbit.periapsis_altitude > 8_000.0
 
 
-def _lower_to_lko(sc, v, target_alt_m: float = 130_000.0, max_s: float = 300.0) -> None:
-    """At the transfer window, warp to periapsis and burn RETROGRADE to drop the high warp-orbit apoapsis
-    back to a low ~circular orbit. mj_plan's interplanetary transfer expects a low orbit; from a ~6,900 km
-    apoapsis it returns a retrograde node that lowers the orbit instead of escaping. The upper carries
-    ~4,400 m/s, so spending ~800 m/s here (partly recovered at the low-periapsis Oberth ejection) is fine."""
-    ttp = v.orbit.time_to_periapsis
-    if ttp and 0 < ttp < 5e6:
-        sc.warp_to(sc.ut + ttp - 15.0)
-        time.sleep(2)
-    ref = v.orbit.body.non_rotating_reference_frame
-    ap = v.auto_pilot
-    ap.reference_frame = ref
-    ap.engage()
-
-    def _retro():
-        vx, vy, vz = v.velocity(ref)
-        return (-vx, -vy, -vz)
-
-    ap.target_direction = _retro()
-    time.sleep(6)
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < max_s:
-        ap.target_direction = _retro()
-        apo = v.orbit.apoapsis_altitude
-        if apo <= target_alt_m or apo < 0:
-            break
-        v.control.throttle = 1.0 if apo > target_alt_m * 2.0 else 0.12
-        time.sleep(0.3)
-    v.control.throttle = 0.0
+def _lower_to_lko(conn, sc, bridge, v, target_apo_alt_m: float = 130_000.0) -> None:
+    """Drop the high warp-orbit apoapsis back to a low ~circular orbit (keeping the ~100 km periapsis) with a
+    PRECISE retrograde maneuver node at periapsis, executed by MechJeb. mj_plan's interplanetary transfer
+    expects a low orbit; from a ~6,900 km apoapsis it returns a retrograde node that lowers the orbit instead
+    of escaping. A hand-rolled retrograde burn OVERSHOT (drove the periapsis into the atmosphere), so compute
+    the exact Δv from vis-viva and let MechJeb's node executor place it precisely. The upper carries ~4,400
+    m/s; this ~800 m/s round-trip (raise for warp, lower for ejection) is affordable."""
+    body = v.orbit.body
+    mu = body.gravitational_parameter
+    r_pe = v.orbit.periapsis                                  # radius at periapsis (m)
+    a_now = v.orbit.semi_major_axis
+    a_target = (r_pe + body.equatorial_radius + target_apo_alt_m) / 2.0
+    v_now = (mu * (2.0 / r_pe - 1.0 / a_now)) ** 0.5
+    v_target = (mu * (2.0 / r_pe - 1.0 / a_target)) ** 0.5
+    dv = v_target - v_now                                     # negative = retrograde, lowers the apoapsis
     try:
-        ap.disengage()
+        v.control.remove_nodes()
     except Exception:
         pass
+    v.control.add_node(sc.ut + v.orbit.time_to_periapsis, prograde=dv)
+    try:
+        bridge.mj_execute_node()
+        _wait_node_done(bridge, timeout_s=600.0, label="lower-to-LKO")
+    finally:
+        try:
+            v.control.remove_nodes()
+        except Exception:
+            pass
     log(f"  lowered to ~{v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km for a clean ejection")
 
 
@@ -290,7 +285,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # upper carries ~4,400 m/s so the ~800 m/s round-trip (raise for warp, lower for ejection) is affordable.
     if v.orbit.apoapsis_altitude > 400_000.0:
         log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit back to LKO for a clean ejection ...")
-        _lower_to_lko(sc, v)
+        _lower_to_lko(conn, sc, bridge, v)
     log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
     # 4) Re-plan the ejection from the (now low) orbit and execute.
     try:
