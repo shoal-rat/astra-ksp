@@ -239,6 +239,46 @@ def _lower_to_lko(conn, sc, bridge, v, target_apo_alt_m: float = 130_000.0) -> N
     log(f"  lowered to ~{v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km for a clean ejection")
 
 
+def _execute_node_manually(conn, sc, v, max_burn_s: float = 180.0) -> None:
+    """Execute the first maneuver node with a hand-flown kRPC burn. MechJeb's node executor silently SKIPS
+    the close mid-course correction nodes (it auto-warps to a far ejection node and burns it, but leaves a
+    ~6-min correction node un-burned until the wait times out). Point along the node's burn vector in the
+    body's non-rotating frame, warp to ~8 s before it, then burn until the remaining Δv converges to ~0."""
+    if not v.control.nodes:
+        return
+    node = v.control.nodes[0]
+    ref = v.orbit.body.non_rotating_reference_frame
+    ap = v.auto_pilot
+    ap.reference_frame = ref
+    ap.target_direction = node.direction(ref)
+    ap.engage()
+    time.sleep(6)
+    if node.time_to > 20.0:
+        sc.warp_to(sc.ut + node.time_to - 8.0)
+        time.sleep(2)
+    ap.target_direction = node.direction(ref)
+    time.sleep(4)
+    best = node.remaining_delta_v
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < max_burn_s:
+        rem = node.remaining_delta_v
+        if rem < 0.3 or rem > best + 2.0:          # converged, or we have started adding Δv (overshoot)
+            break
+        best = min(best, rem)
+        ap.target_direction = node.direction(ref)
+        v.control.throttle = 1.0 if rem > 20.0 else 0.12
+        time.sleep(0.15)
+    v.control.throttle = 0.0
+    try:
+        ap.disengage()
+    except Exception:
+        pass
+    try:
+        node.remove()
+    except Exception:
+        pass
+
+
 def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
     """Kerbin parking orbit -> Duna: mj_plan interplanetary ejection at the NEXT window, warp to it, eject,
     course-check the closest approach, warp the ~75-day coast to the Duna SOI, then retro-capture ABOVE
@@ -312,8 +352,9 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  Duna closest approach {shown} -> course-correcting (attempt {attempt + 1}) ...")
         try:
             bridge.mj_plan(target="Duna", operation="correction")
-            bridge.mj_execute_node()
-            _wait_node_done(bridge, timeout_s=600.0, label="correction")
+            _execute_node_manually(conn, sc, v)        # MechJeb's executor skips close correction nodes
+            now = _predicted_periapsis_at(v, "Duna")
+            log(f"    corrected; Duna closest now {now/1000:.0f} km" if now is not None else "    corrected; still no encounter")
         except Exception as exc:
             log(f"    correction failed: {exc}"); break
     pred = _predicted_periapsis_at(v, "Duna")
