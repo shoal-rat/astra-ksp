@@ -191,8 +191,15 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     wait = node_ut - sc.ut
     log(f"  Duna ejection: dv~{r.get('dv', 0):.0f} m/s at the window in {wait:.0f}s "
         f"(~{wait/(426*21600):.2f} Kerbin-yr); RTG holds EC through the wait + coast")
-    # 2) Warp to the window (the craft waits in LKO; the RTG keeps it controllable).
+    # 2) Warp to the window (the craft waits in Kerbin orbit; the RTG keeps it controllable).
+    # KNOWN HURDLE: at 100 km LKO the rails-warp cap is only factor 3 (50x), so a ~1.77-yr wait is ~90 real
+    # hours — IMPRACTICAL. The fix (TODO, next iteration) is to RAISE the apoapsis near the SOI edge before
+    # this warp so most of the long orbit sits where KSP allows 100,000x (factor 7), then eject from there
+    # (re-plan with mj_plan). For now we warn and warp at whatever the altitude allows.
     if wait > 120:
+        if wait > 5 * 86400 and sc.maximum_rails_warp_factor < 6:
+            log(f"  WARNING: rails-warp cap is factor {sc.maximum_rails_warp_factor} at this altitude — the "
+                f"{wait/(426*21600):.2f}-yr wait is impractical here; needs a high-apoapsis warp strategy (TODO)")
         sc.warp_to(node_ut - 60.0)
         time.sleep(2)
     # 3) Execute the ejection (MechJeb autowarps the short remaining lead).
