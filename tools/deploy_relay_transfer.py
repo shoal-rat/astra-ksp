@@ -508,6 +508,42 @@ def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.
     return best
 
 
+def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
+    """In the Duna SOI (on the hyperbolic approach), grid-search a CHEAP node early in the approach that
+    drops the Duna periapsis toward ~target_pe. The mid-transfer correction lands the encounter at the SOI
+    EDGE (pe ~22,000-43,000 km) where a retro-capture has no Oberth and costs ~the full v_inf (> the fuel).
+    A radial burn far from periapsis has high leverage on the periapsis, so lowering it here to ~300 km makes
+    the capture cheap (Oberth). Scores the candidate node's resulting Duna periapsis directly (we are already
+    in Duna's SOI, so node.orbit is the Duna approach)."""
+    sc.rails_warp_factor = 0
+    time.sleep(2)
+    ttp = v.orbit.time_to_periapsis or 0.0
+    ut = sc.ut + max(60.0, ttp * 0.05)                       # early in the approach -> high periapsis leverage
+    best, best_score, n = None, float("inf"), 0
+    for pg in (-40.0, -20.0, 0.0, 20.0, 40.0):
+        for rad in _frange(-500.0, 500.0, 50.0):
+            for nrm in (-60.0, 0.0, 60.0):
+                node = v.control.add_node(float(ut), prograde=float(pg), radial=float(rad), normal=float(nrm))
+                try:
+                    n += 1
+                    pe = float(node.orbit.periapsis_altitude)
+                    if pe < 80_000.0:                        # keep above Duna's ~50 km atmosphere
+                        continue
+                    dv = (pg*pg + rad*rad + nrm*nrm) ** 0.5
+                    score = abs(pe - target_pe) + dv * 200.0  # low periapsis + low Δv
+                    if score < best_score:
+                        best_score = score
+                        best = {"ut": float(ut), "prograde": float(pg), "radial": float(rad), "normal": float(nrm), "pe": pe}
+                finally:
+                    try:
+                        node.remove()
+                    except Exception:
+                        pass
+    if best is not None:
+        log(f"  periapsis-lower ({n} nodes): dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) -> Duna pe {best['pe']/1000:.0f} km")
+    return best
+
+
 def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
     """Kerbin parking orbit -> Duna: mj_plan interplanetary ejection at the NEXT window, warp to it, eject,
     course-check the closest approach, warp the ~75-day coast to the Duna SOI, then retro-capture ABOVE
@@ -652,6 +688,16 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     time.sleep(3)
     if v.orbit.body.name != "Duna":
         log(f"  did not enter the Duna SOI (still {v.orbit.body.name})"); return False
+    # 5b) If the encounter periapsis is HIGH (a shallow SOI-edge graze the mid-transfer correction can't
+    # deepen), LOWER it now with a cheap radial burn early in the approach so the capture gets Oberth.
+    if v.orbit.periapsis_altitude > 2_000_000.0:
+        log(f"  Duna periapsis {v.orbit.periapsis_altitude/1000:.0f} km too high for an Oberth capture — lowering ...")
+        plow = _search_duna_periapsis_lower(sc, v)
+        if plow is not None and plow["pe"] < v.orbit.periapsis_altitude * 0.6:
+            v.control.remove_nodes()
+            v.control.add_node(plow["ut"], prograde=plow["prograde"], radial=plow["radial"], normal=plow["normal"])
+            _execute_node_manually(conn, sc, v, max_burn_s=200.0, max_throttle=1.0)
+            log(f"  Duna periapsis now {v.orbit.periapsis_altitude/1000:.0f} km, LF {v.resources.amount('LiquidFuel'):.0f}")
     # 6) Warp to periapsis, then retro-capture ABOVE the atmosphere (pe floor 60 km > Duna's ~50 km top).
     ttp = v.orbit.time_to_periapsis
     if ttp and 0 < ttp < 1e7:
