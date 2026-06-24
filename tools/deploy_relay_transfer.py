@@ -651,25 +651,18 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         _lower_to_lko(conn, sc, bridge, v)
         _incl_log(v, "post-lower LKO")                        # last in-Kerbin reading before the ejection plans
     log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
-    # 4) Re-plan the ejection from the (now low circular) orbit and execute.
+    # 4) Re-plan the ejection from the (now low circular) orbit and execute. NOTE: the precise Lambert
+    # ejection-NODE placement (transfer_planner.plan_ejection_node) is implemented but its asymptote geometry
+    # isn't right live yet (>150x-SOI aim error in a patched-conic check), so we keep mj_plan's ejection + the
+    # mid-transfer correction grid below (proven). The precise WINDOW (the pad-warp) IS used and validated.
     try:
         r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
-    # NOTE: an ejection-prograde grid-search (_search_duna_ejection_prograde) is implemented but DISABLED — its
-    # scorer (distance_at_closest_approach on the predicted post-escape Sun patch) is INCONSISTENT with the
-    # real position-sampled miss (it picked prograde 635 -> "4416 Mm" while the actual 1036 gave 3496 Mm, i.e.
-    # it told us to UNDER-burn). The Mun grid works because its candidates actually reach the Mun SOI; Duna
-    # candidates miss by ~70x SOI, so they need a reliable no-encounter distance the kRPC accessor doesn't give
-    # on a predicted patch. FIX (TODO): position-sample helio_patch.position_at(ut) vs Duna over the transfer.
-    # For now keep mj_plan's ejection + the reliable mid-transfer correction grid below.
-    # Execute the ejection OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor: the
-    # node is in-plane (normal ~= 0), but MechJeb starts the burn off-axis under the game lag and drifts ~2 deg
-    # over the 1025 m/s burn, tilting the heliocentric orbit -> a ~785 Mm Duna miss. Aligning first held it to
-    # 0.1 deg (validated). FULL throttle (not capped): a slow capped burn spends a long arc at periapsis and
-    # gravity-loss ate ALL the fuel; full throttle keeps the burn impulsive so ~30 LF survives for the capture.
-    _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
+    # Execute OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor (it drifts ~2 deg
+    # off-axis under lag, tilting the heliocentric orbit). FULL throttle keeps the burn impulsive.
+    _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     # 3c) ESTABLISH the Duna encounter with a deterministic GRID-SEARCH (the SAME method as the working Mun
     # transfer). MechJeb's OperationCourseCorrection only REFINES an existing encounter — on the heliocentric
     # near-miss the ejection leaves (~hundreds of Mm phasing miss) it has nothing to refine, which is why
@@ -796,36 +789,37 @@ def main() -> int:
     # 50x cap); warping to the window on the pad costs ZERO fuel and lets the upper eject DIRECTLY into the
     # transfer (AI-Duna-Ring-X caught a near-window launch by luck and kept the WHOLE upper for the capture).
     # We advance the game via a stable orbiting vessel, then launch_to_lko fires fresh ~5 h before the window.
-    if target_body == "Duna":
+    _interplanetary = False
+    try:
+        _interplanetary = (sc.bodies[target_body].orbit.body.name == "Sun")
+    except Exception:
+        pass
+    if _interplanetary:
         try:
-            # PRECISE window from MechJeb (planned off any Kerbin-orbiting vessel — orbit-independent departure
-            # time), falling back to the analytical calc if none is available.
-            win = None
-            korb = [vv for vv in sc.vessels if vv.orbit.body.name == "Kerbin"
-                    and str(vv.situation).split(".")[-1] == "orbiting"]
-            if korb:
-                try:
-                    sc.active_vessel = korb[0]; time.sleep(2)
-                    win = bridge.mj_plan(target="Duna", operation="interplanetary").get("ut")
-                    sc.active_vessel.control.remove_nodes()
-                except Exception:
-                    win = None
-            if win is None:
-                win = _next_duna_window_ut(sc)
-            wait_to = win - 3.0 * 3600.0                       # ~3 h early: + the ~1 h comsat/LKO window mismatch + ascent
-                                                               # keeps the LKO residual under the 8 h skip-warp gate
+            # PRECISE Lambert window (validated, body-agnostic, no MechJeb needed). Warp the GROUND to it so
+            # the upper ejects DIRECTLY into the transfer (no ~1,580 m/s in-flight raise/lower warp).
+            from ksp_lab import transfer_planner as _tp
+            _w = _tp.find_transfer_window(sc, "Kerbin", target_body)
+            win = _w["ut_dep"]
+            wait_to = win - 3.0 * 3600.0                       # ~3 h early; the precise ejection node lands within ~1 LKO period
             if wait_to > sc.ut:
                 yrs = (wait_to - sc.ut) / (426.0 * 21600.0)
-                log(f"WAITING for the Kerbin->Duna window: warping {yrs:.2f} Kerbin-yr on the ground (NO fuel) to UT {round(wait_to)} ...")
-                # Warp from a HIGH (solar-orbit) vessel so the multi-year warp runs at the 100,000x cap, not the
-                # 50x LKO cap — a landed/high craft is not altitude-limited. Junk failed transfers sit in solar orbit.
-                hi = [vv for vv in sc.vessels if vv.orbit.body.name == "Sun"
+                log(f"WAITING for the Kerbin->{target_body} window (precise Lambert, |vinf| {_w['vinf_mag']:.0f} m/s): "
+                    f"warping {yrs:.2f} Kerbin-yr on the ground (NO fuel) to UT {round(wait_to)} ...")
+                # Warp from the HIGHEST-altitude vessel so the multi-year warp runs at the 100,000x cap, not the
+                # 50x LKO cap (a high/heliocentric craft is not altitude-limited). Sun-orbiting asteroids or the
+                # high Duna relays work; pick the highest periapsis.
+                hi = [vv for vv in sc.vessels if vv.orbit.body.name in ("Sun", "Duna", "Eve")
                       and str(vv.situation).split(".")[-1] == "orbiting"]
-                if hi:
-                    sc.active_vessel = hi[0]; time.sleep(2)
+                hi.sort(key=lambda x: -(x.orbit.periapsis_altitude or 0.0))
+                for cand in hi:
+                    try:
+                        sc.active_vessel = cand; time.sleep(2); break
+                    except Exception:
+                        continue
                 sc.rails_warp_factor = 0
                 sc.warp_to(wait_to); time.sleep(2)
-                log(f"window reached (UT {round(sc.ut)}); launching DIRECTLY into the transfer — no raise/lower waste")
+                log(f"window reached (UT {round(sc.ut)}); launching DIRECTLY into the transfer")
         except Exception as exc:
             log(f"window pre-warp skipped ({exc}); launching now (in-flight raise/lower warp fallback)")
 

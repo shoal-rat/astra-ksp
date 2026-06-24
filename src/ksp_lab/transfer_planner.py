@@ -318,8 +318,11 @@ def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
     vinf_ip = vsub(vinf_vec, vscale(h_hat, vinf_oop))
     vinf_ip_hat = vunit(vinf_ip)
     e_hyp = 1.0 + r_park * vinf_mag * vinf_mag / mu
-    eta = math.acos(max(-1.0, min(1.0, 1.0 / e_hyp)))
-    r_peri_hat = vunit(rotate_about_axis(vinf_ip_hat, h_hat, -eta))
+    # The outgoing asymptote (v_inf direction) sits at TRUE ANOMALY nu_inf = arccos(-1/e) AHEAD of the
+    # periapsis (in the direction of motion). So the burn periapsis is v_inf rotated BACKWARD by nu_inf.
+    # (Using arccos(+1/e) here was a 72-deg aim error -> 600x-SOI miss.)
+    nu_inf = math.acos(max(-1.0, min(1.0, -1.0 / e_hyp)))
+    r_peri_hat = vunit(rotate_about_axis(vinf_ip_hat, h_hat, -nu_inf))
     # UT of the next time the ship sits at r_peri_hat (uniform-rotation model, exact for circular)
     T_park = 2.0 * math.pi * math.sqrt(r_park ** 3 / mu)
     r_ship_hat = vunit(r_ship)
@@ -331,7 +334,7 @@ def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
         ut += T_park
     dv = ejection_dv(vinf_mag, r_park, mu)
     return {"ut": ut, "prograde": dv, "normal": vinf_oop, "radial": 0.0,
-            "dv": math.sqrt(dv * dv + vinf_oop * vinf_oop), "eta_deg": math.degrees(eta)}
+            "dv": math.sqrt(dv * dv + vinf_oop * vinf_oop), "nu_inf_deg": math.degrees(nu_inf)}
 
 
 def plan_transfer(sc, vessel, dep_name, tgt_name, ut_now=None):
