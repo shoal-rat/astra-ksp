@@ -418,6 +418,63 @@ def _frange(lo: float, hi: float, step: float):
     return out
 
 
+def _score_ejection_node(node, duna):
+    """Duna closest approach for a candidate LKO EJECTION node: walk the patches to the post-escape Sun orbit
+    and score it (the ejection node's next patch is heliocentric, where distance_at_closest_approach works)."""
+    closest, enc, pe = float("inf"), False, float("inf")
+    try:
+        o = node.orbit
+        for _ in range(5):
+            nx = o.next_orbit
+            if nx is None:
+                break
+            bn = str(nx.body.name)
+            if bn == "Duna":
+                enc, pe, closest = True, float(nx.periapsis_altitude), 0.0
+                break
+            if bn == "Sun":
+                try:
+                    closest = float(nx.distance_at_closest_approach(duna.orbit))
+                except Exception:
+                    pass
+            o = nx
+    except Exception:
+        pass
+    if enc:
+        score = abs(pe - 100_000.0) + (0.0 if pe >= 60_000.0 else 50_000_000.0)
+    else:
+        score = closest + 1.0e10
+    return {"score": score, "encounter": enc, "duna_pe_m": pe, "closest_m": closest}
+
+
+def _search_duna_ejection_prograde(sc, v, ut, base_pg, base_rad, base_nrm, pg_width=400.0, pg_step=25.0):
+    """Tune the EJECTION prograde (around mj_plan's rough dv) to minimize the Duna closest approach BEFORE
+    burning — the Mun-leg pattern adapted to the heliocentric patch. mj_plan hands back a rough Hohmann window
+    (~6 days off) -> a ~3500 Mm miss too big to mid-course correct within the fuel; tuning the ejection itself
+    lands a small miss the existing correction grid closes cheaply. Returns the best prograde."""
+    duna = sc.bodies["Duna"]
+    sc.rails_warp_factor = 0
+    time.sleep(1)
+    best, best_score, n = None, float("inf"), 0
+    for pg in _frange(base_pg - pg_width, base_pg + pg_width, pg_step):
+        node = v.control.add_node(float(ut), prograde=float(pg), radial=float(base_rad), normal=float(base_nrm))
+        try:
+            cand = _score_ejection_node(node, duna)
+            n += 1
+            if cand["score"] < best_score:
+                best_score = cand["score"]
+                best = {"prograde": float(pg), **cand}
+        finally:
+            try:
+                node.remove()
+            except Exception:
+                pass
+    if best is not None:
+        tag = f"enc pe {best['duna_pe_m']/1000:.0f} km" if best["encounter"] else f"closest {best['closest_m']/1e6:.0f} Mm"
+        log(f"  ejection-tune ({n} nodes): prograde {base_pg:.0f} -> {best['prograde']:.0f} m/s -> {tag}")
+    return best
+
+
 def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.0, pg_step=20.0,
                                  rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0), ut_offsets=(0.0,)):
     """Deterministic grid-search for a mid-course node that drops the Duna closest approach into the SOI —
@@ -514,6 +571,19 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
+    # TUNE the ejection prograde for a PRECISE Duna intercept BEFORE burning — mj_plan's window is a rough
+    # Hohmann (~6 days off) leaving a ~3500 Mm miss that costs more correction Δv than the fuel allows. The
+    # ejection-tune grid lands a small miss the later correction grid closes cheaply (the Mun-leg method).
+    _nodes = v.control.nodes
+    if _nodes:
+        _bn = _nodes[0]
+        _bu, _bpg, _brad, _bnrm = _bn.ut, _bn.prograde, _bn.radial, _bn.normal
+        _bestej = _search_duna_ejection_prograde(sc, v, _bu, _bpg, _brad, _bnrm)
+        if _bestej is None or (not _bestej["encounter"] and _bestej["closest_m"] > 5.0e8):
+            _bestej = _search_duna_ejection_prograde(sc, v, _bu, _bpg, _brad, _bnrm, pg_width=750.0, pg_step=25.0)
+        if _bestej is not None:
+            v.control.remove_nodes()
+            v.control.add_node(_bu, prograde=_bestej["prograde"], radial=_brad, normal=_bnrm)
     # Execute the ejection OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor: the
     # node is in-plane (normal ~= 0), but MechJeb starts the burn off-axis under the game lag and drifts ~2 deg
     # over the 1025 m/s burn, tilting the heliocentric orbit -> a ~785 Mm Duna miss. Aligning first held it to
