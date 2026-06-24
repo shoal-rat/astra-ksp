@@ -81,7 +81,9 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
         up.sort(key=lambda e: -_depth_from_root(e.part))   # deepest fueled, still-unlit engine = the upper
         if up:
             up[0].active = True
-            v.control.throttle = 0.0       # active but idle; the raise/circularise node executor burns it
+        # Idle the throttle whether we just lit the upper or MechJeb already had it lit, so it doesn't burn
+        # uncontrolled at orbit; the raise/circularise node executor sets the throttle.
+        v.control.throttle = 0.0
     except Exception:
         pass
     return fired
