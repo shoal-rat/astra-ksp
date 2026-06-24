@@ -58,6 +58,22 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     if not d.feasible:
         log(f"DESIGN INFEASIBLE — refusing to launch: {d.infeasible_reasons}")
         return False
+    # RULE 1 (AGENTS.md): write the design chart + HARD-GATE the shape before flying anything.
+    import design_chart
+    from pathlib import Path as _Path
+    shape = design_chart.looks_like_a_rocket(d)
+    chart = _Path(__file__).resolve().parents[1] / "docs" / f"design_chart_{name}.svg"
+    try:
+        chart.write_text(design_chart.render_svg(d), encoding="utf-8")
+    except Exception:
+        pass
+    log(f"DESIGN CHART {chart.name}: fineness {shape['fineness_ratio']}:1, length {shape['length_m']}m, "
+        f"max-dia {shape['max_diameter_m']}m -> {'LOOKS LIKE A ROCKET' if shape['looks_like_a_rocket'] else 'REJECTED'}")
+    if not shape["looks_like_a_rocket"]:
+        for _k, _ok in shape["checks"].items():
+            if not _ok:
+                log(f"   shape FAIL: {_k}")
+        return False
     from ksp_lab.design import separation_sequence
     log("SEPARATION SEQUENCE + control logic (separators placed by calculated inverse-stage):")
     for e in separation_sequence(d, req):
@@ -74,6 +90,15 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     kc = cfg["krpc"]
     c2 = krpc.connect(name="relay-kick", address=kc["host"], rpc_port=kc["rpc_port"], stream_port=kc["stream_port"])
     kv = c2.space_center.active_vessel
+    # RULE 1: read the REAL assembled craft back from the live API (kRPC) and compare to the calculation.
+    try:
+        live = design_chart.verify_against_live(c2, d)
+        log(f"LIVE-API size check: length {live['live_length_m']}m (calc {live['calc_length_m']}m), "
+            f"max-dia {live['live_max_diameter_m']}m (calc {live['calc_max_diameter_m']}m), "
+            f"mass {live['live_mass_t']}t (calc {live['calc_wet_mass_t']}t), {live['live_part_count']} parts, "
+            f"match={live['dimensions_match']}")
+    except Exception as exc:
+        log(f"  live-API size check skipped: {exc}")
     kv.control.throttle = 1.0
     booster_eng = d.stages[0].engine
     fired = 0
