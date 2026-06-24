@@ -6,7 +6,10 @@
     <marker id="retry" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
     </marker>
+    <radialGradient id="bg" cx="50%" cy="50%" r="72%"><stop offset="0%" stop-color="#0e1626"/><stop offset="100%" stop-color="#070b14"/></radialGradient>
+    <linearGradient id="hubg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6d28d9"/><stop offset="100%" stop-color="#4c1d95"/></linearGradient>
   </defs>
+  <rect x="0" y="0" width="900" height="760" rx="16" fill="url(#bg)"/>
   <style>
     .node  { rx: 14; stroke-width: 2; }
     .ntitle{ font-size: 16px; font-weight: 700; fill: #ffffff; }
@@ -19,7 +22,7 @@
   </style>
 
   <!-- center hub -->
-  <circle cx="450" cy="380" r="96" fill="#4c1d95" stroke="#6d28d9" stroke-width="2"/>
+  <circle cx="450" cy="380" r="96" fill="url(#hubg)" stroke="#a78bfa" stroke-width="2.4"/>
   <text x="450" y="360" text-anchor="middle" class="hub">Calculated loop</text>
   <text x="450" y="383" text-anchor="middle" class="hub2">one mission step,</text>
   <text x="450" y="400" text-anchor="middle" class="hub2">every number solved</text>
