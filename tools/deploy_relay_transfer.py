@@ -234,9 +234,14 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # 100 km LKO cap is only 50x, which would make a 1.77-yr wait ~90 real HOURS. Keep the periapsis low so
     # the later ejection is still an efficient Oberth burn (and the raise Δv is recovered there).
     if wait > 6 * 3600:
+        from ksp_lab.bodies import MUN, KERBIN
         soi = v.orbit.body.sphere_of_influence
-        target_ap = min(soi * 0.55, 50_000_000.0)   # well below the SOI edge so the feathered burn can't escape
-        log(f"  raising apoapsis to ~{target_ap/1000:.0f} km so the {wait/(426*21600):.2f}-yr wait warps fast ...")
+        mun_alt = MUN.orbit_radius_m - KERBIN.radius_m            # the Mun's orbital altitude (~11,400 km)
+        # Stay BELOW the Mun's orbit so the long warp doesn't accumulate Mun-flyby perturbations that wreck
+        # the ejection (the first high-orbit attempt at 46,000 km crossed the Mun's orbit and the perturbed
+        # re-plan failed with "no encounter"). ~10,000 km is still high enough for a fast rails-warp cap.
+        target_ap = min(soi * 0.55, mun_alt - 1_500_000.0)
+        log(f"  raising apoapsis to ~{target_ap/1000:.0f} km (below the Mun) so the {wait/(426*21600):.2f}-yr wait warps fast ...")
         _raise_apoapsis(sc, v, target_ap)
         log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
     # 3) Warp to ~the window (fast now: most of the long orbit sits at the high-warp altitude band).
