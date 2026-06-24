@@ -505,11 +505,12 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
-    # Execute the ejection OURSELVES (aligned + capped throttle), NOT MechJeb's executor: the node is in-plane
-    # (normal ~= 0), but under the game lag MechJeb drifts ~2 deg off-axis over the 1025 m/s burn, tilting the
-    # heliocentric orbit ~2 deg -> a ~785 Mm Duna miss the remaining fuel can't plane-correct. A slower aligned
-    # burn holds the in-plane vector so the only residual is a small phasing miss the grid-search can close.
-    _execute_node_manually(conn, sc, v, max_burn_s=520.0, max_throttle=0.5)
+    # Execute the ejection OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor: the
+    # node is in-plane (normal ~= 0), but MechJeb starts the burn off-axis under the game lag and drifts ~2 deg
+    # over the 1025 m/s burn, tilting the heliocentric orbit -> a ~785 Mm Duna miss. Aligning first held it to
+    # 0.1 deg (validated). FULL throttle (not capped): a slow capped burn spends a long arc at periapsis and
+    # gravity-loss ate ALL the fuel; full throttle keeps the burn impulsive so ~30 LF survives for the capture.
+    _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
     # 3c) ESTABLISH the Duna encounter with a deterministic GRID-SEARCH (the SAME method as the working Mun
     # transfer). MechJeb's OperationCourseCorrection only REFINES an existing encounter — on the heliocentric
     # near-miss the ejection leaves (~hundreds of Mm phasing miss) it has nothing to refine, which is why
