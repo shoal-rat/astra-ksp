@@ -208,6 +208,42 @@ def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> boo
     return v.orbit.body.name == "Mun" and v.orbit.periapsis_altitude > 8_000.0
 
 
+def _lower_to_lko(sc, v, target_alt_m: float = 130_000.0, max_s: float = 300.0) -> None:
+    """At the transfer window, warp to periapsis and burn RETROGRADE to drop the high warp-orbit apoapsis
+    back to a low ~circular orbit. mj_plan's interplanetary transfer expects a low orbit; from a ~6,900 km
+    apoapsis it returns a retrograde node that lowers the orbit instead of escaping. The upper carries
+    ~4,400 m/s, so spending ~800 m/s here (partly recovered at the low-periapsis Oberth ejection) is fine."""
+    ttp = v.orbit.time_to_periapsis
+    if ttp and 0 < ttp < 5e6:
+        sc.warp_to(sc.ut + ttp - 15.0)
+        time.sleep(2)
+    ref = v.orbit.body.non_rotating_reference_frame
+    ap = v.auto_pilot
+    ap.reference_frame = ref
+    ap.engage()
+
+    def _retro():
+        vx, vy, vz = v.velocity(ref)
+        return (-vx, -vy, -vz)
+
+    ap.target_direction = _retro()
+    time.sleep(6)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < max_s:
+        ap.target_direction = _retro()
+        apo = v.orbit.apoapsis_altitude
+        if apo <= target_alt_m or apo < 0:
+            break
+        v.control.throttle = 1.0 if apo > target_alt_m * 2.0 else 0.12
+        time.sleep(0.3)
+    v.control.throttle = 0.0
+    try:
+        ap.disengage()
+    except Exception:
+        pass
+    log(f"  lowered to ~{v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km for a clean ejection")
+
+
 def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
     """Kerbin parking orbit -> Duna: mj_plan interplanetary ejection at the NEXT window, warp to it, eject,
     course-check the closest approach, warp the ~75-day coast to the Duna SOI, then retro-capture ABOVE
@@ -247,8 +283,16 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # 3) Warp to ~the window (fast now: most of the long orbit sits at the high-warp altitude band).
     sc.warp_to(node_ut - 1800.0)
     time.sleep(2)
+    # 3b) Lower the high warp orbit back to ~LKO BEFORE re-planning. mj_plan's OperationInterplanetaryTransfer
+    # expects a low circular orbit; from the high warp orbit (6,900 km apoapsis) it returned a RETROGRADE node
+    # that LOWERED the orbit instead of escaping (validated: 6906 -> 416 km, no Duna encounter -> abort). The
+    # warp strategy is what makes the long wait practical; we just don't eject from the raised orbit. The
+    # upper carries ~4,400 m/s so the ~800 m/s round-trip (raise for warp, lower for ejection) is affordable.
+    if v.orbit.apoapsis_altitude > 400_000.0:
+        log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit back to LKO for a clean ejection ...")
+        _lower_to_lko(sc, v)
     log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
-    # 4) Re-plan the ejection from the (raised) orbit — MechJeb ejects at the low periapsis — and execute.
+    # 4) Re-plan the ejection from the (now low) orbit and execute.
     try:
         r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
