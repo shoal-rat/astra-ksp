@@ -275,8 +275,15 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  raising apoapsis to ~{target_ap/1000:.0f} km (below the Mun) so the {wait/(426*21600):.2f}-yr wait warps fast ...")
         _raise_apoapsis(sc, v, target_ap)
         log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
-    # 3) Warp to ~the window (fast now: most of the long orbit sits at the high-warp altitude band).
-    sc.warp_to(node_ut - 1800.0)
+    # 3) Warp to NEAR the window (fast now: most of the long orbit sits at the high-warp altitude band).
+    # Leave > 1 high-orbit PERIOD of buffer: the lower-to-LKO step below warps to the next periapsis (up to
+    # ~1 period of game-time), so warping all the way to node_ut - 1800 would OVERSHOOT the window during the
+    # lower and force mj_plan onto the NEXT synodic window (~2 yr later, un-warpable from LKO at cap 3).
+    import math
+    period = 2.0 * math.pi * (v.orbit.semi_major_axis ** 3 / v.orbit.body.gravitational_parameter) ** 0.5
+    warp_target = node_ut - (period * 1.3 + 1800.0)
+    if warp_target > sc.ut:
+        sc.warp_to(warp_target)
     time.sleep(2)
     # 3b) Lower the high warp orbit back to ~LKO BEFORE re-planning. mj_plan's OperationInterplanetaryTransfer
     # expects a low circular orbit; from the high warp orbit (6,900 km apoapsis) it returned a RETROGRADE node
