@@ -289,11 +289,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
 
 
 def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
-    """Raise apoapsis to the target altitude (immediate node, fuel is cheap via refuel) then circularize."""
+    """Raise apoapsis to the target altitude, MANUALLY warp to that apoapsis, then circularize there."""
     v = sc.active_vessel
     st = execute.measure(v)
     r_target = st["body_radius"] + target_alt_m
-    # prograde dv (vis-viva) to raise apoapsis to r_target, added as an immediate node (fuel is cheap).
+    # prograde dv (vis-viva) to raise apoapsis to r_target, added as an immediate node.
     import math
     mu = st["mu"]; r = st["r_periapsis"]
     v_now = math.sqrt(mu * (2.0 / r - 1.0 / v.orbit.semi_major_axis))
@@ -305,6 +305,18 @@ def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
     log(f"  raise apoapsis to {target_alt_m/1000:.0f} km: {v_new - v_now:.0f} m/s")
     execute.execute_node(sc, bridge, v)
     time.sleep(2)
+    # MANUALLY rails-warp to near apoapsis so the circularise node is IMMEDIATE. MechJeb's autowarp
+    # intermittently STALLS on a far (tens-of-minutes) apoapsis node and hangs the deploy until the probe
+    # drains its battery in shadow and loses control — what killed Keo-6's circularise. On-rails warp needs
+    # no EC and is deterministic; a near node then burns reliably.
+    t0 = time.monotonic()
+    while v.orbit.time_to_apoapsis > 45 and time.monotonic() - t0 < 90:
+        ttap = v.orbit.time_to_apoapsis
+        sc.rails_warp_factor = 6 if ttap > 1500 else (4 if ttap > 400 else (2 if ttap > 90 else 1))
+        time.sleep(0.7)
+    sc.rails_warp_factor = 0
+    time.sleep(2)
+    log(f"  warped to apoapsis (ttap {v.orbit.time_to_apoapsis:.0f}s); circularising")
     execute.circularize(sc, bridge, v)
     log(f"  circularized: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ecc={v.orbit.eccentricity:.3f}")
 
