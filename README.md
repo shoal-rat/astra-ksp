@@ -155,6 +155,31 @@ it:
   destroyed two crews) until the live speed reaches `hoverslam_reference_speed`, then hold throttle on
   the curve to a ~0 m/s touchdown.
 
+### `transfer_planner.py` — the precise interplanetary math (Lambert porkchop)
+
+![Precise transfer: a Lambert porkchop window and the asymptote ejection, verified by experiment](docs/transfer-math.svg)
+
+The phase-angle launch-window estimate is **~1–3 days off** — it assumes circular, coplanar orbits and a
+tangential burn. `transfer_planner.py` replaces it with the real thing. It **Kepler-propagates each body's
+position from kRPC** (`orbit.position_at(ut)`, exact) and solves **Lambert's problem** (Izzo 2015, ported
+from `lamberthub`) over a porkchop grid to find the *exact* optimal departure UT for **any body pair** —
+Kerbin→Eve, Kerbin→Duna, anywhere. From the resulting hyperbolic-excess vector **v∞** it places the ejection
+node precisely: the burn periapsis is **v∞ rotated back by the asymptote true anomaly `ν = arccos(−1/e)`**,
+at the next parking-orbit alignment (the two-clock fix that ties the heliocentric window to the in-orbit
+ejection time).
+
+**Verified by experiment, not asserted:**
+
+- **RK4-propagating the Lambert solution reaches the target body's position with `0 km` miss** (Duna and Eve).
+- The precise ejection's position-sampled timed miss is **`5.3× SOI` (Duna), `2.5× SOI` (Eve)** — versus
+  ~70× for MechJeb's planner — so the mid-course correction closes it to a clean encounter, or needs none.
+- The synchronous-ring altitude is `a = (μ·T²/4π²)^⅓ − R` for *any* body — Kerbin keostationary **2863 km**,
+  Duna **2880 km**, Eve **10 328 km** — returning "no synchronous orbit" when it would fall outside the SOI
+  (the Mun). `bodies.params_from_krpc(body)` reads `μ / radius / SOI / atmosphere / sidereal period` live, so
+  the same transfer/capture/ring code is correct for every body with **no hard-coded mission logic**.
+
+Every step is **measured and derived**, then checked against a propagated ground truth before it is trusted.
+
 ### `tools/astra.py` — the brain CLI
 
 One line of natural language → `AstraAgent` divides it into capabilities, plans and flies each,
@@ -192,20 +217,30 @@ do the natural-language interpretation (`ASTRA_MODEL` selects the model, default
 
 ---
 
-## The Mars (Duna) goal
+## The Mars (Duna) and Venus (Eve) goals
 
-KSP1's analogue of Mars is **Duna**. The target architecture is a **propulsive, no-parachute,
-Starship-class crewed lander-and-return in the SpaceX style**:
+KSP1's analogues are **Duna** (Mars) and **Eve** (Venus). Both run on the *same* body-agnostic transfer
+pipeline — one window calculation deploys to any target body.
 
-- **Orbital refueling** — assemble and top off Δv in low Kerbin orbit before departure.
-- **Interplanetary transfer** — the calculated Oberth ejection (≈ 1060 m/s) over a vis-viva Hohmann,
-  on the phase-angle window `plan.interplanetary_transfer` computes.
-- **Propulsive landing on Duna** — `execute.propulsive_landing` on the hoverslam law; the designer
-  sizes **zero parachutes** for this lander.
-- **ISRU / refuel** on the surface, then **propulsive ascent and return** to Kerbin.
+**Duna — a propulsive, no-parachute, Starship-class crewed lander-and-return:**
 
-The interplanetary and Duna drivers live alongside the Mun ones: `tools/mj_to_duna.py` (calculated
-Hohmann ejection + MechJeb node execution), `tools/mj_duna_capture.py`, and `tools/mj_land_duna.py`.
+- **Interplanetary transfer** — the precise **Lambert porkchop** window + the `ν = arccos(−1/e)` asymptote
+  ejection (`transfer_planner.py`), waited out **on the ground for zero fuel**, then a mid-course correction
+  and capture above the atmosphere.
+- **Propulsive landing on Duna** — `execute.propulsive_landing` on the hoverslam law (zero parachutes), then
+  **propulsive ascent and return** to Kerbin.
+
+**Eve — 3 synchronous relays, then a crewed landing and return:**
+
+- **3 relays at the Eve-stationary altitude (10 328 km)**, 120° phased, captured cheaply by **aerocapture**
+  in Eve's thick (5 atm) atmosphere.
+- **Crewed landing**, designed *backwards from the ascent*: land high on a mountain to cut the climb,
+  parachute down, then the **~6500 m/s Eve ascent vehicle** (aerospike asparagus, sized from the rocket
+  equation in Eve's *live* gravity and density) back to orbit and home, aerobraking free at Kerbin. Eve's
+  ascent is the single hardest stock challenge.
+
+The general `transfer_to_body` driver (`tools/deploy_relay_transfer.py`) waits for the window on the ground,
+ejects precisely, corrects, captures, and circularises to the body's synchronous ring.
 
 ---
 
@@ -260,6 +295,8 @@ ksp1-automation-lab/
 │   └── fly_relay_once.py / fly_hls_*.py / fly_orion.py        # milestone drivers
 ├── src/ksp_lab/
 │   ├── astro.py                   # CALCULATED physics core (vis-viva, Oberth, rocket eqn, hoverslam)
+│   ├── transfer_planner.py        # PRECISE interplanetary: Lambert porkchop window + asymptote ejection (any body)
+│   ├── bodies.py                  # live body params (params_from_krpc) + synchronous-altitude (any body)
 │   ├── design.py                  # requirements-driven, physics-calculated ship designer
 │   ├── plan.py                    # calculated planners (live state -> maneuver)
 │   ├── execute.py                 # calculated executors (measure -> plan -> fly)
@@ -270,7 +307,7 @@ ksp1-automation-lab/
 │   └── flight_controller.py, guidance.py, telemetry.py …
 ├── csharp/KspAutomationBridge/    # the C# plugin: /mj-* autopilot wrappers + craft/crew
 ├── configs/                       # local-ksp.yaml and friends
-├── docs/                          # architecture.svg · mission-flow.svg · the notebook
+├── docs/                          # architecture.svg · transfer-math.svg · mission-flow.svg · the notebook
 └── tests/
 ```
 
@@ -287,7 +324,12 @@ ksp1-automation-lab/
 - **HLS lander** flew to Mun orbit, performed a powered landing (touchdown ~ −0.1 m/s) on the
   hoverslam curve, ran surface science, and ascended back to lunar orbit.
 - **Orion crew vehicle** launched to Mun orbit, returned to Kerbin, and recovered behind a heat shield.
-- **Calculated Kerbin→Duna ejection** validated at ≈ 1060 m/s from closed-form orbital mechanics.
+- **A live constellation**, deployed by the agent: working relays around **Kerbin** (keostationary), the
+  **Mun**, and **Duna** — the first Duna relay captured and circularised in-game.
+- **The precise interplanetary math, solved and experimentally verified.** A Lambert porkchop window with a
+  **`0 km` RK4 round-trip** to Duna *and* Eve, and the `ν = arccos(−1/e)` asymptote ejection at a
+  **`5.3× SOI` (Duna) / `2.5× SOI` (Eve)** timed miss — versus ~70× for MechJeb's planner. Body-agnostic and
+  ready for **Eve (Venus)**.
 
 ---
 

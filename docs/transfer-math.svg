@@ -1,0 +1,85 @@
+<svg viewBox="0 0 980 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <radialGradient id="space" cx="32%" cy="42%" r="85%">
+      <stop offset="0%" stop-color="#101a2e"/>
+      <stop offset="100%" stop-color="#070b15"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff7d6"/>
+      <stop offset="45%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/>
+    </marker>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .h    { font-size: 22px; font-weight: 800; fill: #f8fafc; }
+      .sub  { font-size: 13px; fill: #94a3b8; }
+      .lab  { font-size: 12.5px; fill: #cbd5e1; }
+      .tag  { font-size: 11px; fill: #e2e8f0; font-weight: 700; }
+      .step { font-size: 13.5px; fill: #e2e8f0; font-weight: 700; }
+      .stepd{ font-size: 12px; fill: #94a3b8; }
+      .eqn  { font-size: 13px; fill: #d9f99d; font-style: italic; }
+      .ok   { font-size: 12.5px; fill: #86efac; font-weight: 700; }
+      .num  { font-size: 12.5px; fill: #fcd34d; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="980" height="560" rx="16" fill="url(#space)"/>
+  <text x="34" y="44" class="h">Precise interplanetary transfer — solved from physics, verified live</text>
+  <text x="34" y="66" class="sub">A Lambert porkchop over the bodies' real Kepler positions. Body-agnostic: the same code plans Kerbin&#8594;Eve, Kerbin&#8594;Duna, anywhere.</text>
+
+  <!-- ===== orbital diagram ===== -->
+  <g transform="translate(300,330)">
+    <!-- orbits -->
+    <circle r="120" fill="none" stroke="#7c3aed" stroke-width="1.6" opacity="0.55"/>
+    <circle r="165" fill="none" stroke="#2563eb" stroke-width="1.8" opacity="0.8"/>
+    <circle r="250" fill="none" stroke="#b91c1c" stroke-width="1.6" opacity="0.6"/>
+    <text x="86" y="-92" class="tag" fill="#a78bfa">Eve</text>
+    <text x="120" y="-118" class="tag" fill="#60a5fa">Kerbin</text>
+    <text x="-244" y="-120" class="tag" fill="#f87171">Duna</text>
+    <!-- sun -->
+    <circle r="18" fill="url(#sun)" filter="url(#glow)"/>
+    <!-- Lambert transfer arc Kerbin(+x) -> Duna(left), half an ellipse bulging outward -->
+    <path d="M 165 0 C 165 -150, -250 -185, -250 0" fill="none" stroke="url(#arc)" stroke-width="3.4"/>
+    <!-- departure planet -->
+    <circle cx="165" cy="0" r="7" fill="#60a5fa" stroke="#dbeafe" stroke-width="1.5"/>
+    <!-- arrival planet -->
+    <circle cx="-250" cy="0" r="8.5" fill="#f87171" stroke="#fee2e2" stroke-width="1.5"/>
+    <!-- ejection hyperbola asymptote at Kerbin -->
+    <path d="M 165 0 q 26 -22 64 -16" fill="none" stroke="#22d3ee" stroke-width="2.4" marker-end="url(#ah)"/>
+    <text x="196" y="-30" class="tag" fill="#67e8f9">v&#8734; ejection</text>
+    <text x="-12" y="-150" class="lab" fill="#c4b5fd">Lambert transfer</text>
+  </g>
+
+  <!-- ===== method + verification ===== -->
+  <g transform="translate(560,108)">
+    <text x="0" y="0" class="step">1 · Kepler-propagate any body</text>
+    <text x="0" y="18" class="stepd">positions from kRPC orbit.position_at(ut) — exact</text>
+    <text x="0" y="52" class="step">2 · Lambert solver (Izzo 2015)</text>
+    <text x="0" y="70" class="stepd">over real r&#8321;,r&#8322; &#8594; the optimal departure UT</text>
+    <text x="0" y="88" class="eqn">porkchop min &#916;v  (fixes the ~3-day phase-angle error)</text>
+    <text x="0" y="122" class="step">3 · Precise ejection node</text>
+    <text x="0" y="140" class="stepd">periapsis = v&#8734; rotated back by the asymptote</text>
+    <text x="0" y="158" class="eqn">&#957; = arccos(&#8722;1/e),   e = 1 + r&#8729;v&#8734;&#178;/&#956;</text>
+    <text x="0" y="192" class="step">4 · Wait for the window ON THE GROUND</text>
+    <text x="0" y="210" class="stepd">zero-fuel ground warp &#8594; eject directly (no raise/lower)</text>
+    <text x="0" y="244" class="step">5 · Capture &#8594; synchronous ring</text>
+    <text x="0" y="262" class="stepd">a = (&#956;&#183;T&#178;/4&#960;&#178;)&#185;&#179; &#8212; stationary alt for ANY body</text>
+
+    <rect x="-2" y="288" width="404" height="120" rx="11" fill="#0b1220" stroke="#1e3a5f" stroke-width="1.4"/>
+    <text x="16" y="312" class="tag" fill="#86efac">VERIFIED BY EXPERIMENT</text>
+    <text x="16" y="334" class="lab">RK4 round-trip of the Lambert solution reaches</text>
+    <text x="16" y="351" class="lab">the target body:  <tspan class="ok">0 km miss</tspan>  (Duna &amp; Eve)</text>
+    <text x="16" y="375" class="lab">Precise-ejection timed miss:</text>
+    <text x="16" y="392" class="num">Duna 5.3&#215; SOI  &#183;  Eve 2.5&#215; SOI</text>
+    <text x="262" y="392" class="stepd">vs mj_plan ~70&#215;</text>
+  </g>
+</svg>

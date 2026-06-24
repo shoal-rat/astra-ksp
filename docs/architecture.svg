@@ -1,111 +1,89 @@
-<svg viewBox="0 0 980 700" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg viewBox="0 0 980 724" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
-    </marker>
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
     <marker id="arrowUp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#0e7490"/>
-    </marker>
+      <path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker>
+    <radialGradient id="bg" cx="30%" cy="20%" r="100%"><stop offset="0%" stop-color="#0e1626"/><stop offset="100%" stop-color="#070b14"/></radialGradient>
+    <linearGradient id="gCmd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#475569"/><stop offset="100%" stop-color="#334155"/></linearGradient>
+    <linearGradient id="gBrain" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#5b21b6"/></linearGradient>
+    <linearGradient id="gApi" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0d9488"/><stop offset="100%" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="gMj" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#d97706"/><stop offset="100%" stop-color="#b45309"/></linearGradient>
+    <linearGradient id="gKr" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0891b2"/><stop offset="100%" stop-color="#0e7490"/></linearGradient>
+    <style>
+      .title{font-size:17px;font-weight:800;fill:#f8fafc}.sub{font-size:12.5px;fill:#e2e8f0}
+      .lab{font-size:12px;fill:#94a3b8;font-weight:600}.layer{font-size:12px;fill:#7c8aa0;font-weight:800;letter-spacing:.1em}
+      .eqn{font-size:12px;fill:#d9f99d;font-style:italic}.mod{font-size:13px;font-weight:800;fill:#ffffff}
+      .modd{font-size:11.5px;fill:#ccfbf1}.new{font-size:10px;font-weight:800;fill:#052e2b}
+    </style>
   </defs>
+  <rect x="0" y="0" width="980" height="724" rx="16" fill="url(#bg)"/>
 
-  <style>
-    .box    { rx: 12; stroke-width: 2; }
-    .title  { font-size: 17px; font-weight: 700; fill: #ffffff; }
-    .sub    { font-size: 12.5px; fill: #e2e8f0; }
-    .lab    { font-size: 12px; fill: #64748b; font-weight: 600; }
-    .layer  { font-size: 12px; fill: #94a3b8; font-weight: 700; letter-spacing: .08em; }
-    .eqn    { font-size: 12.5px; fill: #d9f99d; font-style: italic; }
-    .eqnhd  { font-size: 12.5px; font-weight: 700; fill: #ffffff; }
-    .apisub { font-size: 11.5px; fill: #ecfeff; }
-  </style>
-
-  <!-- ===== PEOPLE'S COMMAND ===== -->
   <text x="40" y="30" class="layer">PEOPLE'S COMMAND</text>
-  <rect x="40" y="42" width="900" height="58" class="box" fill="#334155" stroke="#1e293b"/>
-  <text x="64" y="68" class="title" font-size="15px">One-line natural-language goal</text>
-  <text x="64" y="88" class="sub">"Build a 3-sat comsat ring around Duna, refuel in LKO, land crew on Duna and bring them home."</text>
+  <rect x="40" y="42" width="900" height="56" rx="12" fill="url(#gCmd)" stroke="#1e293b"/>
+  <text x="64" y="67" class="title" font-size="15px">One-line natural-language goal</text>
+  <text x="64" y="87" class="sub">"Put 3 synchronous relays around Eve, then land crew on Eve and bring them home."</text>
 
-  <!-- ===== BRAIN: Claude Code ===== -->
-  <text x="40" y="138" class="layer">THE LLM BRAIN</text>
-  <rect x="40" y="150" width="900" height="92" class="box" fill="#6d28d9" stroke="#4c1d95"/>
-  <text x="64" y="182" class="title">Claude Code  —  divide · design · plan · retry · record</text>
-  <text x="64" y="207" class="sub">Splits the mission into steps, then for each step it calls a CALCULATED API and lets it run to completion.</text>
-  <text x="64" y="227" class="sub">No guessed magic numbers, no trial-and-error ladders — every value is derived from physics, then verified.</text>
+  <text x="40" y="134" class="layer">THE LLM BRAIN</text>
+  <rect x="40" y="146" width="900" height="86" rx="12" fill="url(#gBrain)" stroke="#4c1d95"/>
+  <text x="64" y="176" class="title">Claude Code &#8212; divide &#183; design &#183; plan &#183; fly &#183; retry &#183; record</text>
+  <text x="64" y="200" class="sub">Splits a mission into steps; for each, calls a CALCULATED API and lets it run. No guessed magic numbers, no</text>
+  <text x="64" y="218" class="sub">trial-and-error ladders &#8212; every value is derived from physics, then verified live.</text>
 
-  <!-- ===== CALCULATED API LAYER ===== -->
-  <text x="40" y="280" class="layer">CALCULATED APIs  (src/ksp_lab/)  —  numbers in, physics out</text>
-  <rect x="40" y="292" width="900" height="150" class="box" fill="#0f766e" stroke="#115e59"/>
-  <text x="64" y="318" class="eqnhd">f(x)  every number is solved from first principles, never hardcoded or guessed</text>
+  <text x="40" y="268" class="layer">CALCULATED APIs  (src/ksp_lab/)  &#8212;  numbers in, physics out, body-agnostic</text>
+  <rect x="40" y="280" width="900" height="172" rx="12" fill="url(#gApi)" stroke="#115e59"/>
+  <text x="64" y="305" class="mod" font-size="13px">f(x)  every number solved from first principles &#8212; never hardcoded, never guessed</text>
 
-  <!-- four API columns -->
-  <rect x="60" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
-  <text x="74" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">astro.py</text>
-  <text x="74" y="375" class="apisub">physics core</text>
-  <text x="74" y="392" class="eqn">vis-viva · Oberth</text>
-  <text x="74" y="408" class="eqn">rocket eqn · hoverslam</text>
-  <text x="74" y="423" class="apisub">GM/R/&#961; measured live</text>
+  <g>
+    <rect x="60" y="320" width="205" height="116" rx="9" fill="#0b4f49" stroke="#0d5650"/>
+    <text x="74" y="342" class="mod">astro.py + transfer_planner.py</text>
+    <text x="74" y="361" class="modd">physics core &amp; precise transfer</text>
+    <text x="74" y="380" class="eqn">vis-viva &#183; Oberth &#183; rocket eqn</text>
+    <text x="74" y="397" class="eqn">Lambert porkchop window</text>
+    <text x="74" y="414" class="eqn">&#957; = arccos(&#8722;1/e) ejection</text>
+    <rect x="74" y="421" width="40" height="14" rx="7" fill="#a3e635"/><text x="80" y="431" class="new">SOLVED</text>
 
-  <rect x="277" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
-  <text x="291" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">design.py</text>
-  <text x="291" y="375" class="apisub">calculated ship</text>
-  <text x="291" y="392" class="eqn">&#916;v &#8594; tank count</text>
-  <text x="291" y="408" class="eqn">TWR &#8594; engine cluster</text>
-  <text x="291" y="423" class="eqn">&#961; &#8594; chute / propulsive</text>
+    <rect x="277" y="320" width="205" height="116" rx="9" fill="#0b4f49" stroke="#0d5650"/>
+    <text x="291" y="342" class="mod">design.py</text>
+    <text x="291" y="361" class="modd">calculated ship</text>
+    <text x="291" y="380" class="eqn">&#916;v &#8594; tank count</text>
+    <text x="291" y="397" class="eqn">TWR &#8594; engine cluster</text>
+    <text x="291" y="414" class="eqn">&#961; &#8594; chute / propulsive</text>
 
-  <rect x="494" y="334" width="205" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
-  <text x="508" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">plan.py</text>
-  <text x="508" y="375" class="apisub">maneuver planners</text>
-  <text x="508" y="392" class="eqn">circularize · deorbit</text>
-  <text x="508" y="408" class="eqn">capture · transfer</text>
-  <text x="508" y="423" class="eqn">landing burn</text>
+    <rect x="494" y="320" width="205" height="116" rx="9" fill="#0b4f49" stroke="#0d5650"/>
+    <text x="508" y="342" class="mod">plan.py + bodies.py</text>
+    <text x="508" y="361" class="modd">maneuvers &amp; live body params</text>
+    <text x="508" y="380" class="eqn">circularize &#183; capture</text>
+    <text x="508" y="397" class="eqn">params_from_krpc(body)</text>
+    <text x="508" y="414" class="eqn">synchronous_altitude(b)</text>
 
-  <rect x="711" y="334" width="209" height="92" rx="9" fill="#115e59" stroke="#0d5650"/>
-  <text x="725" y="356" class="apisub" font-weight="700" fill="#ffffff" font-size="13px">execute.py</text>
-  <text x="725" y="375" class="apisub">calculated executors</text>
-  <text x="725" y="392" class="eqn">measure(vessel) live</text>
-  <text x="725" y="408" class="eqn">finite-burn lead · warp&#8594;ut</text>
-  <text x="725" y="423" class="eqn">hoverslam descent</text>
+    <rect x="711" y="320" width="209" height="116" rx="9" fill="#0b4f49" stroke="#0d5650"/>
+    <text x="725" y="342" class="mod">execute.py</text>
+    <text x="725" y="361" class="modd">calculated executors</text>
+    <text x="725" y="380" class="eqn">measure(vessel) live</text>
+    <text x="725" y="397" class="eqn">finite-burn lead &#183; warp&#8594;ut</text>
+    <text x="725" y="414" class="eqn">hoverslam descent</text>
+  </g>
 
-  <!-- ===== MECHJEB / kRPC layer ===== -->
-  <text x="40" y="482" class="layer">DELEGATED CONTROL  &amp;  TELEMETRY</text>
-  <rect x="40" y="494" width="430" height="72" class="box" fill="#b45309" stroke="#92400e"/>
-  <text x="64" y="520" class="title" font-size="15px">MechJeb 2 autopilots</text>
-  <text x="64" y="540" class="sub">Ascent · NodeExecutor · Rendezvous · Docking</text>
-  <text x="64" y="558" class="sub">closed-loop control where MechJeb already calculates well</text>
+  <text x="40" y="492" class="layer">DELEGATED CONTROL  &amp;  TELEMETRY</text>
+  <rect x="40" y="504" width="430" height="70" rx="12" fill="url(#gMj)" stroke="#92400e"/>
+  <text x="64" y="530" class="title" font-size="15px">MechJeb 2 autopilots</text>
+  <text x="64" y="550" class="sub">Ascent &#183; NodeExecutor &#183; Landing &#183; Rendezvous</text>
+  <text x="64" y="567" class="sub">closed-loop control where MechJeb already calculates well</text>
+  <rect x="510" y="504" width="430" height="70" rx="12" fill="url(#gKr)" stroke="#155e75"/>
+  <text x="534" y="530" class="title" font-size="15px">kRPC telemetry / nodes</text>
+  <text x="534" y="550" class="sub">live GM &#183; radius &#183; SOI &#183; density &#183; orbit state</text>
+  <text x="534" y="567" class="sub">position_at(ut) &#183; nodes &#183; warp &#183; save/load</text>
 
-  <rect x="510" y="494" width="430" height="72" class="box" fill="#0e7490" stroke="#155e75"/>
-  <text x="534" y="520" class="title" font-size="15px">kRPC telemetry / nodes</text>
-  <text x="534" y="540" class="sub">live state · reference frames · orbit prediction</text>
-  <text x="534" y="558" class="sub">maneuver nodes · warp · staging · set target</text>
+  <text x="40" y="614" class="layer">LIVE SIMULATOR</text>
+  <rect x="40" y="626" width="900" height="56" rx="12" fill="url(#gCmd)" stroke="#1e293b"/>
+  <text x="64" y="652" class="title" font-size="15px">Live Kerbal Space Program 1  (v1.12.5)</text>
+  <text x="64" y="672" class="sub">where every calculated burn actually flies &#8212; relays, refuel depots, landers, crew</text>
 
-  <!-- ===== GAME ===== -->
-  <text x="40" y="606" class="layer">LIVE SIMULATOR</text>
-  <rect x="40" y="618" width="900" height="58" class="box" fill="#334155" stroke="#1e293b"/>
-  <text x="64" y="644" class="title" font-size="15px">Live Kerbal Space Program 1  (v1.12.5)</text>
-  <text x="64" y="664" class="sub">the simulator every calculated burn actually flies in — ships, refuel depots, landers</text>
-
-  <!-- ===== FLOW ARROWS ===== -->
-  <!-- command -> brain -->
-  <path d="M490,100 L490,150" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
-  <text x="500" y="128" class="lab">command</text>
-
-  <!-- brain -> apis -->
-  <path d="M490,242 L490,292" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
-  <text x="500" y="270" class="lab">call calculated step</text>
-
-  <!-- apis -> mechjeb (control) -->
-  <path d="M255,442 L255,494" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
-  <text x="265" y="472" class="lab">fly node / autopilot</text>
-
-  <!-- apis -> kRPC (telemetry / math) -->
-  <path d="M725,442 L725,494" stroke="#0e7490" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/>
-  <text x="735" y="472" class="lab" fill="#0e7490">measure / plan nodes</text>
-
-  <!-- mechjeb -> game (commands the ship) -->
-  <path d="M255,566 L255,618" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
-  <text x="265" y="596" class="lab">commands ship</text>
-
-  <!-- game -> kRPC (reads live state back up) -->
-  <path d="M725,618 L725,566" stroke="#0e7490" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/>
-  <text x="735" y="596" class="lab" fill="#0e7490">reads live state</text>
+  <path d="M490,98 L490,146" stroke="#94a3b8" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M490,232 L490,280" stroke="#94a3b8" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/><text x="500" y="261" class="lab">call calculated step</text>
+  <path d="M255,452 L255,504" stroke="#94a3b8" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/><text x="265" y="482" class="lab">fly node / autopilot</text>
+  <path d="M725,452 L725,504" stroke="#22d3ee" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/><text x="735" y="482" class="lab" fill="#22d3ee">measure / plan</text>
+  <path d="M255,574 L255,626" stroke="#94a3b8" stroke-width="2.2" fill="none" marker-end="url(#arrow)"/><text x="265" y="604" class="lab">commands ship</text>
+  <path d="M725,626 L725,574" stroke="#22d3ee" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#arrowUp)"/><text x="735" y="604" class="lab" fill="#22d3ee">reads live state</text>
 </svg>
