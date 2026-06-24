@@ -38,8 +38,9 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     #   booster: sized by the rocket equation for ~3500 m/s to LKO, engine picked for liftoff TWR>=1.5
     #   insertion: ~1300 m/s for the raise + circularise to the target orbit
     # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE, margin ~2.5 m),
-    # unlike a short single-stage probe (margin ~0.2 m, would flip). The bus adds the RA-100 relay + a
-    # service-bay FAIRING + nose cone + CoP-sized fins. design.staging_plan records the per-stage masses.
+    # unlike a short single-stage probe (margin ~0.2 m, would flip). The bus rides the RA-100 relay inside
+    # a real PROCEDURAL FAIRING (ModuleProceduralFairing ogive shell, jettisoned in orbit before deploy) +
+    # CoP-sized fins. design.staging_plan records the per-stage masses; commission() jettisons the shroud.
     from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
@@ -149,9 +150,22 @@ def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
 
 
 def commission(bridge, v) -> None:
-    """Bring the relay online WITHOUT refuelling: extend the RA-100 dish + the solar panels so it has a
-    live CommNet link and recharges its own EC from sunlight (the legitimate alternative to topping off
-    electric charge). Set the vessel type to Relay so it forwards other craft's signals."""
+    """Bring the relay online WITHOUT refuelling: JETTISON the payload fairing, then extend the RA-100
+    dish + the solar panels so it has a live CommNet link and recharges its own EC from sunlight (the
+    legitimate alternative to topping off electric charge). Set the vessel type to Relay so it forwards
+    other craft's signals. The fairing protected the bus through max-Q; the dish/solar deploy ONLY once
+    the shroud is gone (a real comsat sequence)."""
+    # Jettison the procedural fairing first — the ogive shroud must split away before anything deploys.
+    jettisoned = 0
+    for fr in list(getattr(v.parts, "fairings", []) or []):
+        try:
+            if not fr.jettisoned:
+                fr.jettison(); jettisoned += 1
+        except Exception:
+            pass
+    if jettisoned:
+        log(f"  jettisoned {jettisoned} payload fairing(s) — bus exposed, clear to deploy")
+        time.sleep(2)
     deployed_a = deployed_s = 0
     for a in v.parts.antennas:
         try:

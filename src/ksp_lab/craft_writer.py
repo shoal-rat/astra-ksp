@@ -84,6 +84,9 @@ class CraftNode:
     srf_parent: "CraftNode | None" = None
     pos_xyz: tuple[float, float, float] | None = None
     rot_quat: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    # For a payload-fairing base: the computed ModuleProceduralFairing XSECTION shell (an ogive that
+    # wraps the payload above it). _render_part splices this in place of the harvested craft's XSECTIONS.
+    fairing_xsections: str | None = None
 
     @property
     def craft_id(self) -> str:
@@ -142,6 +145,8 @@ class CraftWriter:
         # longAntenna (Communotron 16) — which is exactly why the relays could not hold the Kerbin<->Duna
         # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
         names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2", "adapterSize2-Size1"})
+        if not design.crewed and not design.landing_legs:
+            names.add("fairingSize1")  # probe comsat rides in a payload fairing (harvest the working module)
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
@@ -372,6 +377,27 @@ class CraftWriter:
         lander_tank: CraftNode | None = None  # tank of the top stage that STAYS (the lander)
         lander_engine: CraftNode | None = None  # engine of the lander stage (footpads must clear its bell)
         prev_dia: float | None = None          # diameter of the stage ABOVE (for the adapter step check)
+        # PAYLOAD FAIRING: a probe comsat rides INSIDE an ogive shroud — never an exposed antenna on the
+        # nose. The fairing base node-attaches BELOW the payload bus; its ModuleProceduralFairing shell
+        # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
+        # before the dish + solar deploy. Only for an uncrewed, no-legs probe (the comsat); the crewed
+        # Starship lander keeps its own nose. The base diameter matches the payload body.
+        has_fairing = (not design.crewed and not design.landing_legs
+                       and (part_bodies is None or "fairingSize1" in part_bodies))
+        if has_fairing:
+            payload_top = max(n.y + part(n.part_name).height_m / 2.0 for n in nodes if not n.is_surface)
+            fb = new_node("fairingSize1", 0)
+            self._attach(current, fb, "bottom", "top")
+            base_r = part(current.part_name).diameter_m / 2.0
+            shell_h = max(1.0, payload_top - (fb.y + part("fairingSize1").height_m / 2.0))
+            tip = shell_h + base_r * 2.6                     # ogive nose extends above the payload
+            xs = [(0.0, base_r), (shell_h * 0.6, base_r), (shell_h, base_r * 0.8), (tip, 0.2)]
+            # Two-tab indentation matches the donor craft's XSECTIONS (the shell sits inside the
+            # MODULE block of the spliced part body); the override regex below replaces them in place.
+            fb.fairing_xsections = "\n".join(
+                f"\t\tXSECTION\n\t\t{{\n\t\t\th = {h:.4f}\n\t\t\tr = {r:.4f}\n\t\t}}" for h, r in xs)
+            nodes.append(fb)
+            current = fb
         for render_index, stage in enumerate(rendered_stages, start=1):
             if stage.decoupler_above:
                 # The inter-stage decoupler must ACTIVATE one stage later than the engine/tanks it
@@ -572,10 +598,10 @@ class CraftWriter:
             dock = new_node("dockingPort2", 0)
             self._attach(root, dock, "top", "bottom", up=True)
             nodes.append(dock)
-        elif can_emit("noseCone"):
+        elif can_emit("noseCone") and not has_fairing:
             # Nose cone for streamlining (the aero requirement): above the parachute if one exists, else
-            # straight on the command pod's top node. A no-chute probe relay has no `chute` node, so guard
-            # on n_chute (referencing `chute` when none was built raised UnboundLocalError).
+            # straight on the command pod's top node. SKIPPED when a payload fairing is present — the
+            # fairing's ogive shell IS the nose (never a cone on top of a fairing).
             nose = new_node("noseCone", 0)
             top = chute if n_chute > 0 else root
             self._attach(top, nose, "top", "bottom", up=True)
@@ -585,8 +611,8 @@ class CraftWriter:
         # refinement): a streamlined nose (cone or docking port) + a faired payload (service bay) give a
         # low Cd; the widest tank sets the frontal area; the launch wet mass sets the ballistic
         # coefficient and the ascent drag-loss Δv; max-Q is what the airframe/fairing must survive.
-        has_nose = any(n.part_name in ("noseCone", "dockingPort2") for n in nodes)
-        faired = any(n.part_name == "ServiceBay.125.v2" for n in nodes)
+        has_nose = any(n.part_name in ("noseCone", "dockingPort2", "fairingSize1", "fairingSize2") for n in nodes)
+        faired = any(n.part_name in ("ServiceBay.125.v2", "fairingSize1", "fairingSize2") for n in nodes)
         fin_n = sum(1 for n in nodes if n.part_name in ("basicFin", "R8winglet"))
         max_dia = max((part(n.part_name).diameter_m for n in nodes if not n.is_surface), default=1.25)
         cd = astro.drag_coefficient(has_nose, faired, fin_n)
@@ -669,6 +695,10 @@ class CraftWriter:
                 continue  # surface-attached children carry their own srfN; parent only links them
             lines.append(f"\tattN = {child.parent_node},{child.craft_id}_{self._node_position(node.part_name, child.parent_node)}")
         body = (part_bodies or {}).get(node.part_name)
+        if body and node.fairing_xsections:
+            # Replace the harvested fairing's XSECTION shell (sized for the donor craft) with the
+            # computed ogive that wraps THIS payload, keeping it inside the ModuleProceduralFairing.
+            body = re.sub(r"(?:\n\t\tXSECTION\n\t\t\{[^}]*\})+", "\n" + node.fairing_xsections, body, count=1)
         if body:
             # Splice the part's real KSP serialization (EVENTS/ACTIONS/PARTDATA/MODULE/RESOURCE)
             # so launch finalization has full module state and does not NullReference.

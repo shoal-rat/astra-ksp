@@ -103,6 +103,12 @@ STOCK_PARTS: dict[str, StockPart] = {
     # diameter_m is the WIDE (lower) end; the cone tapers to 1.25 m on top.
     "adapterSize2-Size1": StockPart("adapterSize2-Size1", "Rockomax Brand Adapter (2.5 -> 1.25 m)",
                                     0.8, 0.8, 800, 1.6, diameter_m=2.5),
+    # PAYLOAD FAIRING bases. The base node-attaches below the payload; its ModuleProceduralFairing shell
+    # (a list of XSECTIONS) wraps everything above it into an ogive nose and is jettisoned in space. This
+    # is how a real satellite rides: enclosed + protected through max-Q, then the shroud splits away
+    # before the dish/solar deploy. fairingSize1 = 1.25 m base (r 0.625), fairingSize2 = 2.5 m base (r 1.25).
+    "fairingSize1": StockPart("fairingSize1", "AE-FF1 Airstream Fairing (1.25 m)", 0.075, 0.075, 200, 0.5, diameter_m=1.25),
+    "fairingSize2": StockPart("fairingSize2", "AE-FF2 Airstream Fairing (2.5 m)", 0.15, 0.15, 750, 0.5, diameter_m=2.5),
 }
 
 
