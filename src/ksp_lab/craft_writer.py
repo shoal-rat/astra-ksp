@@ -144,7 +144,7 @@ class CraftWriter:
         # RelayAntenna100 (RA-100) MUST be harvested or the bus_layout silently falls back to the weak
         # longAntenna (Communotron 16) — which is exactly why the relays could not hold the Kerbin<->Duna
         # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
-        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "basicFin", "asasmodule1-2", "adapterSize2-Size1"})
+        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank", "rtg", "basicFin", "asasmodule1-2", "adapterSize2-Size1"})
         if not design.crewed and not design.landing_legs:
             names.add("fairingSize1")  # probe comsat rides in a payload fairing (harvest the working module)
         if design.landing_legs:
@@ -462,9 +462,14 @@ class CraftWriter:
             # in the part library.
             ("RelayAntenna100" if (part_bodies is None or "RelayAntenna100" in part_bodies) else "longAntenna",
              (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
-            ("batteryBankMini", (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
+            # Z-1k battery buffers the bursty reaction-wheel drain; falls back to the Z-200 if unharvested.
+            ("batteryBank" if (part_bodies is None or "batteryBank" in part_bodies) else "batteryBankMini",
+             (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
             ("solarPanels5", (0.0, bus_y, bus_radius), (0.0, 0.0, 0.0, 1.0)),
             ("solarPanels5", (0.0, bus_y, -bus_radius), (0.0, 1.0, 0.0, 0.0)),
+            # RTG: continuous sun-independent power so the probe stays controllable through eclipse (the
+            # fix for the keo circularise burns dying on a flat battery in shadow). Mounted on a diagonal.
+            ("rtg", (bus_radius * 0.7, bus_y - 0.18, bus_radius * 0.7), (0.0, 0.0, 0.0, 1.0)),
             # NOTE: a separate large reaction-wheel module was tried here but, surface-mounted on
             # the small probe core, it clipped badly and destabilised the craft. Attitude authority
             # for finite burns is instead handled in the controller: the TMI burn re-aligns and

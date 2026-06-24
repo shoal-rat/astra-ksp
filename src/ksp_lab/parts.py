@@ -93,6 +93,11 @@ STOCK_PARTS: dict[str, StockPart] = {
     "RelayAntenna100": StockPart("RelayAntenna100", "RA-100 Relay Antenna", 0.65, 0.65, 1000, 0.6),
     "solarPanels5": StockPart("solarPanels5", "SP-W 3x2 Photovoltaic Panels", 0.0175, 0.0175, 380, 0.3),
     "batteryBankMini": StockPart("batteryBankMini", "Z-200 Rechargeable Battery Bank", 0.01, 0.01, 360, 0.3),
+    "batteryBank": StockPart("batteryBank", "Z-1k Rechargeable Battery Bank", 0.05, 0.05, 880, 0.4),
+    # PB-NUK RTG: continuous ~0.75 EC/s, SUN-INDEPENDENT power. A comsat spends part of every orbit in
+    # shadow; with solar alone the battery drains and the probe loses control (ControlState.none) — which
+    # killed the keo circularisation burns. The RTG keeps it controllable through eclipse.
+    "rtg": StockPart("rtg", "PB-NUK Radioisotope Thermoelectric Generator", 0.08, 0.08, 23300, 0.5),
     "R8winglet": StockPart("R8winglet", "AV-R8 Winglet (active control surface)", 0.08, 0.08, 640, 0.5, fin_area_m2=2.0),
     "basicFin": StockPart("basicFin", "Basic Fin (passive aero stabiliser)", 0.01, 0.01, 25, 0.5, fin_area_m2=1.0),
     "asasmodule1-2": StockPart("asasmodule1-2", "Advanced Reaction Wheel Module (attitude authority)", 0.05, 0.05, 2100, 0.3),
