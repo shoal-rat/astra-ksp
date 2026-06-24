@@ -106,18 +106,24 @@ def _raise_apoapsis(sc, v, target_ap_m: float, max_s: float = 320.0) -> None:
     ap.target_direction = v.velocity(ref)
     ap.engage()
     time.sleep(5)
-    v.control.throttle = 1.0
+    soi_alt = v.orbit.body.sphere_of_influence - v.orbit.body.equatorial_radius
     t0 = time.monotonic()
     last = ""
     while time.monotonic() - t0 < max_s:
         ap.target_direction = v.velocity(ref)
         apo = v.orbit.apoapsis_altitude
-        if apo < 0 or apo > target_ap_m:          # reached target (or went hyperbolic — stop)
+        # Stop at the target, if already hyperbolic (apo<0 = escaped), or if nearing the SOI edge.
+        if apo < 0 or apo >= target_ap_m or apo > soi_alt * 0.9:
             break
+        # FEATHER the throttle as the apoapsis nears the target — it grows EXPONENTIALLY near escape, so a
+        # full-throttle burn overshoots past the SOI and the craft escapes (the first attempt did). Slow the
+        # final approach so the burn cuts off close to the target.
+        frac = apo / target_ap_m
+        v.control.throttle = 1.0 if frac < 0.5 else (0.2 if frac < 0.85 else 0.04)
         m = f"raising apoapsis {apo/1000:.0f}k km"
         if m != last:
             log("  " + m); last = m
-        time.sleep(0.6)
+        time.sleep(0.3)
     v.control.throttle = 0.0
     try:
         ap.disengage()
@@ -229,7 +235,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # the later ejection is still an efficient Oberth burn (and the raise Δv is recovered there).
     if wait > 6 * 3600:
         soi = v.orbit.body.sphere_of_influence
-        target_ap = min(soi * 0.80, 70_000_000.0)
+        target_ap = min(soi * 0.55, 50_000_000.0)   # well below the SOI edge so the feathered burn can't escape
         log(f"  raising apoapsis to ~{target_ap/1000:.0f} km so the {wait/(426*21600):.2f}-yr wait warps fast ...")
         _raise_apoapsis(sc, v, target_ap)
         log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
