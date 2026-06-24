@@ -531,8 +531,11 @@ def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
                 try:
                     n += 1
                     pe = float(node.orbit.periapsis_altitude)
-                    if pe < 80_000.0:                        # keep above Duna's ~50 km atmosphere
-                        continue
+                    if pe < 2_500_000.0:                     # FLOOR at ~2,500 km (near the ring target, well above
+                        continue                             # the ~50 km atmosphere): a deep periapsis makes the
+                    # capture burn so Oberth-powerful that one lag-frame over-burns into the surface (AI-Duna-Ring-X
+                    # lowered to 129 km then crashed). With the launch-window fuel surplus we don't need the extra
+                    # Oberth — a gentle ~2,500 km capture is plenty affordable and can't overshoot to the ground.
                     r_pe = r_duna + pe
                     node_dv = (pg*pg + rad*rad + nrm*nrm) ** 0.5
                     # estimated Oberth capture Δv at this periapsis (hyperbolic -> just-bound); low pe = cheap
@@ -549,6 +552,34 @@ def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
     if best is not None:
         log(f"  periapsis-lower ({n} nodes): dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) -> Duna pe {best['pe']/1000:.0f} km")
     return best
+
+
+def _next_duna_window_ut(sc):
+    """Analytical UT of the next Kerbin->Duna Hohmann departure, so we can WARP ON THE GROUND to it BEFORE
+    committing any propellant (the user's fix: waiting for the window on the pad costs no fuel, whereas launching
+    early forces the ~1,580 m/s in-flight raise/lower warp). Standard heliocentric phase-angle calculation.
+
+    At departure Duna must LEAD Kerbin by  phi* = pi - omega_Duna * t_transfer  (so it arrives at the transfer
+    apoapsis when the craft does). The current lead phi shrinks at the synodic rate (Kerbin is faster); the wait
+    is the time for phi to reach phi*."""
+    import math
+    sun = sc.bodies["Sun"]; kerbin = sc.bodies["Kerbin"]; duna = sc.bodies["Duna"]
+    ok, od = kerbin.orbit, duna.orbit
+    R_k, R_d = ok.semi_major_axis, od.semi_major_axis
+    a_t = 0.5 * (R_k + R_d)
+    t_tr = math.pi * math.sqrt(a_t ** 3 / sun.gravitational_parameter)     # Hohmann transfer time
+    omega_k = 2.0 * math.pi / ok.period
+    omega_d = 2.0 * math.pi / od.period
+    phi_star = math.pi - omega_d * t_tr                                    # required Duna lead at departure
+    phi_star = (phi_star + math.pi) % (2.0 * math.pi) - math.pi
+    pk = kerbin.position(sun.reference_frame); pd = duna.position(sun.reference_frame)
+    lon_k = math.atan2(pk[2], pk[0]); lon_d = math.atan2(pd[2], pd[0])     # heliocentric longitudes (x-z plane)
+    phi = lon_d - lon_k                                                    # current Duna lead
+    rel = omega_k - omega_d                                               # > 0: the lead shrinks at this rate
+    if rel <= 0:
+        return sc.ut
+    d = ((phi - phi_star) % (2.0 * math.pi))                              # how far the lead must shrink
+    return sc.ut + d / rel
 
 
 def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
@@ -727,7 +758,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # phasing correction needs. (Circularising to the 2640 km ring target is a no-refuel follow-up.)
     ap_target_m = max(enc_pe * 1.3, 0.35 * v.orbit.body.sphere_of_influence)
     log(f"  LOOSE-capturing to a bound Duna orbit: periapsis ~{enc_pe/1000:.0f} km, apoapsis ceiling {ap_target_m/1000:.0f} km")
-    _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=60_000.0, max_s=400.0)
+    _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=1_200_000.0, max_s=400.0)
     return v.orbit.body.name == "Duna" and v.orbit.periapsis_altitude > 55_000.0
 
 
@@ -743,6 +774,43 @@ def main() -> int:
     kc = cfg["krpc"]
     c = krpc.connect(name="deploy-transfer", address=kc["host"], rpc_port=kc["rpc_port"], stream_port=kc["stream_port"])
     sc = c.space_center
+
+    # 0) For Duna: WAIT for the transfer window ON THE GROUND before spending any propellant. Launching early
+    # forces the ~1,580 m/s in-flight raise+lower warp (the only way to time-warp a 1-2 yr wait from LKO at the
+    # 50x cap); warping to the window on the pad costs ZERO fuel and lets the upper eject DIRECTLY into the
+    # transfer (AI-Duna-Ring-X caught a near-window launch by luck and kept the WHOLE upper for the capture).
+    # We advance the game via a stable orbiting vessel, then launch_to_lko fires fresh ~5 h before the window.
+    if target_body == "Duna":
+        try:
+            # PRECISE window from MechJeb (planned off any Kerbin-orbiting vessel — orbit-independent departure
+            # time), falling back to the analytical calc if none is available.
+            win = None
+            korb = [vv for vv in sc.vessels if vv.orbit.body.name == "Kerbin"
+                    and str(vv.situation).split(".")[-1] == "orbiting"]
+            if korb:
+                try:
+                    sc.active_vessel = korb[0]; time.sleep(2)
+                    win = bridge.mj_plan(target="Duna", operation="interplanetary").get("ut")
+                    sc.active_vessel.control.remove_nodes()
+                except Exception:
+                    win = None
+            if win is None:
+                win = _next_duna_window_ut(sc)
+            wait_to = win - 5.0 * 3600.0                       # ~5 h early: ascent ~10 min, under the 6 h skip-warp gate
+            if wait_to > sc.ut:
+                yrs = (wait_to - sc.ut) / (426.0 * 21600.0)
+                log(f"WAITING for the Kerbin->Duna window: warping {yrs:.2f} Kerbin-yr on the ground (NO fuel) to UT {round(wait_to)} ...")
+                # Warp from a HIGH (solar-orbit) vessel so the multi-year warp runs at the 100,000x cap, not the
+                # 50x LKO cap — a landed/high craft is not altitude-limited. Junk failed transfers sit in solar orbit.
+                hi = [vv for vv in sc.vessels if vv.orbit.body.name == "Sun"
+                      and str(vv.situation).split(".")[-1] == "orbiting"]
+                if hi:
+                    sc.active_vessel = hi[0]; time.sleep(2)
+                sc.rails_warp_factor = 0
+                sc.warp_to(wait_to); time.sleep(2)
+                log(f"window reached (UT {round(sc.ut)}); launching DIRECTLY into the transfer — no raise/lower waste")
+        except Exception as exc:
+            log(f"window pre-warp skipped ({exc}); launching now (in-flight raise/lower warp fallback)")
 
     # 1) Launch to a 100 km Kerbin PARKING orbit (proven ascent + booster force-separation). For Duna, the upper
     # must afford the FULL interplanetary budget (~3,785 m/s: warp raise ~790 + lower ~790 + ejection ~1,025 +

@@ -78,8 +78,16 @@ def _retro_capture(conn, sc, v, log, *, ap_target_m: float = 1_200_000.0, pe_flo
         if 0 < A and P < pe_floor_m * 0.8:
             log("  periapsis low; stopping")
             break
-        v.control.throttle = 1.0 if (A < 0 or A > ap_target_m * 1.5) else 0.4
-        time.sleep(1.5)
+        # FEATHER the throttle as the apoapsis nears the bound target. At a low periapsis the retro burn is so
+        # Oberth-powerful that a single lag-frame at full/0.4 throttle blows PAST the target and drives the
+        # periapsis into the surface (AI-Duna-Ring-X over-burned from escape to a 654 km apoapsis / -317 km
+        # periapsis in one step and crashed). Full thrust only while far/hyperbolic; ease right off near target.
+        if A < 0 or A > ap_target_m * 2.5:
+            v.control.throttle = 1.0; time.sleep(1.5)
+        elif A > ap_target_m * 1.3:
+            v.control.throttle = 0.30; time.sleep(0.8)
+        else:
+            v.control.throttle = 0.07; time.sleep(0.5)        # gentle, frequent checks on the final approach
     v.control.throttle = 0.0
     time.sleep(1)
     try:
