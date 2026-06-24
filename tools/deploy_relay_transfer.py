@@ -517,6 +517,10 @@ def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
     in Duna's SOI, so node.orbit is the Duna approach)."""
     sc.rails_warp_factor = 0
     time.sleep(2)
+    duna = sc.bodies["Duna"]
+    mu, r_duna = duna.gravitational_parameter, duna.equatorial_radius
+    a = v.orbit.semi_major_axis
+    v_inf = (mu / abs(a)) ** 0.5 if a and a < 0 else 0.0     # hyperbolic excess speed (~constant on approach)
     ttp = v.orbit.time_to_periapsis or 0.0
     ut = sc.ut + max(60.0, ttp * 0.05)                       # early in the approach -> high periapsis leverage
     best, best_score, n = None, float("inf"), 0
@@ -529,11 +533,14 @@ def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
                     pe = float(node.orbit.periapsis_altitude)
                     if pe < 80_000.0:                        # keep above Duna's ~50 km atmosphere
                         continue
-                    dv = (pg*pg + rad*rad + nrm*nrm) ** 0.5
-                    score = abs(pe - target_pe) + dv * 200.0  # low periapsis + low Δv
+                    r_pe = r_duna + pe
+                    node_dv = (pg*pg + rad*rad + nrm*nrm) ** 0.5
+                    # estimated Oberth capture Δv at this periapsis (hyperbolic -> just-bound); low pe = cheap
+                    cap_dv = (v_inf*v_inf + 2.0*mu/r_pe) ** 0.5 - (2.0*mu/r_pe) ** 0.5
+                    score = node_dv + cap_dv                # minimize the TOTAL lower-then-capture Δv
                     if score < best_score:
                         best_score = score
-                        best = {"ut": float(ut), "prograde": float(pg), "radial": float(rad), "normal": float(nrm), "pe": pe}
+                        best = {"ut": float(ut), "prograde": float(pg), "radial": float(rad), "normal": float(nrm), "pe": pe, "total_dv": score}
                 finally:
                     try:
                         node.remove()
@@ -693,7 +700,7 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     if v.orbit.periapsis_altitude > 2_000_000.0:
         log(f"  Duna periapsis {v.orbit.periapsis_altitude/1000:.0f} km too high for an Oberth capture — lowering ...")
         plow = _search_duna_periapsis_lower(sc, v)
-        if plow is not None and plow["pe"] < v.orbit.periapsis_altitude * 0.6:
+        if plow is not None and plow["pe"] < v.orbit.periapsis_altitude * 0.85:
             v.control.remove_nodes()
             v.control.add_node(plow["ut"], prograde=plow["prograde"], radial=plow["radial"], normal=plow["normal"])
             _execute_node_manually(conn, sc, v, max_burn_s=200.0, max_throttle=1.0)
