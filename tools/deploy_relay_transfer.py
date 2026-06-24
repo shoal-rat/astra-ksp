@@ -372,8 +372,21 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-plan FAILED: {exc}"); return False
     bridge.mj_execute_node()
     _wait_node_done(bridge, timeout_s=1800.0, label="Duna ejection")
+    # 3c) Coast to ~the transfer MIDPOINT before correcting. A correction right after ejection (still near
+    # Kerbin) has almost no leverage on the Duna approach — 3 corrections there never closed the encounter
+    # (9th attempt). The standard fix is to fine-tune near mid-transfer; warp to ~half the time to the
+    # heliocentric apoapsis (the Duna-orbit crossing), where a small Δv swings the closest approach a lot.
+    if v.orbit.body.name == "Sun":
+        try:
+            tta = v.orbit.time_to_apoapsis
+            if tta and 0 < tta < 1e9:
+                log(f"  coasting ~{tta*0.5/(6*3600):.0f} days to mid-transfer before fine-tuning ...")
+                sc.warp_to(sc.ut + tta * 0.5)
+                time.sleep(2)
+        except Exception as exc:
+            log(f"  mid-transfer warp note: {exc}")
     # 4) Course-check the Duna closest approach (raise it above the atmosphere; abort rather than burn up).
-    for attempt in range(3):
+    for attempt in range(6):
         pred = _predicted_periapsis_at(v, "Duna")
         if pred is not None and pred > 80_000.0:
             log(f"  Duna closest-approach periapsis {pred/1000:.0f} km — safe (above the atmosphere)")
