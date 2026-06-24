@@ -287,12 +287,15 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
     ap.engage()
     time.sleep(8)
     v0 = v.velocity(ref)
+    bd0 = _burn_dir()                                        # fixed projection axis (after the craft settles)
     t0 = time.monotonic()
     v.control.throttle = 1.0
     while time.monotonic() - t0 < max_burn_s:
         ap.target_direction = _burn_dir()
         cur = v.velocity(ref)
-        applied = ((cur[0]-v0[0])**2 + (cur[1]-v0[1])**2 + (cur[2]-v0[2])**2) ** 0.5
+        # Δv DELIVERED along the burn axis — projecting onto bd0 ignores the orthogonal velocity that gravity
+        # adds during a multi-second heliocentric burn (a plain |cur-v0| magnitude cuts off prematurely).
+        applied = (cur[0]-v0[0])*bd0[0] + (cur[1]-v0[1])*bd0[1] + (cur[2]-v0[2])*bd0[2]
         rem = dv_total - applied
         if rem < 0.3:
             break
@@ -307,6 +310,116 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
         node.remove()
     except Exception:
         pass
+
+
+def _duna_closest_approach_km(sc, v):
+    """Min heliocentric distance between the craft and Duna over the next ~120 game-days, plus its UT.
+    Independent of patched-conic encounter detection, so convergence is visible even before an SOI hit forms
+    (a 16x-SOI *phasing* miss reads None from _predicted_periapsis_at — this shows the real number)."""
+    helio = sc.bodies["Sun"].non_rotating_reference_frame
+    duna = sc.bodies["Duna"]
+    soi = float(duna.sphere_of_influence)
+    best_d, best_ut = float("inf"), sc.ut
+    step = 6 * 3600.0
+    for i in range(int(120 * 6 * 3600.0 / step) + 1):
+        ut = sc.ut + i * step
+        try:
+            vp = v.orbit.position_at(ut, helio)
+            dp = duna.orbit.position_at(ut, helio)
+            d = ((vp[0]-dp[0])**2 + (vp[1]-dp[1])**2 + (vp[2]-dp[2])**2) ** 0.5
+        except Exception:
+            continue
+        if d < best_d:
+            best_d, best_ut = d, ut
+    tag = "INSIDE SOI" if best_d < soi else f"miss {best_d/soi:.1f}x SOI"
+    log(f"  [DIAG] Duna closest approach {best_d/1000:,.0f} km (SOI {soi/1000:,.0f} km -> {tag})")
+    return best_d, best_ut
+
+
+def _wait_until_sun_orbit(sc, v, max_loops: int = 8) -> bool:
+    """After the ejection burn the craft is escaping but kRPC still reports body=Kerbin until it physically
+    crosses the SOI; warp across the boundary so all targeting runs in the heliocentric (Sun) frame."""
+    for _ in range(max_loops):
+        if v.orbit.body.name == "Sun":
+            return True
+        try:
+            dt = v.orbit.time_to_soi_change
+            if dt and 0 < dt < 1e9:
+                sc.warp_to(sc.ut + dt + 60.0)
+                time.sleep(2)
+            else:
+                break
+        except Exception:
+            break
+    return v.orbit.body.name == "Sun"
+
+
+def _score_duna_node(node, duna):
+    """Score a heliocentric correction node by its Duna closest approach (kRPC patched conics), mirroring
+    flight_controller._score_mun_transfer_node. Lower = better; any real encounter beats any miss."""
+    closest = float("inf")
+    try:
+        closest = float(node.orbit.distance_at_closest_approach(duna.orbit))
+    except Exception:
+        pass
+    encounter, duna_pe = False, float("inf")
+    try:
+        nxt = node.orbit.next_orbit
+        if str(nxt.body.name) == "Duna":
+            encounter, duna_pe = True, float(nxt.periapsis_altitude)
+    except Exception:
+        pass
+    if encounter:
+        tgt = 100_000.0
+        if 60_000.0 <= duna_pe <= 250_000.0:
+            score = abs(duna_pe - tgt)
+        elif duna_pe < 60_000.0:                            # below/into Duna's ~50 km atmosphere
+            score = abs(duna_pe - tgt) + 50_000_000.0
+        else:
+            score = abs(duna_pe - tgt) + 2_000_000.0
+    else:
+        score = closest + 1.0e10                            # no encounter: drive the closest approach down
+    return {"score": score, "encounter": encounter, "duna_pe_m": duna_pe, "closest_m": closest}
+
+
+def _frange(lo: float, hi: float, step: float):
+    out, x = [], lo
+    while x <= hi + 1e-9:
+        out.append(round(x, 3))
+        x += step
+    return out
+
+
+def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.0, pg_step=20.0,
+                                 rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0), ut_offsets=(0.0,)):
+    """Deterministic grid-search for a mid-course node that drops the Duna closest approach into the SOI —
+    the SAME pattern as the working Mun transfer. MechJeb's OperationCourseCorrection only REFINES an
+    existing encounter, so it can never CREATE one from a heliocentric near-miss; this evaluates each
+    candidate node's patched-conic Duna approach directly and keeps only the best."""
+    duna = sc.bodies["Duna"]
+    sc.rails_warp_factor = 0
+    best, best_score, n = None, float("inf"), 0
+    for ut_off in ut_offsets:
+        ut = mid_ut + ut_off
+        for pg in _frange(seed_prograde - pg_width, seed_prograde + pg_width, pg_step):
+            for rad in rad_vals:
+                for nrm in nrm_vals:
+                    node = v.control.add_node(float(ut), prograde=float(pg), radial=float(rad), normal=float(nrm))
+                    try:
+                        cand = _score_duna_node(node, duna)
+                        n += 1
+                        if cand["score"] < best_score:
+                            best_score = cand["score"]
+                            best = {"ut": float(ut), "prograde": float(pg), "radial": float(rad), "normal": float(nrm), **cand}
+                    finally:
+                        try:
+                            node.remove()
+                        except Exception:
+                            pass
+    if best is not None:
+        tag = f"encounter pe {best['duna_pe_m']/1000:.0f} km" if best["encounter"] else f"closest {best['closest_m']/1e6:.0f} Mm"
+        log(f"  grid-search ({n} nodes): best dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) -> {tag}")
+    return best
 
 
 def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
@@ -372,38 +485,57 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-plan FAILED: {exc}"); return False
     bridge.mj_execute_node()
     _wait_node_done(bridge, timeout_s=1800.0, label="Duna ejection")
-    # 3c) Coast to ~the transfer MIDPOINT before correcting. A correction right after ejection (still near
-    # Kerbin) has almost no leverage on the Duna approach — 3 corrections there never closed the encounter
-    # (9th attempt). The standard fix is to fine-tune near mid-transfer; warp to ~half the time to the
-    # heliocentric apoapsis (the Duna-orbit crossing), where a small Δv swings the closest approach a lot.
-    if v.orbit.body.name == "Sun":
-        try:
-            tta = v.orbit.time_to_apoapsis
-            if tta and 0 < tta < 1e9:
-                log(f"  coasting ~{tta*0.5/(6*3600):.0f} days to mid-transfer before fine-tuning ...")
-                sc.warp_to(sc.ut + tta * 0.5)
-                time.sleep(2)
-        except Exception as exc:
-            log(f"  mid-transfer warp note: {exc}")
-    # 4) Course-check the Duna closest approach (raise it above the atmosphere; abort rather than burn up).
-    for attempt in range(6):
-        pred = _predicted_periapsis_at(v, "Duna")
-        if pred is not None and pred > 80_000.0:
-            log(f"  Duna closest-approach periapsis {pred/1000:.0f} km — safe (above the atmosphere)")
-            break
-        shown = f"{pred/1000:.0f} km" if pred is not None else "no encounter"
-        log(f"  Duna closest approach {shown} -> course-correcting (attempt {attempt + 1}) ...")
-        try:
-            bridge.mj_plan(target="Duna", operation="correction")
-            _execute_node_manually(conn, sc, v)        # MechJeb's executor skips close correction nodes
-            now = _predicted_periapsis_at(v, "Duna")
-            log(f"    corrected; Duna closest now {now/1000:.0f} km" if now is not None else "    corrected; still no encounter")
-        except Exception as exc:
-            log(f"    correction failed: {exc}"); break
+    # 3c) ESTABLISH the Duna encounter with a deterministic GRID-SEARCH (the SAME method as the working Mun
+    # transfer). MechJeb's OperationCourseCorrection only REFINES an existing encounter — on the heliocentric
+    # near-miss the ejection leaves (~hundreds of Mm phasing miss) it has nothing to refine, which is why
+    # every mj_plan(correction) attempt returned "no encounter". Instead: cross into the Sun's SOI, coast to
+    # ~mid-transfer for leverage, grid-search a small node (prograde/radial/normal) that drops the Duna
+    # closest approach into the SOI, and burn only the best one. ~120 m/s closes a 785 Mm miss from midpoint.
+    if not _wait_until_sun_orbit(sc, v):
+        log(f"  did not reach heliocentric orbit after ejection (still {v.orbit.body.name}) — ABORT"); return False
+    _duna_closest_approach_km(sc, v)                          # baseline, before any correction
+    # DIAGNOSTIC: the dominant miss is a PLANE error — a fresh ejection left the craft at 2.09 deg heliocentric
+    # inclination vs Duna's 0.06 deg (a ~2 deg error = ~720 Mm out-of-plane at 20.7 Gm), too large for the
+    # remaining ~740 m/s to plane-match AND capture. Log it through the run to find where the tilt enters
+    # (equatorial-LKO drift in raise/lower, or an un-plane-matched mj_plan ejection).
+    try:
+        rel_i = abs(math.degrees(v.orbit.inclination) - math.degrees(sc.bodies["Duna"].orbit.inclination))
+        log(f"  [DIAG] heliocentric incl {math.degrees(v.orbit.inclination):.2f} deg vs Duna {math.degrees(sc.bodies['Duna'].orbit.inclination):.2f} deg -> rel {rel_i:.2f} deg")
+    except Exception:
+        pass
+    tta = v.orbit.time_to_apoapsis or 0.0
+    if 0 < tta < 1e9:
+        log(f"  coasting ~{tta*0.5/(6*3600):.0f} days to mid-transfer for correction leverage ...")
+        sc.warp_to(sc.ut + tta * 0.5)
+        time.sleep(2)
+    mid_ut = sc.ut + max(600.0, (v.orbit.time_to_apoapsis or 0.0) * 0.2)
+    # STAGED search (the miss is mostly along-track PHASING -> prograde dominates): a cheap 1-D prograde sweep
+    # localizes the encounter, then a small radial+normal refine places the periapsis. Keeps the node count
+    # (and correction Δv) low instead of a 1000-node 4-D brute grid.
+    coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=220.0, pg_step=20.0, rad_vals=(0.0,), nrm_vals=(0.0,))
+    seed = coarse["prograde"] if coarse else 0.0
+    best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=30.0, pg_step=10.0,
+                                        rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0))
+    if best is not None and not best["encounter"]:           # wider sweep (more UTs + prograde) if still missing
+        log("  no encounter after refine — wider prograde + UT sweep ...")
+        rem = v.orbit.time_to_apoapsis or 0.0
+        coarse2 = _search_duna_correction_grid(sc, v, mid_ut, pg_width=420.0, pg_step=25.0, rad_vals=(0.0,),
+                                               nrm_vals=(0.0,), ut_offsets=(-rem * 0.2, 0.0, rem * 0.2))
+        seed2 = coarse2["prograde"] if coarse2 else seed
+        best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed2, pg_width=40.0, pg_step=10.0,
+                                            rad_vals=(-40.0, -20.0, 0.0, 20.0, 40.0), nrm_vals=(-20.0, 0.0, 20.0))
+    if best is None or not best["encounter"] or best["duna_pe_m"] < 60_000.0:
+        shown = f"{best['duna_pe_m']/1000:.0f} km" if (best and best["encounter"]) else "no encounter"
+        log(f"  ABORT: grid-search could not establish a safe Duna encounter ({shown})"); return False
+    log(f"  mid-course correction dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) m/s -> Duna pe {best['duna_pe_m']/1000:.0f} km; burning ...")
+    v.control.remove_nodes()
+    v.control.add_node(best["ut"], prograde=best["prograde"], radial=best["radial"], normal=best["normal"])
+    _execute_node_manually(conn, sc, v)
+    _duna_closest_approach_km(sc, v)                          # after the burn — should read INSIDE SOI
     pred = _predicted_periapsis_at(v, "Duna")
     if pred is None or pred < 60_000.0:
-        log(f"  ABORT: Duna periapsis unsafe ({round(pred/1000) if pred else pred} km) — not committing to a burn-up")
-        return False
+        log(f"  ABORT: post-correction Duna periapsis unsafe ({round(pred/1000) if pred else pred} km)"); return False
+    log(f"  Duna encounter established — periapsis {pred/1000:.0f} km (above the ~50 km atmosphere)")
     # 5) Warp the coast to the Duna SOI.
     if v.orbit.body.name != "Duna":
         try:
