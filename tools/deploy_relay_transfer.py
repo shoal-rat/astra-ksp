@@ -571,19 +571,13 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
     except Exception as exc:
         log(f"  ejection re-plan FAILED: {exc}"); return False
-    # TUNE the ejection prograde for a PRECISE Duna intercept BEFORE burning — mj_plan's window is a rough
-    # Hohmann (~6 days off) leaving a ~3500 Mm miss that costs more correction Δv than the fuel allows. The
-    # ejection-tune grid lands a small miss the later correction grid closes cheaply (the Mun-leg method).
-    _nodes = v.control.nodes
-    if _nodes:
-        _bn = _nodes[0]
-        _bu, _bpg, _brad, _bnrm = _bn.ut, _bn.prograde, _bn.radial, _bn.normal
-        _bestej = _search_duna_ejection_prograde(sc, v, _bu, _bpg, _brad, _bnrm)
-        if _bestej is None or (not _bestej["encounter"] and _bestej["closest_m"] > 5.0e8):
-            _bestej = _search_duna_ejection_prograde(sc, v, _bu, _bpg, _brad, _bnrm, pg_width=750.0, pg_step=25.0)
-        if _bestej is not None:
-            v.control.remove_nodes()
-            v.control.add_node(_bu, prograde=_bestej["prograde"], radial=_brad, normal=_bnrm)
+    # NOTE: an ejection-prograde grid-search (_search_duna_ejection_prograde) is implemented but DISABLED — its
+    # scorer (distance_at_closest_approach on the predicted post-escape Sun patch) is INCONSISTENT with the
+    # real position-sampled miss (it picked prograde 635 -> "4416 Mm" while the actual 1036 gave 3496 Mm, i.e.
+    # it told us to UNDER-burn). The Mun grid works because its candidates actually reach the Mun SOI; Duna
+    # candidates miss by ~70x SOI, so they need a reliable no-encounter distance the kRPC accessor doesn't give
+    # on a predicted patch. FIX (TODO): position-sample helio_patch.position_at(ut) vs Duna over the transfer.
+    # For now keep mj_plan's ejection + the reliable mid-transfer correction grid below.
     # Execute the ejection OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor: the
     # node is in-plane (normal ~= 0), but MechJeb starts the burn off-axis under the game lag and drifts ~2 deg
     # over the 1025 m/s burn, tilting the heliocentric orbit -> a ~785 Mm Duna miss. Aligning first held it to
