@@ -57,36 +57,50 @@ def _inter_stage_decouplers(vessel) -> list:
     return inter
 
 
-def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
+def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
-    ignition + explicit staging, until a stable ~100 km parking orbit."""
+    ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
+    the eventual TARGET orbit so it has the propellant to raise + circularise there."""
     import krpc
+    import math
+    from ksp_lab.bodies import KERBIN
     for vsl in list(sc.vessels):
         try:
             if vsl.orbit.body.name == "Kerbin" and str(vsl.situation).split(".")[-1] in ("landed", "pre_launch", "splashed"):
                 vsl.recover()
         except Exception:
             pass
+    # CALCULATED insertion Δv for the ACTUAL target orbit (general): the Hohmann raise from the ~100 km
+    # parking orbit to the target + circularisation there, plus a trim margin. A keostationary target
+    # (2863 km) needs ~1075 m/s of raise+circularise; a low parking orbit before a Mun/interplanetary
+    # transfer needs almost none. (The stock tank quantum leaves the keo design unchanged — the upper
+    # carries ~3600 m/s either way — but this adapts the requirement for other targets. The real keo
+    # shortfall fix is the CLEAN STAGING below: a booster that fails to separate/deliver drains this
+    # upper stage on the ascent, which is what stranded Keo-3 short of keo.)
+    r_park = KERBIN.radius_m + 100_000.0
+    r_target = KERBIN.radius_m + max(0.0, target_alt_km) * 1000.0
+    a_tr = (r_park + r_target) / 2.0
+    dv_raise = abs(math.sqrt(KERBIN.mu * (2.0 / r_park - 1.0 / a_tr)) - math.sqrt(KERBIN.mu / r_park))
+    dv_circ = abs(math.sqrt(KERBIN.mu / r_target) - math.sqrt(KERBIN.mu * (2.0 / r_target - 1.0 / a_tr)))
+    insertion_dv = 250.0 + dv_raise + dv_circ          # +250 m/s to trim the parking orbit + slack
     # CALCULATED 2-stage relay (light, properly staged, flies on its OWN propellant — NO refuel):
-    #   booster: sized by the rocket equation for ~3500 m/s to LKO, engine picked for liftoff TWR>=1.5
-    #   insertion: ~1300 m/s for the raise + circularise to the target orbit
-    # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE, margin ~2.5 m),
-    # unlike a short single-stage probe (margin ~0.2 m, would flip). The bus rides the RA-100 relay inside
-    # a real PROCEDURAL FAIRING (ModuleProceduralFairing ogive shell, jettisoned in orbit before deploy) +
-    # CoP-sized fins. design.staging_plan records the per-stage masses; commission() jettisons the shroud.
+    #   booster: sized by the rocket equation to reach near-orbital, engine picked for liftoff TWR in window
+    #   insertion: sized above for the LKO -> target raise + circularise
+    # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE). The bus rides the
+    # RA-100 relay inside a real PROCEDURAL FAIRING (ogive shell, jettisoned in orbit before deploy) + fins.
     from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
-        # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss
-        # eat ~3400 of this, leaving the craft fast + high), so the weak high-Isp upper only has to nudge
-        # the apoapsis and circularise — not fly the whole second half of the ascent on 60 kN (which
-        # stalled the climb). Upper Δv covers circularisation + the keo raise.
+        # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
+        # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
         phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
                       reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
-                Phase("insertion", 1300.0, twr_body_g=0.0, min_twr=0.0,
+                Phase("insertion", insertion_dv, twr_body_g=0.0, min_twr=0.0,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False, max_engine_count=1,
     )
+    log(f"  insertion stage sized for {target_alt_km:.0f} km target: {insertion_dv:.0f} m/s "
+        f"(raise {dv_raise:.0f} + circ {dv_circ:.0f} + 250 trim)")
     d = design_ship(req)
     if not d.feasible:
         log(f"DESIGN INFEASIBLE — refusing to launch: {d.infeasible_reasons}")
@@ -291,7 +305,7 @@ def main() -> int:
     kc = cfg["krpc"]
     c = krpc.connect(name="deploy-relay", address=kc["host"], rpc_port=kc["rpc_port"], stream_port=kc["stream_port"])
     sc = c.space_center
-    if not launch_to_lko(sc, cfg, runner, bridge, name):
+    if not launch_to_lko(sc, cfg, runner, bridge, name, target_alt_km):
         log("launch FAILED"); return 2
     time.sleep(3)
     raise_and_circularize(sc, bridge, target_alt_km * 1000.0)
