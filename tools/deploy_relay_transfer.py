@@ -483,7 +483,7 @@ def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.
     candidate node's patched-conic Duna approach directly and keeps only the best."""
     duna = sc.bodies["Duna"]
     sc.rails_warp_factor = 0
-    time.sleep(2)                                            # let patched-conic predictions settle after warp
+    time.sleep(4)                                            # let patched-conic predictions settle after warp
     best, best_score, n = None, float("inf"), 0
     for ut_off in ut_offsets:
         ut = mid_ut + ut_off
@@ -611,14 +611,14 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # STAGED search (the miss is mostly along-track PHASING -> prograde dominates): a cheap 1-D prograde sweep
     # localizes the encounter, then a small radial+normal refine places the periapsis. Keeps the node count
     # (and correction Δv) low instead of a 1000-node 4-D brute grid.
-    coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=220.0, pg_step=20.0, rad_vals=(0.0,), nrm_vals=(0.0,))
+    coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=520.0, pg_step=30.0, rad_vals=(0.0,), nrm_vals=(0.0,))
     seed = coarse["prograde"] if coarse else 0.0
-    best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=30.0, pg_step=10.0,
+    best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=40.0, pg_step=10.0,
                                         rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0))
     if best is not None and not best["encounter"]:           # wider sweep (more UTs + prograde) if still missing
         log("  no encounter after refine — wider prograde + UT sweep ...")
         rem = v.orbit.time_to_apoapsis or 0.0
-        coarse2 = _search_duna_correction_grid(sc, v, mid_ut, pg_width=420.0, pg_step=25.0, rad_vals=(0.0,),
+        coarse2 = _search_duna_correction_grid(sc, v, mid_ut, pg_width=800.0, pg_step=30.0, rad_vals=(0.0,),
                                                nrm_vals=(0.0,), ut_offsets=(-rem * 0.2, 0.0, rem * 0.2))
         seed2 = coarse2["prograde"] if coarse2 else seed
         best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed2, pg_width=40.0, pg_step=10.0,
@@ -654,8 +654,12 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         sc.warp_to(sc.ut + ttp - 30.0)
         time.sleep(2)
     enc_pe = v.orbit.periapsis_altitude
-    ap_target_m = max(80_000.0, enc_pe * 1.3)
-    log(f"  capturing near the encounter periapsis ~{enc_pe/1000:.0f} km (bound ceiling {ap_target_m/1000:.0f} km)")
+    # LOOSE capture (high apoapsis, ~0.35 of Duna's SOI): capturing the hyperbolic arrival to a TIGHT low
+    # orbit costs ~600 m/s, but the relay only needs a BOUND Duna orbit — a high eccentric one is cheap
+    # (~250-350 m/s) and actually gives good apoapsis dwell for comms. This frees the Δv the rough-window
+    # phasing correction needs. (Circularising to the 2640 km ring target is a no-refuel follow-up.)
+    ap_target_m = max(enc_pe * 1.3, 0.35 * v.orbit.body.sphere_of_influence)
+    log(f"  LOOSE-capturing to a bound Duna orbit: periapsis ~{enc_pe/1000:.0f} km, apoapsis ceiling {ap_target_m/1000:.0f} km")
     _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=60_000.0, max_s=400.0)
     return v.orbit.body.name == "Duna" and v.orbit.periapsis_altitude > 55_000.0
 
