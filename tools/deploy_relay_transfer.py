@@ -160,8 +160,14 @@ def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> boo
         log(f"  in Mun SOI; warping {ttp:.0f}s to periapsis ({v.orbit.periapsis_altitude/1000:.0f} km) ...")
         sc.warp_to(sc.ut + ttp - 25.0)
         time.sleep(2)
-    # CAPTURE — pure retrograde burn, NO refuel. Target apoapsis ~ the requested orbit + a margin.
-    ap_target_m = max(150_000.0, target_alt_km * 1000.0 + 80_000.0)
+    # CAPTURE — pure retrograde burn, NO refuel. The bound-orbit CEILING must be ABOVE the ENCOUNTER
+    # periapsis (which can be well above the requested target — e.g. 2196 km), so the burn STOPS at a
+    # near-circular orbit THERE instead of burning past circular and driving the periapsis into the surface
+    # (the A2 failure: it over-burned pe 2196k -> -24k). Capturing near the encounter periapsis is fine for
+    # a relay — a higher Mun orbit just gives wider coverage.
+    enc_pe = v.orbit.periapsis_altitude
+    ap_target_m = max(150_000.0, enc_pe * 1.3)
+    log(f"  capturing near the encounter periapsis ~{enc_pe/1000:.0f} km (bound ceiling {ap_target_m/1000:.0f} km)")
     _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=20_000.0)
     return v.orbit.body.name == "Mun" and v.orbit.periapsis_altitude > 8_000.0
 
