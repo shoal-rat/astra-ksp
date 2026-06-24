@@ -608,7 +608,10 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     # 2) RAISE the apoapsis near the SOI edge so the long wait rails-warps at the high-altitude cap — the
     # 100 km LKO cap is only 50x, which would make a 1.77-yr wait ~90 real HOURS. Keep the periapsis low so
     # the later ejection is still an efficient Oberth burn (and the raise Δv is recovered there).
-    if wait > 6 * 3600:
+    # Threshold 8 h (not 6): the ground pad-warp lands us within ~5 h of the window, and the comsat-vs-LKO window
+    # mismatch (~1 h, orbital phase) can push the residual just over 6 h. Up to ~8 h we LKO-warp at 50x (~8 min
+    # game) instead of paying the ~1,580 m/s raise/lower round-trip — only a truly far window needs the raise.
+    if wait > 8 * 3600:
         from ksp_lab.bodies import MUN, KERBIN
         soi = v.orbit.body.sphere_of_influence
         mun_alt = MUN.orbit_radius_m - KERBIN.radius_m            # the Mun's orbital altitude (~11,400 km)
@@ -796,7 +799,8 @@ def main() -> int:
                     win = None
             if win is None:
                 win = _next_duna_window_ut(sc)
-            wait_to = win - 5.0 * 3600.0                       # ~5 h early: ascent ~10 min, under the 6 h skip-warp gate
+            wait_to = win - 3.0 * 3600.0                       # ~3 h early: + the ~1 h comsat/LKO window mismatch + ascent
+                                                               # keeps the LKO residual under the 8 h skip-warp gate
             if wait_to > sc.ut:
                 yrs = (wait_to - sc.ut) / (426.0 * 21600.0)
                 log(f"WAITING for the Kerbin->Duna window: warping {yrs:.2f} Kerbin-yr on the ground (NO fuel) to UT {round(wait_to)} ...")
