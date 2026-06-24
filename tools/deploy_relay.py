@@ -89,10 +89,14 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
     return fired
 
 
-def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> bool:
+def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
+                  insertion_dv_override: float = 0.0) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
-    the eventual TARGET orbit so it has the propellant to raise + circularise there."""
+    the eventual TARGET orbit so it has the propellant to raise + circularise there.
+    insertion_dv_override > 0 sizes the upper for an explicit Δv budget instead (used by the interplanetary
+    transfers, whose upper must afford the warp raise+lower + ejection + correction + Oberth capture ~3,800 m/s,
+    NOT just a Kerbin-orbit insertion — the default min-tank upper left the Duna capture ~250 m/s short)."""
     import krpc
     import math
     from ksp_lab.bodies import KERBIN
@@ -115,6 +119,8 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
     dv_raise = abs(math.sqrt(KERBIN.mu * (2.0 / r_park - 1.0 / a_tr)) - math.sqrt(KERBIN.mu / r_park))
     dv_circ = abs(math.sqrt(KERBIN.mu / r_target) - math.sqrt(KERBIN.mu * (2.0 / r_target - 1.0 / a_tr)))
     insertion_dv = 250.0 + dv_raise + dv_circ          # +250 m/s to trim the parking orbit + slack
+    if insertion_dv_override > 0.0:                     # interplanetary transfer: size for the FULL transfer budget
+        insertion_dv = insertion_dv_override
     # CALCULATED 2-stage relay (light, properly staged, flies on its OWN propellant — NO refuel):
     #   booster: sized by the rocket equation to reach near-orbital, engine picked for liftoff TWR in window
     #   insertion: sized above for the LKO -> target raise + circularise

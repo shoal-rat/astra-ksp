@@ -744,8 +744,13 @@ def main() -> int:
     c = krpc.connect(name="deploy-transfer", address=kc["host"], rpc_port=kc["rpc_port"], stream_port=kc["stream_port"])
     sc = c.space_center
 
-    # 1) Launch to a 100 km Kerbin PARKING orbit (proven ascent + booster force-separation).
-    if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0):
+    # 1) Launch to a 100 km Kerbin PARKING orbit (proven ascent + booster force-separation). For Duna, size the
+    # upper for the FULL interplanetary budget (~3,900 m/s: warp raise ~790 + lower ~790 + ejection ~1,025 +
+    # correction ~80 + Oberth periapsis-lower ~250 + capture ~600 + reserve) — the default min-tank upper (~3,600
+    # m/s) left the capture ~250 m/s short (AI-Duna-Ring-U/T ran dry mid-capture). Mun is close enough to keep
+    # the proven default upper.
+    insertion_override = 3900.0 if target_body == "Duna" else 0.0
+    if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0, insertion_dv_override=insertion_override):
         log("launch to parking orbit FAILED"); return 2
     time.sleep(3)
     v = sc.active_vessel
