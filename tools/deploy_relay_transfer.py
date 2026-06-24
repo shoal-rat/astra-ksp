@@ -693,39 +693,52 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  coasting ~{tta*0.5/(6*3600):.0f} days to mid-transfer for correction leverage ...")
         sc.warp_to(sc.ut + tta * 0.5)
         time.sleep(2)
-    mid_ut = sc.ut + max(600.0, (v.orbit.time_to_apoapsis or 0.0) * 0.2)
-    # STAGED search (the miss is mostly along-track PHASING -> prograde dominates): a cheap 1-D prograde sweep
-    # localizes the encounter, then a small radial+normal refine places the periapsis. Keeps the node count
-    # (and correction Δv) low instead of a 1000-node 4-D brute grid.
-    coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=520.0, pg_step=30.0, rad_vals=(0.0,), nrm_vals=(0.0,))
-    seed = coarse["prograde"] if coarse else 0.0
-    # WIDE radial sweep: the radial component sets how deep the approach passes Duna (the encounter
-    # periapsis). A narrow ±30 left the encounter at ~22,000 km -> no Oberth, capture too costly (ran the
-    # tank dry). A wide radial range finds a LOW periapsis (cheap Oberth retro-capture).
-    best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=40.0, pg_step=10.0,
-                                        rad_vals=(-200.0, -140.0, -90.0, -45.0, 0.0, 45.0, 90.0, 140.0, 200.0),
-                                        nrm_vals=(-15.0, 0.0, 15.0))
-    if best is not None and not best["encounter"]:           # wider sweep (more UTs + prograde) if still missing
-        log("  no encounter after refine — wider prograde + UT sweep ...")
-        rem = v.orbit.time_to_apoapsis or 0.0
-        coarse2 = _search_duna_correction_grid(sc, v, mid_ut, pg_width=800.0, pg_step=30.0, rad_vals=(0.0,),
-                                               nrm_vals=(0.0,), ut_offsets=(-rem * 0.2, 0.0, rem * 0.2))
-        seed2 = coarse2["prograde"] if coarse2 else seed
-        best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed2, pg_width=40.0, pg_step=10.0,
-                                            rad_vals=(-250.0, -180.0, -120.0, -60.0, 0.0, 60.0, 120.0, 180.0, 250.0),
-                                            nrm_vals=(-20.0, 0.0, 20.0))
-    if best is None or not best["encounter"] or best["duna_pe_m"] < 60_000.0:
-        shown = f"{best['duna_pe_m']/1000:.0f} km" if (best and best["encounter"]) else "no encounter"
-        log(f"  ABORT: grid-search could not establish a safe Duna encounter ({shown})"); return False
-    log(f"  mid-course correction dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) m/s -> Duna pe {best['duna_pe_m']/1000:.0f} km; burning ...")
-    v.control.remove_nodes()
-    v.control.add_node(best["ut"], prograde=best["prograde"], radial=best["radial"], normal=best["normal"])
-    _execute_node_manually(conn, sc, v)
-    _duna_closest_approach_km(sc, v)                          # after the burn — should read INSIDE SOI
-    pred = _predicted_periapsis_at(v, "Duna")
+    # RETRY the correction up to 3x: the grid's distance_at_closest_approach PREDICTION is noisy near the SOI
+    # edge, so a predicted GRAZING encounter (high pe) sometimes doesn't materialise once burned (AI-Duna-Ring-Z
+    # burned a predicted 38,737 km grazing node -> actual 3,866 Mm miss -> abort). Instead of aborting on the
+    # first miss, VERIFY the encounter after each burn and, if it didn't take, re-search + re-correct from the
+    # new (closer) position. The bigger upper carries enough Δv for 2-3 small corrections + the capture.
+    soi = v.orbit.body.sphere_of_influence
+    pred = None
+    for attempt in range(1, 4):
+        mid_ut = sc.ut + max(600.0, (v.orbit.time_to_apoapsis or 0.0) * 0.2)
+        # STAGED search: a cheap 1-D prograde sweep localizes the encounter (the miss is mostly along-track
+        # PHASING), then a WIDE radial+normal refine places the periapsis (radial sets how deep the approach
+        # passes Duna; a wide range finds a LOW Oberth-friendly periapsis, not a fragile SOI-edge graze).
+        coarse = _search_duna_correction_grid(sc, v, mid_ut, pg_width=520.0, pg_step=30.0, rad_vals=(0.0,), nrm_vals=(0.0,))
+        seed = coarse["prograde"] if coarse else 0.0
+        best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed, pg_width=40.0, pg_step=10.0,
+                                            rad_vals=(-200.0, -140.0, -90.0, -45.0, 0.0, 45.0, 90.0, 140.0, 200.0),
+                                            nrm_vals=(-15.0, 0.0, 15.0))
+        if best is not None and not best["encounter"]:       # wider sweep (more UTs + prograde) if still missing
+            log("  no encounter after refine — wider prograde + UT sweep ...")
+            rem = v.orbit.time_to_apoapsis or 0.0
+            coarse2 = _search_duna_correction_grid(sc, v, mid_ut, pg_width=800.0, pg_step=30.0, rad_vals=(0.0,),
+                                                   nrm_vals=(0.0,), ut_offsets=(-rem * 0.2, 0.0, rem * 0.2))
+            seed2 = coarse2["prograde"] if coarse2 else seed
+            best = _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=seed2, pg_width=40.0, pg_step=10.0,
+                                                rad_vals=(-250.0, -180.0, -120.0, -60.0, 0.0, 60.0, 120.0, 180.0, 250.0),
+                                                nrm_vals=(-20.0, 0.0, 20.0))
+        if best is None or not best["encounter"] or best["duna_pe_m"] < 60_000.0:
+            shown = f"{best['duna_pe_m']/1000:.0f} km" if (best and best["encounter"]) else "no encounter"
+            log(f"  correction attempt {attempt}/3: no safe encounter found ({shown})")
+            if attempt < 3:
+                continue
+            log("  ABORT: grid-search could not establish a safe Duna encounter"); return False
+        graze = " (grazing — fragile, will verify)" if best["duna_pe_m"] > 0.6 * soi else ""
+        log(f"  correction {attempt}/3 dv=({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f}) m/s -> Duna pe {best['duna_pe_m']/1000:.0f} km{graze}; burning ...")
+        v.control.remove_nodes()
+        v.control.add_node(best["ut"], prograde=best["prograde"], radial=best["radial"], normal=best["normal"])
+        _execute_node_manually(conn, sc, v)
+        _duna_closest_approach_km(sc, v)                      # after the burn — should read INSIDE SOI
+        pred = _predicted_periapsis_at(v, "Duna")
+        if pred is not None and pred >= 60_000.0:
+            log(f"  Duna encounter established — periapsis {pred/1000:.0f} km (above the ~50 km atmosphere)")
+            break
+        log(f"  correction attempt {attempt}/3 didn't take (pred {round(pred/1000) if pred else pred} km) — re-searching ...")
+        pred = None
     if pred is None or pred < 60_000.0:
-        log(f"  ABORT: post-correction Duna periapsis unsafe ({round(pred/1000) if pred else pred} km)"); return False
-    log(f"  Duna encounter established — periapsis {pred/1000:.0f} km (above the ~50 km atmosphere)")
+        log("  ABORT: no Duna encounter after 3 correction attempts"); return False
     # 5) Warp the coast to the Duna SOI.
     if v.orbit.body.name != "Duna":
         try:
