@@ -164,25 +164,38 @@ def verify_against_live(conn, design) -> dict:
     from kRPC (the API) and compare to the calculated design — so the rocket is checked against ground
     truth, not only its own arithmetic. Returns a dict of live vs calculated + a within-tolerance flag."""
     v = conn.space_center.active_vessel
-    rf = v.reference_frame
-    mn, mx = v.bounding_box(rf)
-    length = abs(mx[1] - mn[1])
-    width = max(abs(mx[0] - mn[0]), abs(mx[2] - mn[2]))
-    live_mass_t = v.mass / 1000.0
     calc = looks_like_a_rocket(design)
     calc_mass = float(getattr(design, "estimates", {}).get("wet_mass_t", 0.0))
+    live_mass_t = v.mass / 1000.0
+    # Bounding box: prefer the part-position extent in the vessel frame (robust); the AABB call can return
+    # a degenerate box in a bad frame (huge/NaN), so guard it and report dimensions as unavailable rather
+    # than logging garbage. Mass + part-count are always reliable.
+    length = width = None
+    try:
+        rf = v.reference_frame
+        ys, rs = [], []
+        for p in v.parts.all:
+            x, y, z = p.position(rf)
+            ys.append(y); rs.append((x * x + z * z) ** 0.5)
+        if ys:
+            length = max(ys) - min(ys)
+            width = 2.0 * max(rs)
+        if length is not None and not (0.0 < length < 500.0 and 0.0 < width < 500.0):
+            length = width = None                       # frame was wrong -> dimensions unavailable
+    except Exception:
+        length = width = None
     out = {
-        "live_length_m": round(length, 2), "calc_length_m": calc["length_m"],
-        "live_max_diameter_m": round(width, 2), "calc_max_diameter_m": calc["max_diameter_m"],
-        "live_fineness": round(length / width, 1) if width else None, "calc_fineness": calc["fineness_ratio"],
+        "live_length_m": round(length, 2) if length else None, "calc_length_m": calc["length_m"],
+        "live_max_diameter_m": round(width, 2) if width else None, "calc_max_diameter_m": calc["max_diameter_m"],
+        "live_fineness": round(length / width, 1) if (length and width) else None,
+        "calc_fineness": calc["fineness_ratio"],
         "live_mass_t": round(live_mass_t, 2), "calc_wet_mass_t": round(calc_mass, 2),
         "live_part_count": len(v.parts.all),
     }
-    # within tolerance: live length/diameter within 20% of calculated (the bbox is generous on fins/dishes)
-    out["dimensions_match"] = (
-        abs(length - calc["length_m"]) <= 0.25 * calc["length_m"] + 1.0
-        and abs(width - calc["max_diameter_m"]) <= 0.5 * calc["max_diameter_m"] + 0.5
-    )
+    out["mass_match"] = abs(live_mass_t - calc_mass) <= 0.10 * max(calc_mass, 1.0)
+    out["dimensions_match"] = bool(length and width and (
+        abs(length - calc["length_m"]) <= 0.25 * calc["length_m"] + 2.0
+        and abs(width - calc["max_diameter_m"]) <= 0.5 * calc["max_diameter_m"] + 0.5))
     return out
 
 

@@ -93,10 +93,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str) -> bool:
     # RULE 1: read the REAL assembled craft back from the live API (kRPC) and compare to the calculation.
     try:
         live = design_chart.verify_against_live(c2, d)
-        log(f"LIVE-API size check: length {live['live_length_m']}m (calc {live['calc_length_m']}m), "
+        log(f"LIVE-API check: mass {live['live_mass_t']}t (calc {live['calc_wet_mass_t']}t, "
+            f"match={live['mass_match']}), {live['live_part_count']} parts; "
+            f"length {live['live_length_m']}m (calc {live['calc_length_m']}m), "
             f"max-dia {live['live_max_diameter_m']}m (calc {live['calc_max_diameter_m']}m), "
-            f"mass {live['live_mass_t']}t (calc {live['calc_wet_mass_t']}t), {live['live_part_count']} parts, "
-            f"match={live['dimensions_match']}")
+            f"dims_match={live['dimensions_match']}")
     except Exception as exc:
         log(f"  live-API size check skipped: {exc}")
     kv.control.throttle = 1.0
