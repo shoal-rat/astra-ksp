@@ -51,7 +51,7 @@ def hohmann_transfer_delta_v_mps(mu: float, origin_radius_m: float, target_radiu
     semi_major_axis = (origin_radius_m + target_radius_m) / 2.0
     transfer_speed = vis_viva_speed_mps(mu, origin_radius_m, semi_major_axis)
     origin_speed = circular_speed_mps(mu, 0.0, origin_radius_m)
-    return transfer_speed - origin_speed
+    return abs(transfer_speed - origin_speed)
 
 
 def hohmann_transfer_time_s(mu: float, origin_radius_m: float, target_radius_m: float) -> float:
@@ -111,8 +111,10 @@ def capture_burn_estimate(
     periapsis_altitude_m = max(1_000.0, periapsis_altitude_m)
     target_altitude_m = max(periapsis_altitude_m, target_capture_altitude_m)
     periapsis_radius_m = body_radius_m + periapsis_altitude_m
+    target_radius_m = body_radius_m + target_altitude_m
     arrival_speed = vis_viva_speed_mps(mu, periapsis_radius_m, semi_major_axis_m)
-    target_speed = circular_speed_mps(mu, body_radius_m, target_altitude_m)
+    target_semi_major_axis_m = (periapsis_radius_m + target_radius_m) / 2.0
+    target_speed = vis_viva_speed_mps(mu, periapsis_radius_m, target_semi_major_axis_m)
     delta_v = max(0.0, arrival_speed - target_speed)
     burn_time = burn_duration_s(mass_kg, thrust_n, delta_v)
     return BurnEstimate(delta_v, burn_time, finite_burn_lead_s(burn_time, min_lead_s=90.0))

@@ -46,6 +46,18 @@ def test_kerbin_to_duna_ejection_is_oberth_calculated():
     assert 0.0 <= dep["phase_angle_rad"] < 2.0 * math.pi
 
 
+def test_kerbin_to_duna_arrival_vinf_is_not_departure_vinf():
+    """The Duna capture budget must use the transfer speed at Duna's orbit, not the Kerbin departure
+    excess. They are close enough to hide in rough budgets but different enough to over-size capture."""
+    departure = astro.transfer_departure_excess_speed(MU_SUN, R_KERBIN_ORBIT, R_DUNA_ORBIT)
+    arrival = astro.transfer_arrival_excess_speed(MU_SUN, R_KERBIN_ORBIT, R_DUNA_ORBIT)
+
+    assert departure == pytest.approx(918.3458304101223, rel=1e-9)
+    assert arrival == pytest.approx(826.0537900264135, rel=1e-9)
+    assert departure > arrival
+    assert astro.transfer_excess_speed(MU_SUN, R_KERBIN_ORBIT, R_DUNA_ORBIT) == pytest.approx(arrival)
+
+
 def test_oberth_beats_naive_escape_plus_vinf():
     """The Oberth burn from low orbit is cheaper than escaping then adding v_infinity in deep space.
     ejection_dv must be strictly less than (escape_dv + v_infinity) — the whole point of burning deep

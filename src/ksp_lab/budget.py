@@ -76,7 +76,7 @@ def mission_budget(mission: MissionSpec) -> MissionBudget:
             # A moon of the launch body (e.g. Mun about Kerbin): transfer is a Hohmann about Kerbin
             # to the moon's orbit, capture from the SOI excess speed into low moon orbit.
             dv_tmi, _, _ = astro.hohmann(launch.mu, r_park, target.orbit_radius_m)
-            v_inf = astro.transfer_excess_speed(launch.mu, r_park, target.orbit_radius_m)
+            v_inf = astro.transfer_arrival_excess_speed(launch.mu, r_park, target.orbit_radius_m)
             r_moon_park = target.low_orbit_radius_m()
             dv_cap = astro.capture_from_excess(target.mu, r_moon_park, v_inf)
             phases.append(PhaseBudget(f"transfer_to_{target.name.lower()}", dv_tmi))
@@ -93,14 +93,14 @@ def mission_budget(mission: MissionSpec) -> MissionBudget:
             dv_eject = dep["ejection_dv"]
             r_arrival_park = target.low_orbit_radius_m()
             # Capture at the target from the heliocentric arrival excess (symmetric Hohmann leg).
-            v_inf_arr = astro.transfer_excess_speed(sun.mu, target.orbit_radius_m, launch.orbit_radius_m)
+            v_inf_arr = astro.transfer_arrival_excess_speed(sun.mu, launch.orbit_radius_m, target.orbit_radius_m)
             dv_cap = astro.capture_from_excess(target.mu, r_arrival_park, v_inf_arr)
             phases.append(PhaseBudget(f"transfer_to_{target.name.lower()}", dv_eject))
             phases.append(PhaseBudget(f"capture_{target.name.lower()}_orbit", dv_cap))
             notes.append(f"ejection {dv_eject:.0f} m/s, capture {dv_cap:.0f} m/s")
             arrival = target
             # Return ejection from the target back toward Kerbin uses the same heliocentric excess.
-            ret_v_inf = astro.transfer_excess_speed(sun.mu, launch.orbit_radius_m, target.orbit_radius_m)
+            ret_v_inf = astro.transfer_departure_excess_speed(sun.mu, target.orbit_radius_m, launch.orbit_radius_m)
     else:
         arrival = launch
         r_arrival_park = r_park

@@ -106,27 +106,50 @@ def design_for_target(sc, target_body: str, *, crew: int, want_return: bool, nam
     )
 
     # CALCULATED Δv budgets per propulsive phase (none guessed):
-    #  - launch to Kerbin parking orbit: the body's measured orbital speed at that radius plus a
-    #    gravity/steering loss the rocket equation can't see (a calculated multiple of v_circ, not a
-    #    hand-picked "4500"). MechJeb flies it; the budget only sizes the tanks.
-    v_circ_kerbin = astro.circular_speed(mu_kerbin, r_park_kerbin)
-    launch_dv = v_circ_kerbin * 1.85  # ~loss-inclusive ascent budget, scaled off the measured v_circ
+    #  - launch to Kerbin parking orbit: shared ascent model from body GM, atmosphere and rotation.
+    kerbin_surface_rotation_mps = float(kerbin.rotational_speed) * float(kerbin.equatorial_radius)
+    target_surface_rotation_mps = float(target.rotational_speed) * float(target.equatorial_radius)
+    target_atmosphere_top_m = target.atmosphere_depth if target.has_atmosphere else 0.0
+    launch_dv = astro.ascent_dv(
+        mu_kerbin,
+        kerbin.equatorial_radius,
+        r_park_kerbin,
+        kerbin.atmosphere_depth if kerbin.has_atmosphere else 0.0,
+        kerbin_surface_rotation_mps,
+    )
     #  - trans-target ejection from the Kerbin parking orbit (Oberth, calculated):
     dep = astro.interplanetary_departure(
         mu_sun, mu_kerbin, kerbin.orbit.semi_major_axis, target.orbit.semi_major_axis, r_park_kerbin
     )
     eject_dv = dep["ejection_dv"]
-    #  - capture at the target: the v_infinity bleeds off; budget the same magnitude as the ejection
-    #    minus the aerobrake the atmosphere gives for free (half, if the target has atmosphere).
-    capture_dv = eject_dv * (0.5 if target.has_atmosphere else 1.0)
-    #  - propulsive landing + ascent budget: enough to null orbital speed at the surface and lift off
-    #    again. Surface orbital speed is the natural scale; round-trip doubles it when returning.
-    r_target_low = target.equatorial_radius + plan.parking_orbit_altitude(
-        target.atmosphere_depth if target.has_atmosphere else 0.0, target.equatorial_radius
+    #  - capture at the target: use arrival excess speed, not departure excess speed.
+    v_inf_arr = astro.transfer_arrival_excess_speed(
+        mu_sun, kerbin.orbit.semi_major_axis, target.orbit.semi_major_axis
     )
-    v_surf_orbit = astro.circular_speed(target.gravitational_parameter, r_target_low)
-    land_dv = v_surf_orbit * 1.3
-    ascent_return_dv = (v_surf_orbit * 1.3 + capture_dv) if want_return else 0.0
+    #  - propulsive landing + ascent budget: shared surface-to-orbit model for the target body.
+    r_target_low = target.equatorial_radius + plan.parking_orbit_altitude(
+        target_atmosphere_top_m, target.equatorial_radius
+    )
+    capture_dv = astro.capture_from_excess(target.gravitational_parameter, r_target_low, v_inf_arr)
+    land_dv = (
+        astro.ascent_dv(
+            target.gravitational_parameter,
+            target.equatorial_radius,
+            r_target_low,
+            target_atmosphere_top_m,
+            target_surface_rotation_mps,
+        )
+        if target.has_atmosphere
+        else astro.surface_to_orbit_dv(
+            target.gravitational_parameter,
+            target.equatorial_radius,
+            r_target_low,
+        )
+    )
+    ascent_return_dv = (
+        land_dv + astro.oberth_ejection_dv(target.gravitational_parameter, r_target_low, v_inf_arr)
+        if want_return else 0.0
+    )
 
     Phase = design.Phase
     phases = [
@@ -146,6 +169,7 @@ def design_for_target(sc, target_body: str, *, crew: int, want_return: bool, nam
         landing=None,                  # propulsive lander: no parachutes, the hoverslam law lands it
         needs_heatshield=target.has_atmosphere,
         needs_docking=want_return,     # orbital refuelling rendezvous needs a docking port
+        needs_legs=True,
     )
     return design.design_ship(req)
 

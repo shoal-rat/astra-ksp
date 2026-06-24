@@ -125,6 +125,10 @@ class BridgeClient:
     def mj_status(self) -> dict:
         return self._request("GET", "/mj-status")
 
+    def mj_stage_stats(self) -> dict:
+        """Return MechJeb's latest fuel-flow stage simulation for the active vessel."""
+        return self._request("GET", "/mj-stage-stats")
+
     def mj_plan(self, target: str = "Duna", operation: str = "interplanetary") -> dict:
         """Plan a maneuver node with MechJeb's maneuver planner on the ACTIVE vessel — the
         interplanetary transfer computes the precise ejection ANGLE + timing (the thing a hand-rolled

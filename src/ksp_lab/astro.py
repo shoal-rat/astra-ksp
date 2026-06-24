@@ -80,8 +80,8 @@ def interplanetary_departure(
     with; the Oberth ejection burn delivers it from the parking orbit. Returns the ejection Δv, the
     v_infinity, the transfer time, and the required phase angle — all calculated, none guessed.
     """
-    dv_helio, _, t_transfer = hohmann(mu_sun, r_body_orbit, r_target_orbit)
-    v_inf = dv_helio  # excess over the departure body's heliocentric speed for the prograde leg
+    v_inf = transfer_departure_excess_speed(mu_sun, r_body_orbit, r_target_orbit)
+    t_transfer = hohmann(mu_sun, r_body_orbit, r_target_orbit)[2]
     return {
         "ejection_dv": oberth_ejection_dv(mu_body, r_park, v_inf),
         "v_infinity": v_inf,
@@ -90,18 +90,40 @@ def interplanetary_departure(
     }
 
 
-def transfer_excess_speed(mu_primary: float, r_park: float, r_moon_orbit: float) -> float:
-    """Hyperbolic excess speed (v_infinity) at a MOON's SOI for a Hohmann transfer from a parking
-    orbit of radius r_park to the moon's orbital radius r_moon_orbit about the shared primary.
+def transfer_departure_excess_speed(mu_primary: float, r_origin: float, r_target: float) -> float:
+    """Hyperbolic excess speed at the DEPARTURE body for a Hohmann transfer.
 
-    The transfer's apoapsis speed (about the primary) differs from the moon's circular speed; that
-    difference is the speed the craft enters the moon's SOI with. Symmetric for the return leg."""
-    if mu_primary <= 0 or r_park <= 0 or r_moon_orbit <= 0:
+    This is the heliocentric speed change between the origin's circular orbit and the transfer orbit
+    at ``r_origin``. It is the ``v_infinity`` that an Oberth ejection burn must create when leaving
+    the origin body's SOI. Magnitude only; the caller decides prograde vs retrograde from the geometry.
+    """
+    if mu_primary <= 0 or r_origin <= 0 or r_target <= 0:
         return 0.0
-    a_transfer = (r_park + r_moon_orbit) / 2.0
-    v_apo = vis_viva_speed(mu_primary, r_moon_orbit, a_transfer)
-    v_moon = circular_speed(mu_primary, r_moon_orbit)
-    return abs(v_moon - v_apo)
+    a_transfer = (r_origin + r_target) / 2.0
+    return abs(vis_viva_speed(mu_primary, r_origin, a_transfer) - circular_speed(mu_primary, r_origin))
+
+
+def transfer_arrival_excess_speed(mu_primary: float, r_origin: float, r_target: float) -> float:
+    """Hyperbolic excess speed at the ARRIVAL body for a Hohmann transfer.
+
+    For a moon/planet capture this is the speed at which the craft crosses the target body's SOI,
+    relative to the target body. It is generally NOT the same as the departure excess speed; for
+    Kerbin->Duna the departure excess is about 920 m/s while the Duna arrival excess is about 826 m/s.
+    """
+    if mu_primary <= 0 or r_origin <= 0 or r_target <= 0:
+        return 0.0
+    a_transfer = (r_origin + r_target) / 2.0
+    return abs(circular_speed(mu_primary, r_target) - vis_viva_speed(mu_primary, r_target, a_transfer))
+
+
+def transfer_excess_speed(mu_primary: float, r_park: float, r_moon_orbit: float) -> float:
+    """Backward-compatible alias for arrival v_infinity at the target SOI.
+
+    Historically this helper was named for Kerbin->Mun planning: ``r_park`` is the origin parking
+    radius about the primary and ``r_moon_orbit`` is the target body's orbit radius. Keep that behavior
+    but route through the explicit arrival helper so departure/arrival excesses are not confused.
+    """
+    return transfer_arrival_excess_speed(mu_primary, r_park, r_moon_orbit)
 
 
 def capture_from_excess(mu_moon: float, r_peri: float, v_infinity: float) -> float:

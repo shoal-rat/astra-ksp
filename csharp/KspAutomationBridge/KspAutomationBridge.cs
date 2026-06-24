@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using KSP.UI.Screens;
+using MechJebLib.FuelFlowSimulation;
 using MuMech;
 using UnityEngine;
 
@@ -502,6 +503,11 @@ namespace KspAutomationBridge
             if (request.Method == "GET" && request.Path == "/mj-status")
             {
                 return RunOnMainThread(() => MjStatusCommand(), 15000);
+            }
+
+            if (request.Method == "GET" && request.Path == "/mj-stage-stats")
+            {
+                return RunOnMainThread(() => MjStageStatsCommand(), 15000);
             }
 
             if (request.Method == "POST" && request.Path == "/mj-ascent")
@@ -1687,6 +1693,118 @@ namespace KspAutomationBridge
             data["periapsis"] = vessel.orbit != null ? vessel.orbit.PeA : 0.0;
             data["body"] = vessel.orbit != null && vessel.orbit.referenceBody != null ? vessel.orbit.referenceBody.bodyName : "";
             return CommandResult.Ok(data);
+        }
+
+        private CommandResult MjStageStatsCommand()
+        {
+            Dictionary<string, object> data = new Dictionary<string, object>();
+            bool flight = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null;
+            data["flight"] = flight;
+            if (!flight)
+            {
+                return CommandResult.Ok(data);
+            }
+
+            Vessel vessel = FlightGlobals.ActiveVessel;
+            data["activeVessel"] = vessel.vesselName ?? "";
+            MechJebCore core = GetMasterCore(vessel);
+            data["hasCore"] = core != null;
+            if (core == null)
+            {
+                return CommandResult.Ok(data);
+            }
+
+            MechJebModuleStageStats stats = core.GetComputerModule<MechJebModuleStageStats>();
+            data["hasStageStats"] = stats != null;
+            if (stats == null)
+            {
+                return CommandResult.Ok(data);
+            }
+
+            stats.RequestUpdate();
+            double geeASL = vessel.mainBody != null ? vessel.mainBody.GeeASL : 1.0;
+            data["pending"] = stats.VacStats.Count == 0 && stats.AtmoStats.Count == 0;
+            data["vacStageCount"] = stats.VacStats.Count;
+            data["atmoStageCount"] = stats.AtmoStats.Count;
+            data["vacTotalDeltaV"] = FuelStatsDeltaV(stats.VacStats);
+            data["atmoTotalDeltaV"] = FuelStatsDeltaV(stats.AtmoStats);
+            data["vacTotalBurnTime"] = FuelStatsBurnTime(stats.VacStats);
+            data["atmoTotalBurnTime"] = FuelStatsBurnTime(stats.AtmoStats);
+            data["vacStats"] = new RawJson(FuelStatsListJson(stats.VacStats, geeASL));
+            data["atmoStats"] = new RawJson(FuelStatsListJson(stats.AtmoStats, geeASL));
+            return CommandResult.Ok(data);
+        }
+
+        private static double FuelStatsDeltaV(List<FuelStats> stats)
+        {
+            double total = 0.0;
+            for (int i = 0; i < stats.Count; i++)
+            {
+                total += stats[i].DeltaV;
+            }
+            return total;
+        }
+
+        private static double FuelStatsBurnTime(List<FuelStats> stats)
+        {
+            double total = 0.0;
+            for (int i = 0; i < stats.Count; i++)
+            {
+                total += stats[i].DeltaTime;
+            }
+            return total;
+        }
+
+        private static string FuelStatsListJson(List<FuelStats> stats, double geeASL)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("[");
+            for (int i = 0; i < stats.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(",");
+                }
+                AppendFuelStatsJson(sb, stats[i], i, geeASL);
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        private static void AppendFuelStatsJson(StringBuilder sb, FuelStats stage, int index, double geeASL)
+        {
+            sb.Append("{");
+            AppendJsonNumber(sb, "index", index, false);
+            AppendJsonNumber(sb, "kspStage", stage.KSPStage, true);
+            AppendJsonNumber(sb, "deltaV", stage.DeltaV, true);
+            AppendJsonNumber(sb, "burnTime", stage.DeltaTime, true);
+            AppendJsonNumber(sb, "startMass", stage.StartMass, true);
+            AppendJsonNumber(sb, "endMass", stage.EndMass, true);
+            AppendJsonNumber(sb, "stagedMass", stage.StagedMass, true);
+            AppendJsonNumber(sb, "resourceMass", stage.ResourceMass, true);
+            AppendJsonNumber(sb, "thrust", stage.Thrust, true);
+            AppendJsonNumber(sb, "isp", stage.Isp, true);
+            AppendJsonNumber(sb, "maxAccel", stage.MaxAccel, true);
+            AppendJsonNumber(sb, "startTwr", stage.StartTWR(geeASL), true);
+            AppendJsonNumber(sb, "maxTwr", stage.MaxTWR(geeASL), true);
+            sb.Append("}");
+        }
+
+        private static void AppendJsonNumber(StringBuilder sb, string name, double value, bool leadingComma)
+        {
+            if (leadingComma)
+            {
+                sb.Append(",");
+            }
+            sb.Append("\"").Append(name).Append("\":");
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                sb.Append("null");
+            }
+            else
+            {
+                sb.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+            }
         }
 
         private CommandResult MjAscentCommand(Dictionary<string, string> fields)

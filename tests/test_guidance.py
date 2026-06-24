@@ -46,6 +46,19 @@ def test_kerbin_to_mun_hohmann_seed_is_in_expected_range():
     assert 105.0 < phase_angle < 118.0
 
 
+def test_inward_hohmann_delta_v_is_a_positive_magnitude():
+    mu_sun = 1.1723328e18
+    r_kerbin = 13_599_840_256.0
+    r_duna = 20_726_155_264.0
+
+    outward = hohmann_transfer_delta_v_mps(mu_sun, r_kerbin, r_duna)
+    inward = hohmann_transfer_delta_v_mps(mu_sun, r_duna, r_kerbin)
+
+    assert outward > 0.0
+    assert inward > 0.0
+    assert inward < outward
+
+
 def test_kerbin_to_duna_interplanetary_transfer_matches_known_values():
     # The "Mars" (Duna) transfer: heliocentric Hohmann + Oberth ejection from a 100 km LKO.
     mu_sun = 1.1723328e18
@@ -78,6 +91,34 @@ def test_capture_estimate_is_positive_for_hyperbolic_mun_arrival():
 
     assert estimate.delta_v_mps > 0.0
     assert estimate.lead_time_s >= 90.0
+
+
+def test_capture_estimate_targets_ellipse_speed_at_periapsis():
+    mu = 65_138_397_520.78069
+    body_radius = 200_000.0
+    periapsis_altitude = 35_000.0
+    target_apoapsis_altitude = 300_000.0
+    semi_major_axis_arrival = -550_000.0
+
+    estimate = capture_burn_estimate(
+        mu=mu,
+        body_radius_m=body_radius,
+        periapsis_altitude_m=periapsis_altitude,
+        semi_major_axis_m=semi_major_axis_arrival,
+        mass_kg=5_000.0,
+        thrust_n=60_000.0,
+        target_capture_altitude_m=target_apoapsis_altitude,
+    )
+
+    r_periapsis = body_radius + periapsis_altitude
+    r_apoapsis = body_radius + target_apoapsis_altitude
+    target_sma = (r_periapsis + r_apoapsis) / 2.0
+    expected = (
+        vis_viva_speed_mps(mu, r_periapsis, semi_major_axis_arrival)
+        - vis_viva_speed_mps(mu, r_periapsis, target_sma)
+    )
+
+    assert math.isclose(estimate.delta_v_mps, expected, rel_tol=1e-12)
 
 
 def test_suicide_burn_distance_accounts_for_command_delay():

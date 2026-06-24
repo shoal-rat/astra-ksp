@@ -285,12 +285,14 @@ def ejection_dv(vinf_mag, r_park, mu_dep):
 def ejection_periapsis_direction(vinf_vec, r_park, mu_dep, h_hat):
     """Unit vector to the ejection periapsis (where the burn happens) so that the
     outgoing hyperbolic asymptote points along ``vinf_vec``. ``h_hat`` is the parking
-    orbit's angular-momentum (normal) unit vector. eta = arccos(1/e); the periapsis
-    LEADS the asymptote by eta, so rotate v_inf backward (against motion) by eta."""
+    orbit's angular-momentum (normal) unit vector. The asymptote true anomaly is
+    nu_inf = arccos(-1/e), so the periapsis is the asymptote rotated backward by that
+    angle. Using arccos(+1/e) points at the complement and misses the SOI by a wide
+    angle."""
     vinf_mag = vnorm(vinf_vec)
     e_hyp = 1.0 + r_park * vinf_mag * vinf_mag / mu_dep
-    eta = math.acos(max(-1.0, min(1.0, 1.0 / e_hyp)))
-    return vunit(rotate_about_axis(vunit(vinf_vec), h_hat, -eta)), eta
+    nu_inf = math.acos(max(-1.0, min(1.0, -1.0 / e_hyp)))
+    return vunit(rotate_about_axis(vunit(vinf_vec), h_hat, -nu_inf)), nu_inf
 
 
 def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
