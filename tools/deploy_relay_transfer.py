@@ -96,6 +96,36 @@ def _circularize_at_apoapsis(conn, sc, v, max_s: float = 200.0) -> None:
     time.sleep(1)
 
 
+def _raise_apoapsis(sc, v, target_ap_m: float, max_s: float = 320.0) -> None:
+    """Burn PROGRADE to raise the apoapsis to ~target_ap_m, KEEPING the periapsis low. This lets the long
+    interplanetary-window wait rails-warp at the high-altitude cap (100,000x near the SOI edge) instead of
+    the ~50x cap at 100 km LKO, while the low periapsis still gives an efficient Oberth ejection later."""
+    ref = v.orbit.body.non_rotating_reference_frame
+    ap = v.auto_pilot
+    ap.reference_frame = ref
+    ap.target_direction = v.velocity(ref)
+    ap.engage()
+    time.sleep(5)
+    v.control.throttle = 1.0
+    t0 = time.monotonic()
+    last = ""
+    while time.monotonic() - t0 < max_s:
+        ap.target_direction = v.velocity(ref)
+        apo = v.orbit.apoapsis_altitude
+        if apo < 0 or apo > target_ap_m:          # reached target (or went hyperbolic — stop)
+            break
+        m = f"raising apoapsis {apo/1000:.0f}k km"
+        if m != last:
+            log("  " + m); last = m
+        time.sleep(0.6)
+    v.control.throttle = 0.0
+    try:
+        ap.disengage()
+    except Exception:
+        pass
+    time.sleep(1)
+
+
 def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
     """Kerbin parking orbit -> Mun: plan the TMI node (grid search, retry for a window), MechJeb executes
     it, warp to the Mun SOI then to periapsis, and CAPTURE with a pure-retrograde burn (no refuel)."""
@@ -182,29 +212,39 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         v.control.remove_nodes()
     except Exception:
         pass
-    # 1) Plan the interplanetary ejection (the bridge finds the next transfer window).
+    # 1) Plan the ejection just to read the WINDOW time, then drop the node (we re-plan after the warp).
     try:
         r = bridge.mj_plan(target="Duna", operation="interplanetary")
     except Exception as exc:
         log(f"  Duna ejection plan FAILED: {exc}"); return False
     node_ut = r.get("ut", sc.ut)
     wait = node_ut - sc.ut
-    log(f"  Duna ejection: dv~{r.get('dv', 0):.0f} m/s at the window in {wait:.0f}s "
-        f"(~{wait/(426*21600):.2f} Kerbin-yr); RTG holds EC through the wait + coast")
-    # 2) Warp to the window (the craft waits in Kerbin orbit; the RTG keeps it controllable).
-    # KNOWN HURDLE: at 100 km LKO the rails-warp cap is only factor 3 (50x), so a ~1.77-yr wait is ~90 real
-    # hours — IMPRACTICAL. The fix (TODO, next iteration) is to RAISE the apoapsis near the SOI edge before
-    # this warp so most of the long orbit sits where KSP allows 100,000x (factor 7), then eject from there
-    # (re-plan with mj_plan). For now we warn and warp at whatever the altitude allows.
-    if wait > 120:
-        if wait > 5 * 86400 and sc.maximum_rails_warp_factor < 6:
-            log(f"  WARNING: rails-warp cap is factor {sc.maximum_rails_warp_factor} at this altitude — the "
-                f"{wait/(426*21600):.2f}-yr wait is impractical here; needs a high-apoapsis warp strategy (TODO)")
-        sc.warp_to(node_ut - 60.0)
-        time.sleep(2)
-    # 3) Execute the ejection (MechJeb autowarps the short remaining lead).
+    log(f"  Duna window in {wait:.0f}s (~{wait/(426*21600):.2f} Kerbin-yr); ejection ~{r.get('dv', 0):.0f} m/s")
+    try:
+        v.control.remove_nodes()
+    except Exception:
+        pass
+    # 2) RAISE the apoapsis near the SOI edge so the long wait rails-warps at the high-altitude cap — the
+    # 100 km LKO cap is only 50x, which would make a 1.77-yr wait ~90 real HOURS. Keep the periapsis low so
+    # the later ejection is still an efficient Oberth burn (and the raise Δv is recovered there).
+    if wait > 6 * 3600:
+        soi = v.orbit.body.sphere_of_influence
+        target_ap = min(soi * 0.80, 70_000_000.0)
+        log(f"  raising apoapsis to ~{target_ap/1000:.0f} km so the {wait/(426*21600):.2f}-yr wait warps fast ...")
+        _raise_apoapsis(sc, v, target_ap)
+        log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
+    # 3) Warp to ~the window (fast now: most of the long orbit sits at the high-warp altitude band).
+    sc.warp_to(node_ut - 1800.0)
+    time.sleep(2)
+    log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
+    # 4) Re-plan the ejection from the (raised) orbit — MechJeb ejects at the low periapsis — and execute.
+    try:
+        r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
+        log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
+    except Exception as exc:
+        log(f"  ejection re-plan FAILED: {exc}"); return False
     bridge.mj_execute_node()
-    _wait_node_done(bridge, timeout_s=1200.0, label="Duna ejection")
+    _wait_node_done(bridge, timeout_s=1800.0, label="Duna ejection")
     # 4) Course-check the Duna closest approach (raise it above the atmosphere; abort rather than burn up).
     for attempt in range(3):
         pred = _predicted_periapsis_at(v, "Duna")
