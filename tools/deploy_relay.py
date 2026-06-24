@@ -57,6 +57,36 @@ def _inter_stage_decouplers(vessel) -> list:
     return inter
 
 
+def _separate_attached_boosters(ksc, inter_decs) -> int:
+    """Fire EVERY still-un-fired inter-stage decoupler (drop the spent/attached booster stack), confirming
+    each by a part-count drop over a few physics frames, then make sure the upper stage is lit. The payload
+    decoupler is never in inter_decs, so the comsat is never jettisoned. Returns the number fired."""
+    fired = 0
+    for dd in list(inter_decs):
+        try:
+            if dd.decoupled:
+                continue
+            before = len(ksc.active_vessel.parts.all)
+            dd.decouple()
+            fired += 1
+            for _ in range(8):                       # KSP splits the vessel over several physics frames
+                time.sleep(0.5)
+                if len(ksc.active_vessel.parts.all) < before:
+                    break
+        except Exception:
+            pass
+    try:
+        v = ksc.active_vessel
+        up = [e for e in v.parts.engines if e.has_fuel and not e.active]
+        up.sort(key=lambda e: -_depth_from_root(e.part))   # deepest fueled, still-unlit engine = the upper
+        if up:
+            up[0].active = True
+            v.control.throttle = 0.0       # active but idle; the raise/circularise node executor burns it
+    except Exception:
+        pass
+    return fired
+
+
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
@@ -241,8 +271,16 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float) -> b
         except Exception:
             time.sleep(4); continue
         if not s.get("ascentEnabled", False) and s.get("periapsis", 0) > 70_000 and s.get("body") == "Kerbin":
+            # Ascent complete. The OVER-SIZED booster can reach orbit with fuel still in it (it never flames
+            # out, so the on-dry separation above never triggers) — so DROP any still-attached booster NOW,
+            # before the raise, and ignite the upper. Otherwise the raise drags the dead booster and strands
+            # the relay short of keo (Keo-4/5 ended ~100x692 km dragging the whole booster). The payload
+            # decoupler is never in inter_decs, so the comsat is never jettisoned.
+            dropped = _separate_attached_boosters(ksc, inter_decs)
+            if dropped:
+                log(f"  booster STILL ATTACHED at orbit -> force-separated {dropped} stage(s) + ignited upper")
             log(f"  IN LKO: {round(s.get('periapsis',0)/1000)}x{round(s.get('apoapsis',0)/1000)} km "
-                f"(no refuel — raise/circularise runs on the insertion stage's own propellant)")
+                f"(booster dropped — raise/circularise runs on the upper's own propellant, no refuel)")
             c2.close(); return True
         time.sleep(3)
     c2.close(); return False
