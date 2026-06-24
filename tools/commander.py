@@ -117,6 +117,10 @@ def design_for_target(sc, target_body: str, *, crew: int, want_return: bool, nam
         kerbin.atmosphere_depth if kerbin.has_atmosphere else 0.0,
         kerbin_surface_rotation_mps,
     )
+    orbit_insertion_dv = max(
+        0.2 * launch_dv,
+        0.25 * astro.circular_speed(mu_kerbin, r_park_kerbin),
+    )
     #  - trans-target ejection from the Kerbin parking orbit (Oberth, calculated):
     dep = astro.interplanetary_departure(
         mu_sun, mu_kerbin, kerbin.orbit.semi_major_axis, target.orbit.semi_major_axis, r_park_kerbin
@@ -152,14 +156,25 @@ def design_for_target(sc, target_body: str, *, crew: int, want_return: bool, nam
     )
 
     Phase = design.Phase
+    launch_reserve = design.default_reserve_frac(kerbin.surface_gravity)
+    vacuum_reserve = design.default_reserve_frac(0.0)
+    landing_reserve = design.default_reserve_frac(g_target, is_landing=True)
     phases = [
-        Phase("launch", launch_dv, twr_body_g=kerbin.surface_gravity, min_twr=1.4),
-        Phase("trans_target_injection", eject_dv),
-        Phase("capture", capture_dv),
-        Phase("propulsive_landing", land_dv, twr_body_g=g_target, min_twr=2.0),
+        Phase("launch", launch_dv, twr_body_g=kerbin.surface_gravity, min_twr=1.4,
+              reserve_frac=launch_reserve),
+        # Live ascent audit: MechJeb may need a finite high-thrust circularization push after the
+        # booster reaches the target apoapsis. Make that an explicit ascent phase so the Duna transfer
+        # stage is not consumed before the spacecraft is parked in orbit.
+        Phase("orbit_insertion", orbit_insertion_dv, twr_body_g=kerbin.surface_gravity, min_twr=0.6,
+              reserve_frac=launch_reserve),
+        Phase("trans_target_injection", eject_dv, reserve_frac=vacuum_reserve),
+        Phase("capture", capture_dv, reserve_frac=vacuum_reserve),
+        Phase("propulsive_landing", land_dv, twr_body_g=g_target, min_twr=2.0,
+              reserve_frac=landing_reserve),
     ]
     if want_return:
-        phases.append(Phase("ascent_return", ascent_return_dv, twr_body_g=g_target, min_twr=1.5))
+        phases.append(Phase("ascent_return", ascent_return_dv, twr_body_g=g_target, min_twr=1.5,
+                            reserve_frac=landing_reserve))
 
     req = design.ShipRequirements(
         name=name,
