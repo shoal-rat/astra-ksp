@@ -172,6 +172,75 @@ def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> boo
     return v.orbit.body.name == "Mun" and v.orbit.periapsis_altitude > 8_000.0
 
 
+def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bool:
+    """Kerbin parking orbit -> Duna: mj_plan interplanetary ejection at the NEXT window, warp to it, eject,
+    course-check the closest approach, warp the ~75-day coast to the Duna SOI, then retro-capture ABOVE
+    Duna's ~50 km atmosphere. The RTG holds control through the long coast. No refuel."""
+    from ksp_lab.bodies import DUNA
+    sc.rails_warp_factor = 0
+    try:
+        v.control.remove_nodes()
+    except Exception:
+        pass
+    # 1) Plan the interplanetary ejection (the bridge finds the next transfer window).
+    try:
+        r = bridge.mj_plan(target="Duna", operation="interplanetary")
+    except Exception as exc:
+        log(f"  Duna ejection plan FAILED: {exc}"); return False
+    node_ut = r.get("ut", sc.ut)
+    wait = node_ut - sc.ut
+    log(f"  Duna ejection: dv~{r.get('dv', 0):.0f} m/s at the window in {wait:.0f}s "
+        f"(~{wait/(426*21600):.2f} Kerbin-yr); RTG holds EC through the wait + coast")
+    # 2) Warp to the window (the craft waits in LKO; the RTG keeps it controllable).
+    if wait > 120:
+        sc.warp_to(node_ut - 60.0)
+        time.sleep(2)
+    # 3) Execute the ejection (MechJeb autowarps the short remaining lead).
+    bridge.mj_execute_node()
+    _wait_node_done(bridge, timeout_s=1200.0, label="Duna ejection")
+    # 4) Course-check the Duna closest approach (raise it above the atmosphere; abort rather than burn up).
+    for attempt in range(3):
+        pred = _predicted_periapsis_at(v, "Duna")
+        if pred is not None and pred > 80_000.0:
+            log(f"  Duna closest-approach periapsis {pred/1000:.0f} km — safe (above the atmosphere)")
+            break
+        shown = f"{pred/1000:.0f} km" if pred is not None else "no encounter"
+        log(f"  Duna closest approach {shown} -> course-correcting (attempt {attempt + 1}) ...")
+        try:
+            bridge.mj_plan(target="Duna", operation="correction")
+            bridge.mj_execute_node()
+            _wait_node_done(bridge, timeout_s=600.0, label="correction")
+        except Exception as exc:
+            log(f"    correction failed: {exc}"); break
+    pred = _predicted_periapsis_at(v, "Duna")
+    if pred is None or pred < 60_000.0:
+        log(f"  ABORT: Duna periapsis unsafe ({round(pred/1000) if pred else pred} km) — not committing to a burn-up")
+        return False
+    # 5) Warp the coast to the Duna SOI.
+    if v.orbit.body.name != "Duna":
+        try:
+            soi_dt = v.orbit.time_to_soi_change
+            if soi_dt and 0 < soi_dt < 1e9:
+                log(f"  coasting {soi_dt:.0f}s (~{soi_dt/(6*3600):.0f} Kerbin-days) to the Duna SOI ...")
+                sc.warp_to(sc.ut + soi_dt + 30.0)
+        except Exception as exc:
+            log(f"  SOI warp note: {exc}")
+    time.sleep(3)
+    if v.orbit.body.name != "Duna":
+        log(f"  did not enter the Duna SOI (still {v.orbit.body.name})"); return False
+    # 6) Warp to periapsis, then retro-capture ABOVE the atmosphere (pe floor 60 km > Duna's ~50 km top).
+    ttp = v.orbit.time_to_periapsis
+    if ttp and 0 < ttp < 1e7:
+        log(f"  in Duna SOI; warping {ttp:.0f}s to periapsis ({v.orbit.periapsis_altitude/1000:.0f} km) ...")
+        sc.warp_to(sc.ut + ttp - 30.0)
+        time.sleep(2)
+    enc_pe = v.orbit.periapsis_altitude
+    ap_target_m = max(80_000.0, enc_pe * 1.3)
+    log(f"  capturing near the encounter periapsis ~{enc_pe/1000:.0f} km (bound ceiling {ap_target_m/1000:.0f} km)")
+    _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=60_000.0, max_s=400.0)
+    return v.orbit.body.name == "Duna" and v.orbit.periapsis_altitude > 55_000.0
+
+
 def main() -> int:
     global cfg
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
@@ -197,8 +266,11 @@ def main() -> int:
     if target_body == "Mun":
         if not transfer_to_mun(c, sc, bridge, v, name, target_alt_km):
             log("Mun transfer/capture FAILED"); return 2
+    elif target_body == "Duna":
+        if not transfer_to_duna(c, sc, bridge, v, name, target_alt_km):
+            log("Duna transfer/capture FAILED"); return 2
     else:
-        log(f"target {target_body} not yet wired (interplanetary Duna/Ike to follow on this skeleton)"); return 2
+        log(f"target {target_body} not yet wired (Ike to follow on this skeleton)"); return 2
 
     # 3) Circularise in the target SOI, then commission.
     log(f"  captured {round(v.orbit.periapsis_altitude/1000)}x{round(v.orbit.apoapsis_altitude/1000)} km "
