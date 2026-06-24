@@ -38,6 +38,24 @@ def log(m: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 
+def _predicted_periapsis_at(v, body_name: str):
+    """The predicted periapsis ALTITUDE (m) at the future encounter with body_name, walking the patched
+    conics, or None if there is no such encounter yet. Used to catch a sub-surface (impact) closest
+    approach BEFORE warping into the SOI."""
+    try:
+        o = v.orbit
+        for _ in range(6):
+            nxt = o.next_orbit
+            if nxt is None:
+                return None
+            if nxt.body.name == body_name:
+                return nxt.periapsis_altitude
+            o = nxt
+    except Exception:
+        return None
+    return None
+
+
 def _circularize_at_apoapsis(conn, sc, v, max_s: float = 200.0) -> None:
     """Warp to apoapsis, then burn PROGRADE (autopilot in the body's non-rotating frame, tracking the
     velocity vector — a basic probe core can't hold SAS prograde, and MechJeb's node executor stalls on a
@@ -101,6 +119,29 @@ def transfer_to_mun(conn, sc, bridge, v, name: str, target_alt_km: float) -> boo
     log(f"  TMI node: dv~{node.prograde:.0f} m/s at T+{node.ut - sc.ut:.0f}s")
     bridge.mj_execute_node()                          # the TMI node is near -> MechJeb autowarp is fine
     _wait_node_done(bridge, timeout_s=900.0, label="TMI")
+    # FINE-TUNE the Mun closest approach BEFORE committing. The grid-search TMI can leave a periapsis that
+    # is SUB-SURFACE (an impact — what destroyed the first AI-Mun-Relay-A at -40 km). MechJeb's course
+    # correction places an optimal node to raise the closest approach; verify it, and ABORT rather than
+    # warp into an impact.
+    for attempt in range(3):
+        pred = _predicted_periapsis_at(v, "Mun")
+        if pred is not None and pred > 25_000.0:
+            log(f"  Mun closest-approach periapsis {pred/1000:.0f} km — safe")
+            break
+        shown = f"{pred/1000:.0f} km" if pred is not None else "no encounter"
+        log(f"  Mun closest approach {shown} -> course-correcting (attempt {attempt + 1}) ...")
+        try:
+            r = bridge.mj_plan(target="Mun", operation="correction")
+            log(f"    correction node dv~{r.get('dv', 0):.0f} m/s")
+            bridge.mj_execute_node()
+            _wait_node_done(bridge, timeout_s=400.0, label="correction")
+        except Exception as exc:
+            log(f"    correction failed: {exc}")
+            break
+    pred = _predicted_periapsis_at(v, "Mun")
+    if pred is None or pred < 5_000.0:
+        log(f"  ABORT: Mun periapsis still unsafe ({round(pred/1000) if pred else pred} km) — not warping into an impact")
+        return False
     # coast/warp to the Mun SOI
     if v.orbit.body.name != "Mun":
         try:
