@@ -239,35 +239,65 @@ def _lower_to_lko(conn, sc, bridge, v, target_apo_alt_m: float = 130_000.0) -> N
     log(f"  lowered to ~{v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km for a clean ejection")
 
 
-def _execute_node_manually(conn, sc, v, max_burn_s: float = 180.0) -> None:
-    """Execute the first maneuver node with a hand-flown kRPC burn. MechJeb's node executor silently SKIPS
-    the close mid-course correction nodes (it auto-warps to a far ejection node and burns it, but leaves a
-    ~6-min correction node un-burned until the wait times out). Point along the node's burn vector in the
-    body's non-rotating frame, warp to ~8 s before it, then burn until the remaining Δv converges to ~0."""
+def _vcross(a, b):
+    return (a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0])
+
+
+def _vnorm(a):
+    m = (a[0]*a[0] + a[1]*a[1] + a[2]*a[2]) ** 0.5
+    return (a[0]/m, a[1]/m, a[2]/m) if m > 1e-9 else (0.0, 1.0, 0.0)
+
+
+def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0) -> None:
+    """Hand-fly the first maneuver node with a kRPC burn. Two problems this works around: (1) MechJeb's node
+    executor silently SKIPS close correction nodes (auto-warps to a far ejection node and burns it, but leaves
+    a ~6-min node un-burned until the wait times out); (2) kRPC's node.direction()/burn_vector() throw a NULL
+    WorldBurnVector on a fresh post-escape patch. So build the burn direction from the node's prograde/normal/
+    radial SCALARS (always readable) and the live velocity/position, warp to ~8 s before it, and cut the burn
+    off when the measured velocity change reaches the node's Δv magnitude."""
     if not v.control.nodes:
         return
     node = v.control.nodes[0]
     ref = v.orbit.body.non_rotating_reference_frame
-    ap = v.auto_pilot
-    ap.reference_frame = ref
-    ap.target_direction = node.direction(ref)
-    ap.engage()
-    time.sleep(6)
+    dvp, dvn, dvr = node.prograde, node.normal, node.radial          # scalars, readable even when patch null
+    dv_total = (dvp*dvp + dvn*dvn + dvr*dvr) ** 0.5
+    if dv_total < 0.3:
+        try:
+            node.remove()
+        except Exception:
+            pass
+        return
     if node.time_to > 20.0:
         sc.warp_to(sc.ut + node.time_to - 8.0)
         time.sleep(2)
-    ap.target_direction = node.direction(ref)
-    time.sleep(4)
-    best = node.remaining_delta_v
+
+    def _burn_dir():
+        r = v.position(ref)
+        vel = v.velocity(ref)
+        pro = _vnorm(vel)
+        nrm = _vnorm(_vcross(r, vel))
+        rad = _vnorm(_vcross(pro, nrm))                              # prograde x normal = radial-out
+        return _vnorm((dvp*pro[0] + dvn*nrm[0] + dvr*rad[0],
+                       dvp*pro[1] + dvn*nrm[1] + dvr*rad[1],
+                       dvp*pro[2] + dvn*nrm[2] + dvr*rad[2]))
+
+    ap = v.auto_pilot
+    ap.reference_frame = ref
+    ap.target_direction = _burn_dir()
+    ap.engage()
+    time.sleep(8)
+    v0 = v.velocity(ref)
     t0 = time.monotonic()
+    v.control.throttle = 1.0
     while time.monotonic() - t0 < max_burn_s:
-        rem = node.remaining_delta_v
-        if rem < 0.3 or rem > best + 2.0:          # converged, or we have started adding Δv (overshoot)
+        ap.target_direction = _burn_dir()
+        cur = v.velocity(ref)
+        applied = ((cur[0]-v0[0])**2 + (cur[1]-v0[1])**2 + (cur[2]-v0[2])**2) ** 0.5
+        rem = dv_total - applied
+        if rem < 0.3:
             break
-        best = min(best, rem)
-        ap.target_direction = node.direction(ref)
-        v.control.throttle = 1.0 if rem > 20.0 else 0.12
-        time.sleep(0.15)
+        v.control.throttle = 1.0 if rem > 15.0 else 0.1
+        time.sleep(0.1)
     v.control.throttle = 0.0
     try:
         ap.disengage()
