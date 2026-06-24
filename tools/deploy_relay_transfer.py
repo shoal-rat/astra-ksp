@@ -237,10 +237,10 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         from ksp_lab.bodies import MUN, KERBIN
         soi = v.orbit.body.sphere_of_influence
         mun_alt = MUN.orbit_radius_m - KERBIN.radius_m            # the Mun's orbital altitude (~11,400 km)
-        # Stay BELOW the Mun's orbit so the long warp doesn't accumulate Mun-flyby perturbations that wreck
-        # the ejection (the first high-orbit attempt at 46,000 km crossed the Mun's orbit and the perturbed
-        # re-plan failed with "no encounter"). ~10,000 km is still high enough for a fast rails-warp cap.
-        target_ap = min(soi * 0.55, mun_alt - 1_500_000.0)
+        # Stay below the Mun's SOI (~2,430 km radius reaches down to ~9,000 km), NOT just its orbit: even an
+        # apoapsis of 9,900 km got flung out of Kerbin SOI by a Mun flyby. ~6,900 km clears the Mun's SOI by
+        # ~2,000 km and is still high enough for a fast rails-warp cap (the earlier high orbits showed cap 7).
+        target_ap = min(soi * 0.55, mun_alt - 4_500_000.0)
         log(f"  raising apoapsis to ~{target_ap/1000:.0f} km (below the Mun) so the {wait/(426*21600):.2f}-yr wait warps fast ...")
         _raise_apoapsis(sc, v, target_ap)
         log(f"  apoapsis {v.orbit.apoapsis_altitude/1000:.0f} km / periapsis {v.orbit.periapsis_altitude/1000:.0f} km")
