@@ -307,15 +307,20 @@ def _execute_node_manually(conn, sc, v, max_burn_s: float = 220.0, max_throttle:
             break
         ap.target_direction = bd
         time.sleep(0.5)
-    v0 = v.velocity(ref)
-    bd0 = _burn_dir()                                        # fixed projection axis (after alignment)
+    # Track Δv by INTEGRATING engine acceleration (thrust/mass * throttle * dt), NOT a velocity-delta: a big
+    # ejection burn rotates the velocity vector a lot as the orbit stretches and then crosses the Kerbin SOI
+    # (changing the orbit frame), both of which break a (cur-v0) projection -> it under-counts and over-burns
+    # to max_burn_s (validated: a 1020 m/s ejection ate ~260 LF). Engine-accel integration is frame- and
+    # rotation-independent and counts only the burn's Δv (no gravity contamination).
+    applied = 0.0
     t0 = time.monotonic()
+    t_prev = t0
+    v.control.throttle = min(max_throttle, 1.0)
     while time.monotonic() - t0 < max_burn_s:
         ap.target_direction = _burn_dir()
-        cur = v.velocity(ref)
-        # Δv DELIVERED along the burn axis — projecting onto bd0 ignores the orthogonal velocity that gravity
-        # adds during a multi-second heliocentric burn (a plain |cur-v0| magnitude cuts off prematurely).
-        applied = (cur[0]-v0[0])*bd0[0] + (cur[1]-v0[1])*bd0[1] + (cur[2]-v0[2])*bd0[2]
+        now = time.monotonic()
+        applied += (v.available_thrust * v.control.throttle / max(v.mass, 1.0)) * (now - t_prev)
+        t_prev = now
         rem = dv_total - applied
         if rem < 0.3:
             break
