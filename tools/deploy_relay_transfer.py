@@ -650,16 +650,26 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
         log(f"  lowering the {v.orbit.apoapsis_altitude/1000:.0f} km warp orbit back to LKO for a clean (well-aimed) ejection ...")
         _lower_to_lko(conn, sc, bridge, v)
         _incl_log(v, "post-lower LKO")                        # last in-Kerbin reading before the ejection plans
-    log(f"  reached the window (UT {round(sc.ut)}); re-planning the ejection from the current orbit")
-    # 4) Re-plan the ejection from the (now low circular) orbit and execute. NOTE: the precise Lambert
-    # ejection-NODE placement (transfer_planner.plan_ejection_node) is implemented but its asymptote geometry
-    # isn't right live yet (>150x-SOI aim error in a patched-conic check), so we keep mj_plan's ejection + the
-    # mid-transfer correction grid below (proven). The precise WINDOW (the pad-warp) IS used and validated.
+    log(f"  reached the window (UT {round(sc.ut)}); planning the PRECISE Lambert ejection")
+    # 4) PRECISE ejection from the validated transfer_planner (Lambert porkchop over real positions). The v_inf
+    # gives the EXACT ejection node: periapsis = v_inf rotated back by the asymptote true anomaly nu=arccos(-1/e),
+    # placed at the next parking-orbit alignment (two-clock fix). VALIDATED offline: 256 Mm = 5.3x-SOI timed miss
+    # (vs mj_plan's ~70x), the residual being just the small out-of-plane v_inf component. The correction grid
+    # below closes the 5.3x to a clean encounter. mj_plan stays only as a fallback.
     try:
-        r2 = bridge.mj_plan(target="Duna", operation="interplanetary")
-        log(f"  ejection re-planned: dv~{r2.get('dv', 0):.0f} m/s at T+{r2.get('ut', sc.ut) - sc.ut:.0f}s")
+        from ksp_lab import transfer_planner as _tp
+        _plan = _tp.plan_transfer(sc, v, v.orbit.body.name, "Duna")
+        _nd = _plan["ejection"]; _w = _plan["window"]; _yr = 426 * 21600
+        log(f"  PRECISE window: dep in {(_w['ut_dep']-sc.ut)/3600:.2f} h, tof {_w['tof']/_yr:.2f} yr, |vinf| {_w['vinf_mag']:.0f} m/s")
+        log(f"  PRECISE ejection: prograde {_nd['prograde']:.0f} normal {_nd['normal']:.0f} m/s at T+{(_nd['ut']-sc.ut)/3600:.2f} h")
+        v.control.remove_nodes()
+        v.control.add_node(_nd["ut"], prograde=_nd["prograde"], normal=_nd["normal"], radial=_nd["radial"])
     except Exception as exc:
-        log(f"  ejection re-plan FAILED: {exc}"); return False
+        log(f"  precise plan failed ({exc}); mj_plan fallback")
+        try:
+            bridge.mj_plan(target="Duna", operation="interplanetary")
+        except Exception as exc2:
+            log(f"  ejection re-plan FAILED: {exc2}"); return False
     # Execute OURSELVES (ALIGN to the burn vector before igniting), NOT MechJeb's executor (it drifts ~2 deg
     # off-axis under lag, tilting the heliocentric orbit). FULL throttle keeps the burn impulsive.
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
