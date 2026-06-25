@@ -158,6 +158,11 @@ class CraftWriter:
         for stage in design.stages:
             names.add(stage.engine)
             names.add(stage.tank)
+        # Radial boosters: harvest the pod engine/tank + the radial decoupler so the strap-ons emit with
+        # full module state (else can_emit drops them and the chart/craft show a bare core).
+        rb = getattr(design, "radial_boosters", None)
+        if rb is not None and rb.count > 0:
+            names.update({rb.engine, rb.tank, rb.decoupler})
         return names
 
     @staticmethod
@@ -389,6 +394,7 @@ class CraftWriter:
         n_stages = len(design.stages)
         _land_fire_idx = next((i for i, s in enumerate(design.stages) if "land" in s.role.lower()), None)
         lander_render_index = (n_stages - _land_fire_idx) if _land_fire_idx is not None else 1
+        launch_stage_nodes: list[CraftNode] = []  # the first-firing stage's engine+tanks (re-staged for boosters)
         # PAYLOAD FAIRING: a probe comsat rides INSIDE an ogive shroud — never an exposed antenna on the
         # nose. The fairing base node-attaches BELOW the payload bus; its ModuleProceduralFairing shell
         # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
@@ -462,9 +468,13 @@ class CraftWriter:
                 bottom_tank = tank  # last tank built = bottom of the first-ignition (launch) stage
                 if render_index == lander_render_index:
                     lander_tank = tank  # the stage that lands = where the footpads reference the hull
+                if render_index == n_stages:
+                    launch_stage_nodes.append(tank)
             engine = new_node(stage.engine, render_index)
             self._attach(current, engine, "bottom", "top")
             nodes.append(engine)
+            if render_index == n_stages:
+                launch_stage_nodes.append(engine)
             if render_index == lander_render_index:
                 lander_engine = engine  # bottom of the kept lander stack — legs' footpads go below this bell
             # CALCULATED engine cluster: design.py sizes engine_count for the phase's TWR AND guarantees
@@ -481,8 +491,72 @@ class CraftWriter:
                     sat = new_node(stage.engine, render_index)
                     self._attach_surface(current, sat, (ring_r * math.cos(ang), engine.y, ring_r * math.sin(ang)))
                     nodes.append(sat)
+                    if render_index == n_stages:
+                        launch_stage_nodes.append(sat)
             current = engine
             prev_dia = stage.diameter_m  # the next (lower) stage compares its diameter to this one
+
+        # RADIAL (strap-on) BOOSTERS — the asparagus / Soyuz / Falcon-Heavy ascent. design.py sized N
+        # symmetric tank+engine pods (RadialBoosterSpec); render each as its OWN vertical stack clustered
+        # around the launch CORE's bottom tank, hung on a RADIAL DECOUPLER so it jettisons when spent.
+        #   * staging: the booster engines ignite WITH the core at T0 (same inverse-stage as the core
+        #     engine, bumped to launch_istg = n_stages + 1 so the launch event sits above everything);
+        #     the radial decouplers fire ONE stage later (launch_istg - 1) — boosters drop FIRST — and the
+        #     core/upper inter-stage decoupler (already at n_stages - 1) fires after that. So the order is
+        #     ignite(core+boosters) -> drop boosters -> separate core/upper, exactly the asparagus sequence.
+        #   * geometry: each pod is offset (core_r + dec + pod_r) from the axis; the pod engine bell sits
+        #     at the SAME plane as the core engine (boosters fire alongside the core), and the pod tanks
+        #     stack up from there — a clean Soyuz silhouette, every bell at the base, nothing floating.
+        rb = getattr(design, "radial_boosters", None)
+        if rb is not None and rb.count > 0 and bottom_tank is not None and (
+                (part_bodies is None or (rb.engine in part_bodies and rb.tank in part_bodies
+                                         and rb.decoupler in part_bodies))):
+            core_tank = part(bottom_tank.part_name)
+            core_r = core_tank.diameter_m / 2.0
+            pod_tank = part(rb.tank)
+            pod_eng = part(rb.engine)
+            pod_dec = part(rb.decoupler)
+            pod_r = pod_tank.diameter_m / 2.0
+            launch_istg = n_stages + 1                       # core + boosters ignite here (T0)
+            radial_istg = max(0, launch_istg - 1)            # boosters decouple one stage later (drop first)
+            # Re-stage the launch CORE engine + its tanks + the cluster satellites to launch_istg so the
+            # core lights at the SAME T0 event as the strap-ons (otherwise the bumped boosters would fire a
+            # stage before the core). The core's inter-stage decoupler stays at n_stages-1 (fires last).
+            for n in launch_stage_nodes:
+                n.stage_index = launch_istg
+            # Pod engine bell plane = the core engine plane, so all bells fire at the base together.
+            core_engine_y = engine.y
+            pod_eng_y = core_engine_y
+            # Lateral offset: clear the core hull + the decoupler + the pod's own radius, plus a hair.
+            off = core_r + pod_dec.diameter_m * 0.5 + pod_r + 0.15
+            for b in range(rb.count):
+                ang = 2.0 * math.pi * b / rb.count
+                px, pz = off * math.cos(ang), off * math.sin(ang)
+                # Build the pod bottom-up: engine at the bell plane, then tank_count tanks stacked above.
+                pod_eng_node = new_node(rb.engine, launch_istg)
+                self._attach_surface(bottom_tank, pod_eng_node, (px, pod_eng_y, pz))
+                nodes.append(pod_eng_node)
+                y_cursor = pod_eng_y + pod_eng.height_m / 2.0
+                first_tank_node: CraftNode | None = None
+                for t in range(min(rb.tank_count, 60)):
+                    ty = y_cursor + pod_tank.height_m / 2.0
+                    pod_tank_node = new_node(rb.tank, launch_istg)
+                    self._attach_surface(bottom_tank, pod_tank_node, (px, ty, pz))
+                    nodes.append(pod_tank_node)
+                    if first_tank_node is None:
+                        first_tank_node = pod_tank_node
+                    y_cursor = ty + pod_tank.height_m / 2.0
+                # The RADIAL DECOUPLER mates the pod to the core's bottom tank at the pod's mid-height; it
+                # fires at radial_istg so the spent pod drops as one piece. Placed just inboard of the pod
+                # tank, surface-attached to the core hull at the same (px,pz) direction.
+                dec_y = (pod_eng_y + y_cursor) / 2.0
+                dec_off = core_r + pod_dec.diameter_m * 0.5
+                dx, dz = dec_off * math.cos(ang), dec_off * math.sin(ang)
+                # Orient the decoupler to face outward (yaw to the pod's azimuth).
+                rot = (0.0, math.sin(ang / 2.0), 0.0, math.cos(ang / 2.0))
+                dec_node = new_node(rb.decoupler, radial_istg)
+                self._attach_surface(bottom_tank, dec_node, (dx, dec_y, dz), rot)
+                nodes.append(dec_node)
 
         def can_emit(part_name: str) -> bool:
             # Only attach a part when a real serialization is available (or in minimal mode),
