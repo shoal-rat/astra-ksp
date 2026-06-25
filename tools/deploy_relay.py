@@ -90,7 +90,8 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
 
 
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
-                  insertion_dv_override: float = 0.0, booster_max_engines: int = 1) -> bool:
+                  insertion_dv_override: float = 0.0, booster_max_engines: int = 1,
+                  radial_booster_count: int = 0) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
     the eventual TARGET orbit so it has the propellant to raise + circularise there.
@@ -142,6 +143,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False,
         max_engine_count=booster_max_engines,
+        # RADIAL BOOSTERS: a heavy interplanetary upper (Eve's ~3800 m/s sync insertion) makes a ~200 t
+        # rocket that hangs at low TWR on a single core. radial_booster_count>0 straps N tank+engine pods
+        # to the launch core (asparagus); design.py sizes them so combined liftoff TWR clears the floor
+        # and the core flies on lighter after they jettison. 0 = the proven single-core launcher.
+        radial_booster_count=radial_booster_count,
     )
     log(f"  insertion stage sized for {target_alt_km:.0f} km target: {insertion_dv:.0f} m/s "
         f"(raise {dv_raise:.0f} + circ {dv_circ:.0f} + 250 trim)")
@@ -181,7 +187,10 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     for e in separation_sequence(d, req):
         log("   - " + e)
     runner.writer.write(d, craft_dir, template_path=None)
-    log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}; "
+    _rb = d.radial_boosters
+    _rb_str = (f" + {_rb.count}x[{_rb.engine_count}x{_rb.engine}+{_rb.tank_count}{_rb.tank}] radial boosters "
+               f"(TWR {d.estimates['launch_twr']}, +{d.estimates.get('booster_delta_v_mps', 0):.0f} m/s)" if _rb else "")
+    log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}{_rb_str}; "
         f"aero Cd={d.drag_cd} dragloss={d.ascent_drag_loss_mps}m/s margin={d.static_margin_m}m stable={d.ascent_stable}; launching ...")
     runner._load_and_launch(bridge, name)
     time.sleep(4)
