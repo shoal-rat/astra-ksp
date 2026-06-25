@@ -2,6 +2,13 @@
 a bound Eve orbit, WAITS for the return window, EJECTS back toward Kerbin, AEROBRAKES into Kerbin's
 atmosphere, descends on parachutes, and is RECOVERED alive.
 
+NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
+is ASTRA's task DECOMPOSITION into atomic primitives (src/ksp_lab/astra/primitives.py). This file's
+proven flight functions are WRAPPED by primitives — capture_at_eve_loose by the `transfer` primitive's
+loose mode, descend_and_recover by the `recover` primitive — so prefer `tools/astra.py "<command>"`. The
+functions below remain the validated flight code the primitives call; only the top-level main() bundling
+is superseded.
+
 WHY ORBITAL, NOT A LANDING: tools/design_eve_crewed.py proved the lab cannot mass-close a Kerbin
 vehicle that DELIVERS a crewed Eve ascent vehicle to Eve's surface (the delivery stack is a 1300-2600 t
 TWR<0.8 noodle the gate rejects). So the achievable "send people to Eve and bring them back" is the

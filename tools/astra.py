@@ -2,14 +2,18 @@
 
     PYTHONPATH=src python tools/astra.py "land a relay in high Mun orbit and bring a crew home"
 
+ASTRA is a GENERAL KSP1 agent: it DECOMPOSES the command into an ordered list of atomic, body-agnostic
+PRIMITIVES (launch / transfer / land / plant_flag / dock / recover / ...) and executes them against one
+live kRPC + bridge connection. It is no longer a fixed Mun-mission selector.
+
 Options:
     --config PATH     kRPC/runner config (default: configs/local-ksp.yaml)
-    --dry-run         interpret the command and print the plan; do NOT fly
-    --max-attempts N  retries per capability to absorb run-to-run variance (default 2)
-    --no-llm          force the heuristic interpreter even if ANTHROPIC_API_KEY is set
+    --dry-run         decompose the command and print the primitive plan; do NOT fly
+    --max-attempts N  retries per primitive step to absorb run-to-run variance (default 2)
+    --no-llm          force the heuristic decomposer even if ANTHROPIC_API_KEY is set
 
-ASTRA runs with zero configuration (heuristic interpreter). Set ANTHROPIC_API_KEY to let Claude do
-the natural-language interpretation; set ASTRA_MODEL to choose the model (default claude-opus-4-8).
+ASTRA runs with zero configuration (heuristic decomposer). Set ANTHROPIC_API_KEY to let Claude do the
+natural-language decomposition; set ASTRA_MODEL to choose the model (default claude-opus-4-8).
 """
 from __future__ import annotations
 

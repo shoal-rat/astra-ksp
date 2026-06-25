@@ -14,6 +14,7 @@ from .agent import AstraAgent, AstraResult
 from .interpreter import Interpreter, MissionPlan
 from .knowledge import KnowledgeBase
 from .ledger import ExperienceLedger, LedgerEntry
+from .primitives import CATALOG, PrimitiveContext, PrimitiveResult, run_primitive
 
 __all__ = [
     "AstraAgent",
@@ -23,4 +24,8 @@ __all__ = [
     "KnowledgeBase",
     "ExperienceLedger",
     "LedgerEntry",
+    "CATALOG",
+    "PrimitiveContext",
+    "PrimitiveResult",
+    "run_primitive",
 ]

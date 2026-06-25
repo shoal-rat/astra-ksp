@@ -22,6 +22,7 @@ from .guidance import (
 from .models import MissionSpec, RocketDesign, TelemetrySummary
 from .parts import estimate_design
 from .telemetry import TelemetryRecorder
+from .vessel_match import vessel_names_match
 
 
 class FlightControllerError(RuntimeError):
@@ -112,12 +113,16 @@ class KrpcFlightController:
 
     @staticmethod
     def _select_vessel(conn, vessel_name: str):
+        match = None
         for vessel in conn.space_center.vessels:
-            if str(vessel.name) == vessel_name:
-                conn.space_center.active_vessel = vessel
-                time.sleep(1.0)
-                return conn.space_center.active_vessel
-        raise FlightControllerError(f"Vessel not found in kRPC vessel list: {vessel_name}")
+            if vessel_names_match(str(vessel.name), vessel_name):
+                match = vessel
+                break
+        if match is None:
+            raise FlightControllerError(f"Vessel not found in kRPC vessel list: {vessel_name}")
+        conn.space_center.active_vessel = match
+        time.sleep(1.0)
+        return conn.space_center.active_vessel
 
     @staticmethod
     def _vessel_is_usable(vessel, preferred_name: str = "") -> bool:

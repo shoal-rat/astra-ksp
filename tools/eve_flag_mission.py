@@ -1,5 +1,12 @@
 """GILLY FLAG-PLANT MISSION — land a crew on Gilly so a HUMAN can plant a flag, then bring them home.
 
+NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
+is ASTRA's task DECOMPOSITION — `PYTHONPATH=src python tools/astra.py "send a kerbal to Eve, plant a
+flag on Gilly, bring them home"` decomposes into launch -> transfer -> land -> plant_flag -> ascend ->
+transfer(Kerbin) -> recover atomic primitives (src/ksp_lab/astra/primitives.py), which WRAP the proven
+flight functions this file calls. The file is kept (its `_descend_to_gilly_surface` is wrapped by the
+`land` primitive); prefer the decompose path for new missions.
+
 WHY GILLY, NOT EVE: "plant a flag and bring them back" cannot be done on Eve's SURFACE — the ascent
 from Eve sea level is ~8000 m/s (the infeasible-ascent wall), so a kerbal who lands on Eve is stranded.
 Eve's tiny moon GILLY is the feasible flag site: radius 13 km, surface g 0.049 m/s^2, surface escape

@@ -1,5 +1,10 @@
 """TWO-SHIP EVE CREW RETURN — bring a kerbal home from Eve by ORBITAL DOCKING, never refuelling in flight.
 
+NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
+is ASTRA's task DECOMPOSITION into atomic primitives (src/ksp_lab/astra/primitives.py: launch / transfer
+/ rendezvous / dock / transfer_crew / recover) which WRAP the proven flight functions this file calls.
+The file is kept as a reference; prefer `tools/astra.py "<command>"` for new missions.
+
 WHY TWO SHIPS (the crew-#9 lesson): the single-ship round trip (tools/crewed_eve_roundtrip.py) stranded a
 kerbal DRY at Eve on the RETURN leg — one liftable Kerbin stack simply could not carry enough vacuum Δv to
 ALSO escape Eve from the capture periapsis. The fix that KEEPS the hard rule (no propellant is ever pumped
@@ -82,8 +87,8 @@ RENDEZVOUS_CLOSE_M = 100.0     # "close enough" relative distance the rendezvous
 DOCK_DONE_TIMEOUT_S = 1800.0
 RV_DONE_TIMEOUT_S = 2400.0
 
-FERRY_NAME = "AI-Eve-Ferry"
-TUG_NAME = "AI-Eve-Tug"
+FERRY_NAME = "AI-Eve-Ferry2"
+TUG_NAME = "AI-Eve-Tug2"
 
 
 # ==================================================================================================
