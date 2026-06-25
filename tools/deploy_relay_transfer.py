@@ -844,13 +844,25 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     from ksp_lab import transfer_planner as _tp
     target = sc.bodies[target_name]
     r_target = target.equatorial_radius + target_alt_km * 1000.0
-    # 1) PRECISE Lambert ejection (validated body-agnostic; node at the parking-orbit periapsis).
-    plan = _tp.plan_transfer(sc, v, v.orbit.body.name, target_name)
-    nd, win = plan["ejection"], plan["window"]
-    v.control.remove_nodes()
-    v.control.add_node(nd["ut"], prograde=nd["prograde"], normal=nd["normal"], radial=nd["radial"])
-    log(f"  EJECT -> {target_name}: {nd['dv']:.0f} m/s at UT {round(nd['ut'])} "
-        f"(Lambert |vinf| {win['vinf_mag']:.0f} m/s, tof {win['tof']/(426*21600):.2f} yr)")
+    try:
+        sc.target_body = target
+    except Exception as exc:
+        log(f"  could not set target ({exc})")
+    # 1) EJECT. Cross-check the precise Lambert window (validated math) for the expected |vinf|/tof, then
+    # DELEGATE the ejection node to MechJeb's interplanetary transfer — it ESTABLISHES a real target
+    # encounter (the proven path that deployed the Duna constellation), which a bare patched-conic Lambert
+    # ejection does not (it leaves a ~2.5x-SOI miss with no encounter for the course-corrector to refine).
+    win = {"ut_dep": sc.ut, "tof": 0.40 * 426 * 21600, "vinf_mag": 0.0}
+    try:
+        _plan = _tp.plan_transfer(sc, v, v.orbit.body.name, target_name)
+        win = _plan["window"]
+        log(f"  Lambert cross-check: |vinf| {win['vinf_mag']:.0f} m/s, tof {win['tof']/(426*21600):.2f} yr")
+    except Exception as exc:
+        log(f"  Lambert cross-check skipped ({exc})")
+    rr = bridge.mj_plan(target=target_name, operation="interplanetary")
+    if not (rr.get("planned") and v.control.nodes):
+        log(f"  EJECT FAILED: MechJeb interplanetary transfer produced no node ({rr})"); return False
+    log(f"  EJECT -> {target_name} (MechJeb interplanetary): {rr.get('dv', 0):.0f} m/s at UT {round(rr.get('ut', 0))}")
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     if not _wait_until_sun_orbit(sc, v):
         log(f"  did not escape the departure SOI (still {v.orbit.body.name})"); return False
@@ -960,9 +972,11 @@ def main() -> int:
     # + passes the rocket-shape gate). 720 LF is ample margin (overkill is unavoidable at this quantum, but it
     # captures cleanly). Mun is close enough to keep the proven 1-engine default upper.
     # Per-target upper-stage budget (the ground pre-warp removes the in-flight raise/lower, so the upper
-    # only needs LKO-circ + ejection + correction + capture). Eve: 562 + 1025 + 80 + 621 ≈ 2290 (calc'd
-    # by tools eve-plan; +margin). Any other interplanetary target falls back to a generous default.
-    insertion_override = {"Duna": 4400.0, "Eve": 2400.0}.get(target_body, 0.0)
+    # only needs LKO-circ + ejection + MechJeb correction + LOW capture + Hohmann-up-to-sync). The first
+    # Eve flight proved the correction is far bigger than the 80 m/s first assumed (a 2.5x-SOI ejection
+    # miss needs ~200-500 m/s to fine-tune), so budget generously: 562 + 1025 + 400 + 600 + 230 ≈ 2820,
+    # round to 3000 for margin (the dry relay #1 was the lesson). Other interplanetary targets default high.
+    insertion_override = {"Duna": 4400.0, "Eve": 3000.0}.get(target_body, 0.0)
     if insertion_override == 0.0 and target_body not in ("Mun",):
         try:
             insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
