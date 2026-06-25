@@ -836,6 +836,30 @@ def _hohmann_to_radius(conn, sc, v, r_target: float):
     _circularize_at(conn, sc, v, "target radius")
 
 
+def _warp_via_high(sc, target_ut: float, buffer_s: float = 2.0 * 3600.0):
+    """Advance the clock to ``target_ut - buffer`` by warping from a HIGH-altitude vessel (Sun/Duna/Eve
+    orbit — NOT altitude-capped) so a multi-month wait runs at the 100,000x rate, not the 50x LKO cap
+    that otherwise turns warping to a far ejection node into a ~77-hour stall. Stops any warp first (KSP
+    hangs if you switch vessels mid-warp). No-op if the target is already near."""
+    if target_ut <= sc.ut + 60.0:
+        return
+    sc.rails_warp_factor = 0
+    time.sleep(1)
+    hi = [x for x in sc.vessels if x.orbit.body.name in ("Sun", "Duna", "Eve")
+          and str(x.situation).split(".")[-1] == "orbiting"]
+    hi.sort(key=lambda x: -(x.orbit.periapsis_altitude or 0.0))
+    for cand in hi:
+        try:
+            sc.active_vessel = cand
+            time.sleep(2)
+            break
+        except Exception:
+            continue
+    sc.rails_warp_factor = 0
+    sc.warp_to(max(sc.ut + 5.0, target_ut - buffer_s))
+    time.sleep(2)
+
+
 def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float) -> bool:
     """Eject (precise Lambert) -> MechJeb course-correction to the encounter -> capture low -> Hohmann to
     the synchronous radius. Body-agnostic; the relay ends near-circular at ``target_alt_km`` around
@@ -863,6 +887,17 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     if not (rr.get("planned") and v.control.nodes):
         log(f"  EJECT FAILED: MechJeb interplanetary transfer produced no node ({rr})"); return False
     log(f"  EJECT -> {target_name} (MechJeb interplanetary): {rr.get('dv', 0):.0f} m/s at UT {round(rr.get('ut', 0))}")
+    # If the ejection node is far out (the launch sometimes reverts the pad-warp clock, so MechJeb plans
+    # the NEXT window) AND we're in a low orbit, warping to it directly stalls at the 50x cap — advance
+    # the clock via a high vessel first, then re-select this craft and burn.
+    _nd0 = v.control.nodes[0] if v.control.nodes else None
+    if _nd0 is not None and (_nd0.ut - sc.ut) > 6 * 3600.0 and v.orbit.periapsis_altitude < 2_000_000.0:
+        log(f"  ejection node is {(_nd0.ut - sc.ut)/(6*3600):.0f} Kerbin-days out in a low orbit -> "
+            f"advancing the clock via a high vessel (beats the 50x cap) ...")
+        _warp_via_high(sc, _nd0.ut)
+        sc.active_vessel = v
+        time.sleep(2)
+        v = sc.active_vessel
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     if not _wait_until_sun_orbit(sc, v):
         log(f"  did not escape the departure SOI (still {v.orbit.body.name})"); return False
