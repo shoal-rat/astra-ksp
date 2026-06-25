@@ -91,13 +91,20 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
 
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
                   insertion_dv_override: float = 0.0, booster_max_engines: int = 1,
-                  radial_booster_count: int = 0) -> bool:
+                  radial_booster_count: int = 0, *, crew: int = 0,
+                  needs_heatshield: bool = False, landing=None) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
     the eventual TARGET orbit so it has the propellant to raise + circularise there.
     insertion_dv_override > 0 sizes the upper for an explicit Δv budget instead (used by the interplanetary
     transfers, whose upper must afford the warp raise+lower + ejection + correction + Oberth capture ~3,800 m/s,
-    NOT just a Kerbin-orbit insertion — the default min-tank upper left the Duna capture ~250 m/s short)."""
+    NOT just a Kerbin-orbit insertion — the default min-tank upper left the Duna capture ~250 m/s short).
+
+    CREWED launch (crew>0): the WRITTEN craft must carry a crewable Mk1 command pod, a forward heat shield
+    (needs_heatshield) and chutes (landing) so a kerbal can board and ride. Without threading these, this
+    function re-derived a crew=0 PROBE design — so the .craft topped out on a probeCoreOcto with NO crewable
+    seat (kRPC crew_capacity==0) and /spawn-crew had nowhere to seat a kerbal. The asparagus booster/upper
+    sizing + staging + flight logic below are unchanged; only the command/recovery requirements differ."""
     import krpc
     import math
     from ksp_lab.bodies import KERBIN
@@ -133,15 +140,19 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
     # comsat upper still circularises fine on the Terrier (no floor).
     _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    # CREWED vs uncrewed command/recovery. A crewed launch (crew>0) MUST write a craft with a crewable
+    # Mk1 pod + forward heat shield + chutes so a kerbal can board and survive re-entry; an uncrewed relay
+    # rides a headless probe core in a fairing. mission_type reflects which so downstream code can tell.
+    _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
     req = ShipRequirements(
-        name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
+        name=name, mission_type=_mission_type, crew=crew, payload_t=0.3,
         # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
         # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
         phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
                       reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
                 Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
-        landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False,
+        landing=landing, needs_legs=False, needs_heatshield=needs_heatshield, needs_docking=False,
         max_engine_count=booster_max_engines,
         # RADIAL BOOSTERS: a heavy interplanetary upper (Eve's ~3800 m/s sync insertion) makes a ~200 t
         # rocket that hangs at low TWR on a single core. radial_booster_count>0 straps N tank+engine pods

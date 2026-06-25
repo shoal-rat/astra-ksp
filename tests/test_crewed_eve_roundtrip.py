@@ -53,6 +53,44 @@ def test_design_is_feasible_and_passes_the_geometry_gate():
 
 
 # --------------------------------------------------------------------------------------------------
+# BUG (live): the WRITTEN craft had NO crewable pod. launch_to_lko re-derived a crew=0 PROBE design and
+# wrote THAT (root probeCoreOcto, no mk1pod), so kRPC reported crew_capacity == 0 and /spawn-crew had no
+# free seat. The crewed launch must pass crew/heatshield/landing through so the written craft is crewable.
+# --------------------------------------------------------------------------------------------------
+def test_launch_to_lko_accepts_crew_requirements():
+    # The launcher must expose the crew/needs_heatshield/landing knobs the crewed mission threads through;
+    # before the fix it hardcoded crew=0 and the signature had no way to ask for a crewable pod.
+    import inspect
+
+    import deploy_relay
+
+    sig = inspect.signature(deploy_relay.launch_to_lko)
+    for kw in ("crew", "needs_heatshield", "landing"):
+        assert kw in sig.parameters, f"launch_to_lko is missing the {kw!r} parameter"
+    assert sig.parameters["crew"].default == 0  # uncrewed by default (existing relay callers unchanged)
+
+
+def test_crewed_launch_writes_a_craft_with_a_crewable_pod():
+    # Reproduce the launch-path requirements for a crewed Eve launch (the same crew=1 / heatshield / Kerbin
+    # chutes the crewed mission now threads into launch_to_lko) and assert the rendered craft is crewable.
+    from ksp_lab.craft_writer import CraftWriter
+    from ksp_lab.design import (Phase, ShipRequirements, default_reserve_frac, design_ship)
+
+    insertion_dv = cer._vacuum_budget_mps()["budget"]
+    req = ShipRequirements(
+        name="AI-Eve-Crew", mission_type="crewed_launch", crew=1, payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3, reserve_frac=default_reserve_frac(9.81)),
+                Phase("insertion", insertion_dv, twr_body_g=9.81, min_twr=0.5, reserve_frac=default_reserve_frac(0.0))],
+        landing=cer._kerbin_landing_site(), needs_legs=False, needs_heatshield=True, needs_docking=False,
+        max_engine_count=1, radial_booster_count=4)
+    d = design_ship(req)
+    assert d.crewed and d.heatshield
+    text = CraftWriter().render(d, part_bodies=None)
+    assert "part = mk1pod" in text, "launch-path crewed craft has no crewable Mk1 pod"
+    assert "HeatShield1" in text  # forward heat shield for the Eve-return aerocapture
+
+
+# --------------------------------------------------------------------------------------------------
 # BUG 1 — the bridge client seats a kerbal, and the controller boards + verifies one.
 # --------------------------------------------------------------------------------------------------
 class _RecordingBridge(bridge_client.BridgeClient):

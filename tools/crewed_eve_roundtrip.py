@@ -142,6 +142,14 @@ def _vacuum_budget_mps() -> dict:
     return terms
 
 
+def _kerbin_landing_site() -> "LandingSite":
+    """Kerbin re-entry landing spec (Kerbin's OWN gravity + sea-level density; ~6 m/s touchdown). Shared
+    by the design AND the launch writer so the WRITTEN crewed craft carries the same chute set the design
+    sized — see launch_to_lko's crew/needs_heatshield/landing threading."""
+    return LandingSite(body_g=KERBIN.surface_g, surface_rho=KERBIN.surface_rho,
+                       target_touchdown_mps=6.0)
+
+
 def design_crew_vehicle(name: str, render: bool = True):
     """Build + (optionally) render the crewed Eve orbital round-trip vehicle. Returns (design, report)."""
     budget = _vacuum_budget_mps()
@@ -156,8 +164,7 @@ def design_crew_vehicle(name: str, render: bool = True):
 
     # Kerbin re-entry landing site: Kerbin's OWN gravity + sea-level density (the chutes land at Kerbin,
     # not Eve). target 6 m/s splashdown/touchdown.
-    kerbin_landing = LandingSite(body_g=KERBIN.surface_g, surface_rho=KERBIN.surface_rho,
-                                 target_touchdown_mps=6.0)
+    kerbin_landing = _kerbin_landing_site()
     req = ShipRequirements(
         name=name,
         mission_type="eve_crewed_orbital_round_trip",
@@ -796,11 +803,15 @@ def main() -> int:
 
         # a) LAUNCH to a 100 km Kerbin parking orbit — REUSE launch_to_lko with the Eve booster recipe
         #    (single core engine + 4 radial pods; the vacuum stage sized for the full interplanetary budget).
+        #    CREW=1 + forward heat shield + Kerbin chutes so the WRITTEN craft carries a crewable Mk1 pod a
+        #    kerbal can board (without this the launcher wrote a headless crew=0 PROBE — crew_capacity 0).
         insertion_override = _vacuum_budget_mps()["budget"]
         log("MILESTONE: launching the crew to LKO ...")
         if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0,
                                           insertion_dv_override=insertion_override,
-                                          booster_max_engines=1, radial_booster_count=4):
+                                          booster_max_engines=1, radial_booster_count=4,
+                                          crew=1, needs_heatshield=True,
+                                          landing=_kerbin_landing_site()):
             log("launch to parking orbit FAILED"); return 2
         time.sleep(3)
         v = sc.active_vessel
