@@ -939,7 +939,15 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         tag = (f"pe {best.get('duna_pe_m', 0)/1000:.0f} km" if best.get("encounter")
                else f"closest {best.get('closest_m', 0)/1e6:.0f} Mm")
         log(f"  ESTABLISH (grid) {attempt}: aim {tag} via ({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f})")
-        _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
+        # Fly the small correction node with MechJeb's PRECISE NodeExecutor — the hand-rolled
+        # _execute_node_manually executes these tiny normal-heavy nodes wildly off and DESTROYS the
+        # established encounter (a planned pe 10,631 km came out as 183 Mm). AGENTS.md RULE 1: delegate.
+        try:
+            bridge.mj_execute_node(autowarp=True)
+            time.sleep(2)
+        except Exception as exc:
+            log(f"  mj-execute-node failed ({exc}); manual fallback")
+            _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
     # 3) Coast to the target SOI.
     for _ in range(4):
         if v.orbit.body.name == target_name:
