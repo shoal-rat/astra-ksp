@@ -925,11 +925,16 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         try:
             r = bridge.mj_plan(target=target_name, operation="correction")
             dv = r.get("dv", 0.0) if r.get("planned") else 0.0
-            if r.get("planned") and v.control.nodes and dv < 2500.0:
-                log(f"  CORRECTION (MechJeb, establish encounter): {dv:.0f} m/s")
-                _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
+            # Cap at what the 90 t relay can afford on top of capture + Hohmann (~400 m/s). A SMALL cheap
+            # correction nudges a near-miss into the SOI; a BIG one (the recurring 1800+ m/s) means the
+            # EJECTION geometry is wrong — execute it and you strand the relay DRY. So skip it and KEEP THE
+            # FUEL (the relay stays in solar orbit, recoverable / re-targetable), rather than burning out.
+            # The real cure is a better-timed ejection so the encounter is natural (see in-code note above).
+            if r.get("planned") and v.control.nodes and dv < 400.0:
+                log(f"  CORRECTION (MechJeb, cheap): {dv:.0f} m/s")
+                _execute_node_manually(conn, sc, v, max_burn_s=200.0, max_throttle=1.0)
             else:
-                log(f"  correction {dv:.0f} m/s over cap; removing node, trying the natural approach")
+                log(f"  correction {dv:.0f} m/s too big — EJECTION geometry off; keeping fuel (no dry-out), aborting clean")
                 v.control.remove_nodes()
         except Exception as exc:
             log(f"  MechJeb correction unavailable ({exc})")
