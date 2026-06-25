@@ -145,8 +145,13 @@ def _orbit_record(vessel: Any) -> dict[str, Any]:
         return {"name": getattr(vessel, "name", "?"), "body": "?", "note": "orbit unreadable"}
 
 
-def _live_universe(sc: Any) -> dict[str, Any]:
-    """Universe time + every existing vessel's body/orbit. Returns {} on any failure (offline-safe)."""
+def _live_universe(sc: Any, bridge: Any = None) -> dict[str, Any]:
+    """Universe time + every existing vessel's body/orbit. Returns {} on any failure (offline-safe).
+
+    When a live ``bridge`` is supplied AND vessels exist, also attaches the ACTIVE vessel's real
+    mass/Δv/resources (``bridge.vessel_info()`` + ``bridge.resources()``) under ``active_vessel`` so the
+    LLM planner reasons over the SAME numbers the game uses, not a guess. Each bridge read is guarded —
+    a dead bridge degrades to the orbit-only universe, never raises."""
     info: dict[str, Any] = {}
     try:
         info["universe_time_s"] = round(float(sc.ut), 1)
@@ -160,6 +165,18 @@ def _live_universe(sc: Any) -> dict[str, Any]:
         pass
     if vessels:
         info["vessels"] = vessels
+        if bridge is not None:
+            active: dict[str, Any] = {}
+            try:
+                active["info"] = bridge.vessel_info()
+            except Exception:
+                pass
+            try:
+                active["resources"] = bridge.resources()
+            except Exception:
+                pass
+            if active:
+                info["active_vessel"] = active
     return info
 
 
@@ -178,13 +195,15 @@ def build_planning_context_static(command: str) -> dict[str, Any]:
     }
 
 
-def build_planning_context(conn: Any, sc: Any, command: str) -> dict[str, Any]:
+def build_planning_context(conn: Any, sc: Any, command: str, bridge: Any = None) -> dict[str, Any]:
     """LIVE planning context: the static briefing PLUS the current universe time and every existing
     vessel's body/orbit. ``conn`` is the kRPC connection (kept for future live calc), ``sc`` the
-    space-center handle. Degrades to the static context if the live reads fail."""
+    space-center handle, and ``bridge`` (optional) the live HTTP bridge — when present, the ACTIVE
+    vessel's real mass/Δv/resources are read back (vessel_info + resources) so the planner reasons over
+    the game's own numbers. Degrades to the static context if the live reads fail."""
     ctx = build_planning_context_static(command)
     try:
-        ctx["live"] = _live_universe(sc)
+        ctx["live"] = _live_universe(sc, bridge)
     except Exception:
         ctx["live"] = {}
     return ctx

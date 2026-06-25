@@ -1,5 +1,13 @@
 """GILLY FLAG-PLANT MISSION — land a crew on Gilly so a HUMAN can plant a flag, then bring them home.
 
+================================ DEPRECATED ENTRY POINT ================================
+REDUNDANT as an orchestration entry point — ASTRA decomposition is the general path; this file is
+retained only for the helper functions the `launch`/`transfer`/`land`/`recover` primitives wrap (here:
+`_descend_to_gilly_surface`, wrapped by the `land` primitive). The module-level `main()` is kept ONLY
+as a manual fallback and is itself DEPRECATED — prefer `tools/astra.py "<command>"`. Do not add new
+orchestration here.
+========================================================================================
+
 NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
 is ASTRA's task DECOMPOSITION — `PYTHONPATH=src python tools/astra.py "send a kerbal to Eve, plant a
 flag on Gilly, bring them home"` decomposes into launch -> transfer -> land -> plant_flag -> ascend ->

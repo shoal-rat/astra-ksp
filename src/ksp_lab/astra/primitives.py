@@ -129,12 +129,51 @@ def select_vessel(ctx: PrimitiveContext, name: str) -> PrimitiveResult:
                  {"vessel": ctx.vessel_name, "body": ctx.current_body})
 
 
+def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshield: bool,
+                         landing, radial_boosters: int, max_core_engines: int):
+    """Build the SAME ShipRequirements deploy_relay.launch_to_lko sizes internally, so the design-chart
+    gate (design_and_verify) reasons over the craft that will ACTUALLY be flown. Mirrors the req in
+    deploy_relay.launch_to_lko (insertion Δv calculated for the target orbit, asparagus boosters,
+    crewed-vs-relay command/recovery) — kept in step with that proven path."""
+    import math
+
+    from ..bodies import KERBIN
+    from ..design import Phase, ShipRequirements, default_reserve_frac
+
+    # Insertion Δv = Hohmann raise from the ~100 km parking orbit to the target + circularise + trim margin
+    # (identical to launch_to_lko's calculation). A bare launch's target altitude needs little; a heavy
+    # interplanetary upper is sized by the transfer() step, not here.
+    r_park = KERBIN.radius_m + 100_000.0
+    r_target = KERBIN.radius_m + max(0.0, float(target_alt_km)) * 1000.0
+    a_tr = (r_park + r_target) / 2.0
+    dv_raise = abs(math.sqrt(KERBIN.mu * (2.0 / r_park - 1.0 / a_tr)) - math.sqrt(KERBIN.mu / r_park))
+    dv_circ = abs(math.sqrt(KERBIN.mu / r_target) - math.sqrt(KERBIN.mu * (2.0 / r_target - 1.0 / a_tr)))
+    insertion_dv = 250.0 + dv_raise + dv_circ
+    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
+    return ShipRequirements(
+        name=name, mission_type=_mission_type, crew=int(crew), payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,
+                      reserve_frac=default_reserve_frac(9.81)),
+                Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
+                      reserve_frac=default_reserve_frac(0.0))],
+        landing=landing, needs_legs=False, needs_heatshield=bool(heatshield), needs_docking=False,
+        max_engine_count=int(max_core_engines),
+        radial_booster_count=int(radial_boosters),
+    )
+
+
 def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0, payload_t: float = 0.3,
            docking: bool = False, heatshield: bool = False, chutes: bool = False,
            radial_boosters: int = 0, max_core_engines: int = 1, name: str = "AI-Craft") -> PrimitiveResult:
     """Design + launch a craft to orbit the LAUNCH body (the body KSC sits on — Kerbin in stock).
-    Wraps deploy_relay.launch_to_lko (which already takes crew / needs_heatshield / landing / radial_booster
-    count) preceded by its calculated design + rocket-shape gate."""
+
+    The design step is HARD-GATED on the three-view PNG: it calls design_chart.design_and_verify, which
+    sizes the rocket, renders the orthographic side/front/top chart, RASTERIZES it to a real PNG (the
+    inspectable proof), and runs the looks_like_a_rocket geometry gate. If that gate fails (or the craft
+    is not a rocket), the primitive logs ``design_rejected`` + ``RESULT: FAIL`` and REFUSES to fly — the
+    user's hard constraint that a craft is never launched without a PNG-verified rocket shape. Only on a
+    passing gate does it call deploy_relay.launch_to_lko (the proven ascent)."""
     if ctx.dry_run:
         return _emit("launch", True, "launch_planned",
                      f"(dry-run) design+launch {name!r} to {target_alt_km:.0f} km, crew={crew}, "
@@ -150,6 +189,28 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
                                   target_touchdown_mps=6.0)
         except Exception:
             landing = None
+
+    # ---- WIRING 1: three-view PNG design constraint. Build the SAME req launch_to_lko sizes, run it
+    # through design_chart.design_and_verify (size -> render SVG -> rasterize PNG -> geometry gate), and
+    # REFUSE to fly unless the rocket-shape gate passed AND the PNG actually rendered (ok=True).
+    try:
+        import design_chart
+        req = _launch_requirements(name, target_alt_km=target_alt_km, crew=crew, heatshield=heatshield,
+                                   landing=landing, radial_boosters=radial_boosters,
+                                   max_core_engines=max_core_engines)
+        out_dir = Path("docs")
+        _design, png_path, design_ok, report = design_chart.design_and_verify(req, out_dir=out_dir)
+    except Exception as exc:
+        return _emit("launch", False, "design_error", f"{name}: design/verify raised {exc}")
+    if not design_ok:
+        failing = report.get("failing_checks") or []
+        png_note = "no PNG rendered" if not report.get("png_rendered") else f"PNG {png_path}"
+        return _emit("launch", False, "design_rejected",
+                     f"{name}: three-view gate FAILED ({png_note}); failing checks: {failing}",
+                     {"png_path": png_path, "failing_checks": failing,
+                      "svg_path": report.get("svg_path")})
+    _log(f"  design gate PASSED for {name}; three-view PNG: {png_path}")
+
     # insertion_dv_override stays 0 here (a plain orbit). transfer() sizes the upper for an interplanetary
     # budget when it is the next step; for a bare launch the calculated raise+circularize budget suffices.
     try:
@@ -164,8 +225,9 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
         return _emit("launch", False, "launch_failed", f"{name}: ascent did not reach a stable orbit")
     ctx.refresh_vessel()
     ctx.vessel_name = name
-    detail = f"{name} in orbit of {ctx.current_body}"
-    return _emit("launch", True, "launch_to_orbit", detail, {"vessel": name, "body": ctx.current_body})
+    detail = f"{name} in orbit of {ctx.current_body} (design PNG: {png_path})"
+    return _emit("launch", True, "launch_to_orbit", detail,
+                 {"vessel": name, "body": ctx.current_body, "design_png": png_path})
 
 
 def transfer(ctx: PrimitiveContext, *, target_body: str, capture_alt_km: float | None = None,
@@ -308,8 +370,12 @@ def ascend(ctx: PrimitiveContext, *, target_alt_km: float = 30.0) -> PrimitiveRe
 
 
 def plant_flag(ctx: PrimitiveContext) -> PrimitiveResult:
-    """EVA a kerbal, plant the stock flag, board back. Wraps bridge.eva_flag then bridge.eva_board, and
-    verifies the crew is back aboard. The current vessel must be LANDED/SPLASHED with crew."""
+    """EVA a kerbal, plant the stock flag, board back. Wraps bridge.eva_flag then bridge.eva_board.
+
+    Uses the precise EVA/personnel layer (bridge.eva_status) to VERIFY the vessel is actually on the
+    surface (landed/splashed) before planting — a flag plant fails in flight/orbit and would strand the
+    kerbal — and to CONFIRM the kerbal re-boarded afterward (no kerbal left on EVA). The current vessel
+    must be LANDED/SPLASHED with crew."""
     if ctx.dry_run:
         return _emit("plant_flag", True, "flag_planned", "(dry-run) EVA + plant flag + board back")
     v = ctx.refresh_vessel()
@@ -322,6 +388,14 @@ def plant_flag(ctx: PrimitiveContext) -> PrimitiveResult:
         _log(f"  eva_flag: {rr.get('flagMethod', rr)}")
     except Exception as exc:
         return _emit("plant_flag", False, "flag_error", f"eva_flag failed: {exc}")
+    # Precise-layer check: the kerbal is now on EVA — confirm we are on the surface (a flag is only valid
+    # landed/splashed). Best-effort: a read failure must not abort an otherwise-good plant.
+    try:
+        st = ctx.bridge.eva_status()
+        if st.get("onEva") and not (st.get("landed") or st.get("splashed")):
+            _log("  WARNING eva_status: kerbal not landed/splashed during flag plant")
+    except Exception as exc:
+        _log(f"  eva_status read skipped: {exc}")
     time.sleep(3)
     try:
         rb = ctx.bridge.eva_board()
@@ -329,14 +403,48 @@ def plant_flag(ctx: PrimitiveContext) -> PrimitiveResult:
     except Exception as exc:
         return _emit("plant_flag", False, "flag_board_error", f"eva_board failed (kerbal stranded on EVA): {exc}")
     time.sleep(3)
+    # Precise-layer confirmation: nobody is still on EVA (the kerbal climbed back aboard).
+    still_on_eva = False
+    try:
+        st2 = ctx.bridge.eva_status()
+        still_on_eva = bool(st2.get("onEva"))
+    except Exception:
+        still_on_eva = False
     ctx.refresh_vessel()
     try:
         after = int(ctx.vessel.crew_count)
     except Exception:
         after = before
-    ok = after >= 1 and (before < 0 or after >= before)
-    return _emit("plant_flag", ok, "flag_planted" if ok else "flag_crew_not_aboard",
-                 f"crew aboard after board: {after}")
+    ok = after >= 1 and (before < 0 or after >= before) and not still_on_eva
+    marker = "flag_planted" if ok else ("flag_crew_on_eva" if still_on_eva else "flag_crew_not_aboard")
+    return _emit("plant_flag", ok, marker,
+                 f"crew aboard after board: {after}{' (kerbal STILL on EVA)' if still_on_eva else ''}")
+
+
+def walk_to(ctx: PrimitiveContext, *, lat: float, lon: float) -> PrimitiveResult:
+    """Walk the active EVA kerbal to an absolute surface lat/lon on the CURRENT body. Wraps the precise
+    EVA layer (eva_control.walk_kerbal_to), which delegates the move to the bridge's /eva-walk-to
+    (KerbalEVA.SetWaypoint) and computes the great-circle distance + bearing from the live body radius —
+    exact spherical trig, never a guessed heading. The kerbal must already be on EVA (e.g. after a
+    plant_flag EVA, or call the bridge's eva_go first)."""
+    if ctx.dry_run:
+        return _emit("walk_to", True, "walk_planned",
+                     f"(dry-run) walk EVA kerbal to ({lat:.4f}, {lon:.4f}) on current body")
+    from ksp_lab import eva_control
+    try:
+        body_radius_m = float(lookup_body(ctx.current_body).radius_m)
+    except Exception:
+        body_radius_m = None  # type: ignore[assignment]
+    try:
+        res = eva_control.walk_kerbal_to(ctx.bridge, float(lat), float(lon), body_radius_m)
+    except Exception as exc:
+        return _emit("walk_to", False, "walk_error", f"eva_walk_to failed: {exc}")
+    planned = res.get("plannedGeodesic") if isinstance(res, dict) else None
+    detail = f"walked to ({lat:.4f}, {lon:.4f})"
+    if planned:
+        detail += f" (planned {planned.get('distanceM', 0):.0f} m @ {planned.get('bearingDeg', 0):.0f} deg)"
+    return _emit("walk_to", True, "walked_to", detail,
+                 {"lat": lat, "lon": lon, "planned": planned})
 
 
 def rendezvous(ctx: PrimitiveContext, *, target_name: str) -> PrimitiveResult:
@@ -516,9 +624,18 @@ _register(PrimitiveSpec(
 ))
 _register(PrimitiveSpec(
     "plant_flag", plant_flag,
-    "EVA a kerbal from a landed vessel, plant the stock flag, and board them back (verifies crew aboard).",
+    "EVA a kerbal from a landed vessel, plant the stock flag, and board them back (verifies the vessel is "
+    "landed/splashed before planting and that the kerbal re-boarded, via the precise eva_status layer).",
     {},
-    "bridge.eva_flag + bridge.eva_board",
+    "bridge.eva_flag + bridge.eva_board + bridge.eva_status",
+))
+_register(PrimitiveSpec(
+    "walk_to", walk_to,
+    "Walk the active EVA kerbal to an absolute surface lat/lon on the CURRENT body (precise great-circle "
+    "move via the stock waypoint engine). The kerbal must already be on EVA.",
+    {"lat": {"type": "float", "desc": "destination latitude (deg)"},
+     "lon": {"type": "float", "desc": "destination longitude (deg)"}},
+    "eva_control.walk_kerbal_to (bridge.eva_walk_to + bridge.eva_status)",
 ))
 _register(PrimitiveSpec(
     "rendezvous", rendezvous,

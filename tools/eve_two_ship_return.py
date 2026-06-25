@@ -1,5 +1,14 @@
 """TWO-SHIP EVE CREW RETURN — bring a kerbal home from Eve by ORBITAL DOCKING, never refuelling in flight.
 
+================================ DEPRECATED ENTRY POINT ================================
+REDUNDANT as an orchestration entry point — ASTRA decomposition is the general path; this file is
+retained only for the helper functions the `launch`/`transfer`/`land`/`recover` primitives wrap (here
+the launch / transfer / rendezvous / dock / transfer_crew / recover flight helpers, e.g.
+`launch_and_transfer_to_eve`, `rendezvous_and_dock`, `transfer_kerbal_to_tug`, `fly_tug_home`). The
+module-level `main()` is kept ONLY as a manual fallback and is itself DEPRECATED — prefer
+`tools/astra.py "<command>"`. Do not add new orchestration here.
+========================================================================================
+
 NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
 is ASTRA's task DECOMPOSITION into atomic primitives (src/ksp_lab/astra/primitives.py: launch / transfer
 / rendezvous / dock / transfer_crew / recover) which WRAP the proven flight functions this file calls.

@@ -2,6 +2,14 @@
 a bound Eve orbit, WAITS for the return window, EJECTS back toward Kerbin, AEROBRAKES into Kerbin's
 atmosphere, descends on parachutes, and is RECOVERED alive.
 
+================================ DEPRECATED ENTRY POINT ================================
+REDUNDANT as an orchestration entry point — ASTRA decomposition is the general path; this file is
+retained only for the helper functions the `launch`/`transfer`/`land`/`recover` primitives wrap (here:
+`capture_at_eve_loose`, wrapped by the `transfer` primitive's loose mode, and `descend_and_recover`,
+wrapped by the `recover` primitive). The module-level `main()` is kept ONLY as a manual fallback and is
+itself DEPRECATED — prefer `tools/astra.py "<command>"`. Do not add new orchestration here.
+========================================================================================
+
 NOTE (ASTRA redesign): this monolithic mission script is now REDUNDANT orchestration. The general path
 is ASTRA's task DECOMPOSITION into atomic primitives (src/ksp_lab/astra/primitives.py). This file's
 proven flight functions are WRAPPED by primitives — capture_at_eve_loose by the `transfer` primitive's
