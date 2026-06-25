@@ -781,6 +781,120 @@ def transfer_to_duna(conn, sc, bridge, v, name: str, target_alt_km: float) -> bo
     return v.orbit.body.name == "Duna" and v.orbit.periapsis_altitude > 55_000.0
 
 
+# --------------------------------------------------------------------------------------------------
+# BODY-AGNOSTIC interplanetary transfer + capture + circularize to a target altitude. Works for ANY
+# Sun-orbiting target (Duna, Eve, ...) using the VALIDATED precise Lambert ejection + the RELIABLE
+# next_orbit.periapsis correction metric (kRPC distance_at_closest_approach is a misleading single-conic
+# estimate — see the math audit). Aims the encounter periapsis at the synchronous radius so a single
+# retrograde burn circularizes the relay there.
+# --------------------------------------------------------------------------------------------------
+def _encounter_periapsis(node, target_name: str):
+    """Periapsis ALTITUDE of the resulting target-SOI orbit (follow the patched-conic next_orbit chain),
+    or None if this node yields no encounter. The reliable metric, not distance_at_closest_approach."""
+    try:
+        o = node.orbit
+        for _ in range(4):
+            nxt = o.next_orbit
+            if nxt is None:
+                return None
+            if nxt.body.name == target_name:
+                return nxt.periapsis_altitude
+            o = nxt
+    except Exception:
+        return None
+    return None
+
+
+def _search_correction(sc, v, target_name: str, ut: float, want_pe_m: float,
+                       pg_w: float, pg_s: float, nrm_w: float, nrm_s: float):
+    """Grid-search a small (prograde, normal) correction at ``ut`` whose target-SOI encounter periapsis
+    is CLOSEST to ``want_pe_m`` (the synchronous altitude). Body-agnostic. Returns best node dict / None."""
+    best = None
+    for pg in _frange(-pg_w, pg_w, pg_s):
+        for nrm in _frange(-nrm_w, nrm_w, nrm_s):
+            v.control.remove_nodes()
+            node = v.control.add_node(ut, prograde=pg, normal=nrm, radial=0.0)
+            pe = _encounter_periapsis(node, target_name)
+            v.control.remove_nodes()
+            if pe is None:
+                continue
+            score = abs(pe - want_pe_m)
+            if best is None or score < best["score"]:
+                best = {"ut": ut, "prograde": pg, "normal": nrm, "radial": 0.0, "pe": pe, "score": score}
+    return best
+
+
+def _circularize_here(conn, sc, v, log):
+    """At the current point (intended: the target periapsis = synchronous radius), burn to circularize:
+    node prograde = v_circ - v_now (retrograde capture). Returns the achieved eccentricity."""
+    o = v.orbit
+    mu = o.body.gravitational_parameter
+    r = o.radius
+    v_circ = math.sqrt(mu / r)
+    dv = v_circ - o.speed                              # negative => retrograde capture burn
+    v.control.remove_nodes()
+    v.control.add_node(sc.ut + 1.0, prograde=dv, normal=0.0, radial=0.0)
+    _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
+    return v.orbit.eccentricity
+
+
+def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float) -> bool:
+    """Eject (precise Lambert) -> correct to a synchronous-altitude encounter -> coast to SOI -> capture
+    + circularize at the synchronous radius. Body-agnostic; the relay ends in a near-circular orbit at
+    ``target_alt_km`` around ``target_name``."""
+    from ksp_lab import transfer_planner as _tp
+    target = sc.bodies[target_name]
+    R_t = target.equatorial_radius
+    want_pe = target_alt_km * 1000.0
+    # 1) PRECISE ejection (validated body-agnostic Lambert; node placed at the parking-orbit periapsis).
+    plan = _tp.plan_transfer(sc, v, v.orbit.body.name, target_name)
+    nd, win = plan["ejection"], plan["window"]
+    v.control.remove_nodes()
+    v.control.add_node(nd["ut"], prograde=nd["prograde"], normal=nd["normal"], radial=nd["radial"])
+    log(f"  EJECT -> {target_name}: {nd['dv']:.0f} m/s at UT {round(nd['ut'])} "
+        f"(Lambert |vinf| {win['vinf_mag']:.0f} m/s, tof {win['tof']/(426*21600):.2f} yr)")
+    _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
+    if not _wait_until_sun_orbit(sc, v):
+        log(f"  did not escape Kerbin SOI after the ejection (still {v.orbit.body.name})"); return False
+    # 2) Mid-course correction: aim the encounter periapsis at the synchronous radius.
+    for attempt in range(1, 4):
+        mid_ut = sc.ut + max(6 * 3600.0, 0.06 * win["tof"])
+        best = _search_correction(sc, v, target_name, mid_ut, want_pe, 300.0, 30.0, 150.0, 30.0)
+        if best is None:
+            best = _search_correction(sc, v, target_name, mid_ut, want_pe, 900.0, 45.0, 500.0, 50.0)
+        if best is None:
+            log(f"  correction {attempt}/3: no {target_name} encounter in grid; coasting a bit and retrying ...")
+            sc.warp_to(sc.ut + 5.0 * 6 * 3600.0); continue
+        v.control.remove_nodes()
+        v.control.add_node(best["ut"], prograde=best["prograde"], normal=best["normal"], radial=best["radial"])
+        log(f"  CORRECTION {attempt}: aim encounter pe {best['pe']/1000:.0f} km (want {target_alt_km:.0f}) "
+            f"-> pg {best['prograde']:.0f} nrm {best['normal']:.0f}")
+        _execute_node_manually(conn, sc, v, max_burn_s=150.0, max_throttle=0.7)
+        if 0 < (v.orbit.time_to_soi_change or 0) < 1e9:
+            break
+    # 3) Coast to the target SOI.
+    for _ in range(3):
+        if v.orbit.body.name == target_name:
+            break
+        soi_dt = v.orbit.time_to_soi_change
+        if soi_dt and 0 < soi_dt < 1e9:
+            log(f"  coasting {soi_dt/(6*3600):.0f} Kerbin-days to the {target_name} SOI ...")
+            sc.warp_to(sc.ut + soi_dt + 30.0); time.sleep(3)
+        else:
+            break
+    if v.orbit.body.name != target_name:
+        log(f"  ABORT: never entered the {target_name} SOI (still {v.orbit.body.name})"); return False
+    # 4) Warp to periapsis (intended = synchronous radius) and circularize.
+    ttp = v.orbit.time_to_periapsis
+    if ttp and 0 < ttp < 1e7:
+        log(f"  in {target_name} SOI; pe {v.orbit.periapsis_altitude/1000:.0f} km; warping {ttp/(6*3600):.0f} d to periapsis ...")
+        sc.warp_to(sc.ut + ttp - 30.0); time.sleep(2)
+    ecc = _circularize_here(conn, sc, v, log)
+    alt = (v.orbit.apoapsis_altitude + v.orbit.periapsis_altitude) / 2000.0
+    log(f"  CAPTURED at {target_name}: ~{alt:.0f} km circular (e={ecc:.3f}), target {target_alt_km:.0f} km")
+    return v.orbit.body.name == target_name and ecc < 0.2
+
+
 def main() -> int:
     global cfg
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
@@ -840,8 +954,16 @@ def main() -> int:
     # with no middle, and a 2x upper (720 LF) needs a 2-Mainsail booster to lift it at TWR>=1.3 (verified feasible
     # + passes the rocket-shape gate). 720 LF is ample margin (overkill is unavoidable at this quantum, but it
     # captures cleanly). Mun is close enough to keep the proven 1-engine default upper.
-    insertion_override = 4400.0 if target_body == "Duna" else 0.0
-    booster_engines = 2 if target_body == "Duna" else 1
+    # Per-target upper-stage budget (the ground pre-warp removes the in-flight raise/lower, so the upper
+    # only needs LKO-circ + ejection + correction + capture). Eve: 562 + 1025 + 80 + 621 ≈ 2290 (calc'd
+    # by tools eve-plan; +margin). Any other interplanetary target falls back to a generous default.
+    insertion_override = {"Duna": 4400.0, "Eve": 2400.0}.get(target_body, 0.0)
+    if insertion_override == 0.0 and target_body not in ("Mun",):
+        try:
+            insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
+        except Exception:
+            pass
+    booster_engines = 2 if target_body in ("Duna", "Eve") else 1
     if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0,
                                       insertion_dv_override=insertion_override, booster_max_engines=booster_engines):
         log("launch to parking orbit FAILED"); return 2
@@ -857,8 +979,12 @@ def main() -> int:
     elif target_body == "Duna":
         if not transfer_to_duna(c, sc, bridge, v, name, target_alt_km):
             log("Duna transfer/capture FAILED"); return 2
+    elif sc.bodies[target_body].orbit.body.name == "Sun":
+        # Any interplanetary target (Eve, ...) via the BODY-AGNOSTIC precise transfer + capture.
+        if not transfer_to_body(c, sc, bridge, v, target_body, target_alt_km):
+            log(f"{target_body} transfer/capture FAILED"); return 2
     else:
-        log(f"target {target_body} not yet wired (Ike to follow on this skeleton)"); return 2
+        log(f"target {target_body} not yet wired (a moon other than Mun)"); return 2
 
     # 3) Circularise in the target SOI, then commission.
     log(f"  captured {round(v.orbit.periapsis_altitude/1000)}x{round(v.orbit.apoapsis_altitude/1000)} km "
