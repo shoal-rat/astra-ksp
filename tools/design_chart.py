@@ -432,6 +432,65 @@ def render_svg(design, part_bodies: dict | None = None) -> str:
 </svg>'''
 
 
+def design_and_verify(req, *, out_dir, part_bodies: dict | None = None,
+                      use_full_catalog: bool = False) -> tuple:
+    """THE single entry point a caller MUST use so a design is never flown without a PNG-verified rocket
+    shape. Enforces the three-view-PNG appearance constraint end to end:
+
+        1. run ``design_ship(req)`` to build the calculated RocketDesign;
+        2. render its THREE-VIEW orthographic SVG (side / front / top) from the same CraftWriter node
+           assembly that writes the .craft file;
+        3. RASTERIZE that SVG to a real PNG via ``tools/render_chart_png.render`` (headless Chrome/Edge),
+           so the shape is proven as an image, not just trusted from the XML coordinates;
+        4. run the ``looks_like_a_rocket`` geometry GATE and return whether it passed.
+
+    The render is the PROOF (an inspectable picture); the gate is the PASS/FAIL. Returns
+    ``(design, png_path, ok, report)`` where:
+        * ``design``   – the RocketDesign that was sized,
+        * ``png_path`` – absolute path to the rasterized three-view PNG (or None if no browser is present),
+        * ``ok``       – True only if the geometry gate passed AND the PNG actually rendered,
+        * ``report``   – the ``looks_like_a_rocket`` dict, augmented with ``svg_path``, ``png_path``,
+                         ``png_rendered`` and ``failing_checks`` (the list of gate checks that FAILED).
+
+    If the PNG renderer is unavailable (no Chrome/Edge), the SVG + gate result are still returned and
+    ``png_rendered`` is False (so a caller can see the gate verdict but knows the image proof is missing)."""
+    from ksp_lab.design import design_ship
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    design = design_ship(req, use_full_catalog=use_full_catalog) if use_full_catalog else design_ship(req)
+    report = looks_like_a_rocket(design, part_bodies)
+    svg = render_svg(design, part_bodies)
+    safe_name = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in str(design.name)) or "design"
+    svg_path = out_dir / f"design_chart_{safe_name}.svg"
+    svg_path.write_text(svg, encoding="utf-8")
+
+    png_path = None
+    png_rendered = False
+    try:
+        # Import the rasterizer lazily so the module still loads where no browser/renderer exists.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import render_chart_png  # tools/render_chart_png.py
+        png_path = render_chart_png.render(str(svg_path))
+        png_rendered = bool(png_path) and Path(png_path).exists() and Path(png_path).stat().st_size > 0
+    except Exception as exc:  # no Chrome/Edge, render timeout, etc. — keep the SVG + gate result.
+        report = dict(report)
+        report["png_error"] = f"{type(exc).__name__}: {exc}"
+
+    failing = [label for label, passed in report.get("checks", {}).items() if not passed]
+    gate_ok = bool(report.get("looks_like_a_rocket", False))
+    report = dict(report)
+    report["svg_path"] = str(svg_path)
+    report["png_path"] = str(png_path) if png_path else None
+    report["png_rendered"] = png_rendered
+    report["failing_checks"] = failing
+    # A design is only verified-ok when the geometry gate passes AND the appearance was actually
+    # rasterized to a PNG (the proof). A passing gate with no PNG is reported but NOT ok=True.
+    ok = gate_ok and png_rendered
+    return design, (str(png_path) if png_path else None), ok, report
+
+
 def verify_against_live(conn, design, part_bodies: dict | None = None) -> dict:
     """Compare calculated geometry/mass with the assembled live vessel from kRPC.
 

@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 
 from . import astro
 from .models import RadialBoosterSpec, RocketDesign, StageSpec
+from .parts import engines as catalog_engines
 from .parts import part, payload_bus_mass
+from .parts import tanks as catalog_tanks
 
 
 # --------------------------------------------------------------------------------------------------
@@ -102,29 +104,86 @@ class ShipRequirements:
 # --------------------------------------------------------------------------------------------------
 DIAMETERS = (1.25, 2.5, 3.75)                  # standard stack diameters, narrow -> wide
 
-# Candidate tanks per diameter (largest first). The sizer counts whole units of one chosen tank; the
-# smaller same-diameter tanks let a light stage trim down instead of wasting a huge tank.
-TANKS_BY_DIAMETER = {
+# --------------------------------------------------------------------------------------------------
+# FULL-CATALOG engine/tank pools. These were five hand-picked engines and three hand-listed tank
+# triples; they are now BUILT FROM THE WHOLE MATERIALIZED STOCK CATALOG (parts.engines / parts.tanks)
+# so the sizer chooses from every stock liquid engine and LFO tank, not a curated handful. Curated
+# part names are kept as anchors (so the validated Reliant/Swivel/Terrier/Skipper/Mainsail/Rhino are
+# always available even if a future catalog parse renamed their stock twins). We restrict to the three
+# standard stack diameters the geometry gate + craft_writer understand (0.625 m and 5 m parts exist in
+# the catalog but the renderer is not built for them), and to CHEMICAL rocket engines only — jets,
+# ion, and monoprop thrusters are tagged out by parts.engines() so they never size a chemical stage.
+# --------------------------------------------------------------------------------------------------
+_CURATED_BOOSTERS = ["liquidEngine", "liquidEngine2", "engineLargeSkipper",
+                     "liquidEngineMainsail.v2", "Size3AdvancedEngine"]
+_CURATED_VACUUM = ["liquidEngine3.v2", "engineLargeSkipper",
+                   "liquidEngineMainsail.v2", "Size3AdvancedEngine"]
+_CURATED_TANKS = {
     1.25: ["fuelTank.long", "fuelTank", "fuelTankSmall"],
     2.5: ["Rockomax32.BW", "Rockomax16.BW"],
     3.75: ["Size3LargeTank", "Size3MediumTank", "Size3SmallTank"],
 }
-# Role engine pools (small -> large). A stage that fires in the ATMOSPHERE (twr_body_g > 5 -> Kerbin/
-# Eve liftoff) draws the BOOSTER pool (sea-level thrust); a vacuum/upper/landing stage draws the
-# VACUUM pool (high Isp). The sizer only pairs an engine with a tank at least as wide as the engine.
-BOOSTER_ENGINES = ["liquidEngine", "liquidEngine2", "engineLargeSkipper",
-                   "liquidEngineMainsail.v2", "Size3AdvancedEngine"]  # Reliant/Swivel/Skipper/Mainsail/Rhino
-VACUUM_ENGINES = ["liquidEngine3.v2", "engineLargeSkipper",
-                  "liquidEngineMainsail.v2", "Size3AdvancedEngine"]   # Terrier then thrustier/wider
+
+
+def _dedupe(names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _build_tanks_by_diameter(full: bool) -> dict[float, list[str]]:
+    """The candidate LFO tanks per standard diameter, largest propellant first. ``full=False`` returns
+    just the curated, validated tanks (the tier the sizer tries first); ``full=True`` returns those PLUS
+    every other stock LFO cylinder tank in that diameter from the materialized catalog."""
+    out: dict[float, list[str]] = {}
+    for dia in DIAMETERS:
+        curated = list(_CURATED_TANKS.get(dia, []))
+        if not full:
+            out[dia] = _dedupe(curated)
+        else:
+            catalog = [p.name for p in catalog_tanks(diameter_m=dia, propellant="lfo")]
+            out[dia] = _dedupe(curated + catalog)
+    return out
+
+
+def _build_full_engine_pool(curated: list[str], atmospheric: bool) -> list[str]:
+    """The role engine pool drawing on the WHOLE catalog: curated anchors first, then every other stock
+    chemical rocket engine in the standard diameters, ranked (sea-level thrust for boosters, vacuum Isp
+    for upper stages)."""
+    names = list(curated)
+    for dia in DIAMETERS:
+        names += [p.name for p in catalog_engines(diameter_m=dia, atmospheric=atmospheric)]
+    return _dedupe(names)
+
+
+# TWO TIERS. The sizer searches the CURATED tier first; only if no curated engine closes the stage does
+# it expand to the FULL-catalog tier (every other stock liquid engine). This integrates the entire game
+# parts catalog as real, selectable extra capacity — a heavy stage that no curated engine can lift now
+# reaches for a Mammoth/Twin-Boar/Vector from the stock roster — while keeping the deterministic curated
+# choice for the everyday launchers (so the validated builds and their TWR/Δv envelopes stay stable).
+TANKS_BY_DIAMETER = _build_tanks_by_diameter(full=False)            # curated tier (validated cylinders)
+TANKS_BY_DIAMETER_FULL = _build_tanks_by_diameter(full=True)        # full catalog (every stock LFO tank)
+BOOSTER_ENGINES = list(_CURATED_BOOSTERS)            # curated tier (atmospheric / sea-level thrust)
+VACUUM_ENGINES = list(_CURATED_VACUUM)               # curated tier (vacuum / high Isp)
+BOOSTER_ENGINES_FULL = _build_full_engine_pool(_CURATED_BOOSTERS, atmospheric=True)   # full catalog
+VACUUM_ENGINES_FULL = _build_full_engine_pool(_CURATED_VACUUM, atmospheric=False)     # full catalog
 
 # A stage taller than this many calibers (stack height / diameter) is a "needle" — widen it. Real
 # stages run ~3-6 calibers. The whole-vehicle L/D is gated separately (design-chart geometry gate).
 PER_STAGE_FINENESS = 6.0
 
 
-def engine_pool(phase: "Phase") -> list[str]:
+def engine_pool(phase: "Phase", full: bool = False) -> list[str]:
     """The role-correct engine candidates: BOOSTER (sea-level thrust) for an in-atmosphere liftoff
-    stage, VACUUM (high Isp) for a stage that only fires in space."""
+    stage, VACUUM (high Isp) for a stage that only fires in space. ``full=True`` returns the WHOLE-
+    catalog tier (the curated anchors plus every other stock chemical engine); ``full=False`` (default)
+    returns just the curated tier the sizer tries first."""
+    if full:
+        return BOOSTER_ENGINES_FULL if phase.twr_body_g > 5.0 else VACUUM_ENGINES_FULL
     return BOOSTER_ENGINES if phase.twr_body_g > 5.0 else VACUUM_ENGINES
 
 
@@ -261,21 +320,18 @@ def _size_one(eng_name: str, tank_name: str, dv: float, mass_above_t: float, pha
     }
 
 
-def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8,
-                dia_floor: float = 0.0) -> tuple[StageSpec, dict]:
-    """Pick the stage. Search every (tank, engine) pairing at each standard diameter >= the floor (the
-    widest stage above, so taper stays monotonic), each with a closed-form tank count + cluster-fit,
-    and choose the NARROWEST diameter whose lightest feasible build is NOT a needle
-    (fineness <= PER_STAGE_FINENESS). The fineness budget kills the 1.25 m noodle; cluster-fit kills
-    the engine overhang; the floor guarantees the base is the widest."""
-    floor = max(dia_floor, phase.min_diameter_m)
-    diam_list = [d for d in DIAMETERS if d >= floor - 1e-6] or [DIAMETERS[-1]]
+def _search_pool(eng_names: list[str], tank_map: dict[float, list[str]], diam_list: list[float],
+                 dv: float, mass_above_t: float, phase: Phase,
+                 max_engine_count: int) -> tuple[dict | None, dict[float, dict], list[dict]]:
+    """Search one (engine pool, tank map) tier across the candidate diameters. Returns (chosen-or-None,
+    per-diameter best feasible build, all candidates). ``chosen`` is the narrowest-diameter non-needle
+    feasible build, or None when no feasible non-needle build exists in this tier."""
     per_dia: dict[float, dict] = {}
     any_cand: list[dict] = []
     for dia in diam_list:
         cands = []
-        for tank_name in TANKS_BY_DIAMETER[dia]:
-            for eng_name in engine_pool(phase):
+        for tank_name in tank_map[dia]:
+            for eng_name in eng_names:
                 if part(eng_name).diameter_m > dia + 1e-6:
                     continue                       # engine wider than this tank
                 m = _size_one(eng_name, tank_name, dv, mass_above_t, phase, max_engine_count)
@@ -291,6 +347,42 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
         if m and m["fineness"] <= PER_STAGE_FINENESS:
             chosen = m
             break
+    return chosen, per_dia, any_cand
+
+
+def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8,
+                dia_floor: float = 0.0, use_full_catalog: bool = False) -> tuple[StageSpec, dict]:
+    """Pick the stage. Search every (tank, engine) pairing at each standard diameter >= the floor (the
+    widest stage above, so taper stays monotonic), each with a closed-form tank count + cluster-fit,
+    and choose the NARROWEST diameter whose lightest feasible build is NOT a needle
+    (fineness <= PER_STAGE_FINENESS). The fineness budget kills the 1.25 m noodle; cluster-fit kills
+    the engine overhang; the floor guarantees the base is the widest.
+
+    The CURATED tier (the hand-validated engines + tanks) is always searched first so the deterministic,
+    validated build is chosen for the everyday launchers. When ``use_full_catalog`` is set AND the
+    curated tier cannot close a non-needle feasible stage, the search EXPANDS to the FULL materialized
+    stock catalog (every other liquid engine AND every other LFO tank — Mammoth, Twin-Boar, Vector, the
+    Jumbo-64, ...), so a stage no curated part can build reaches into the whole game roster. Off by
+    default, the sizer's choices are byte-identical to the curated-only behaviour (an infeasible curated
+    stage stays infeasible so the feasibility gate / radial-booster rescue still trigger)."""
+    floor = max(dia_floor, phase.min_diameter_m)
+    diam_list = [d for d in DIAMETERS if d >= floor - 1e-6] or [DIAMETERS[-1]]
+
+    chosen, per_dia, any_cand = _search_pool(engine_pool(phase, full=False), TANKS_BY_DIAMETER,
+                                             diam_list, dv, mass_above_t, phase, max_engine_count)
+    if chosen is None and use_full_catalog:
+        # Curated tier could not close a non-needle feasible stage — expand to the full stock catalog
+        # (every other stock liquid engine AND every other stock LFO tank in the standard diameters).
+        full_chosen, full_per_dia, full_any = _search_pool(
+            engine_pool(phase, full=True), TANKS_BY_DIAMETER_FULL, diam_list, dv,
+            mass_above_t, phase, max_engine_count)
+        any_cand = any_cand + full_any
+        # Prefer the full-catalog feasible build; merge per-diameter bests (full tier fills any gaps).
+        for dia, m in full_per_dia.items():
+            if dia not in per_dia or m["wet_t"] < per_dia[dia]["wet_t"]:
+                per_dia[dia] = m
+        chosen = full_chosen
+
     if chosen is None and per_dia:                 # all feasible builds are needles -> widest (least slender)
         chosen = per_dia[max(per_dia)]
     if chosen is None:                             # nothing feasible at any diameter -> least-bad (gate fails it)
@@ -330,7 +422,8 @@ BOOSTER_DV_SHARE = 0.45            # fraction of the launch-phase Δv the strap-
 
 def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float, count: int,
                           max_engine_count: int = 8, dv_share: float = BOOSTER_DV_SHARE,
-                          target_twr: float = 0.0) -> tuple[RadialBoosterSpec | None, dict]:
+                          target_twr: float = 0.0, use_full_catalog: bool = False
+                          ) -> tuple[RadialBoosterSpec | None, dict]:
     """Size `count` symmetric strap-on pods so (core + boosters) liftoff TWR >= the floor AND the pods
     carry ~`dv_share` of the launch-phase Δv. All counts from the rocket equation + TWR; see the block
     comment above for the model. `core_metrics` is the launch stage's own `_size_one` dict."""
@@ -344,35 +437,24 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
     twr_floor = target_twr or phase.min_twr or 1.4
     dv_target = phase.design_dv() * max(0.0, dv_share)
     dec = part("radialDecoupler2")
-    # Try each sea-level engine (light -> heavy); for each, pair it with the widest tank no wider than the
-    # engine's own diameter (a booster pod is a clean single stack), solve the tank count for dv_target,
-    # then check the combined liftoff TWR. Keep the lightest feasible build.
-    best: dict | None = None
-    for eng_name in BOOSTER_ENGINES:
+    # Evaluate ONE booster engine: pair it with the widest tank no wider than the engine's own diameter
+    # (a booster pod is a clean single stack), solve the tank count for dv_target, check the combined
+    # liftoff TWR, and return a candidate dict (or None if it cannot lift the stack even strapped on).
+    def _eval_pod_engine(eng_name: str) -> dict | None:
         eng = part(eng_name)
         thrust_one = (eng.thrust_kn_asl if eng.thrust_kn_asl > 0 else eng.thrust_kn_vac) * 1000.0
         if thrust_one <= 0:
-            continue
-        # Pod tank: largest stock tank at the engine's own diameter (the pod is as wide as its engine).
+            return None
         tank_name = _unit_tank_for_engine(eng_name)
         tank = part(tank_name)
-        # Pod dead mass (engine + decoupler) flies with the pod; the pod's tanks are its propellant store.
         # Solve the whole-tank count so N pods deliver dv_target at liftoff against the FULL wet stack
-        # (mass_above + core + all N pods). This is a conservative parallel-burn estimate.
-        # Iterate: tank count depends on total pod mass which depends on tank count -> fixed point.
+        # (mass_above + core + all N pods) — a conservative parallel-burn estimate. Fixed-point iterate.
         tanks = 1
         for _ in range(12):
-            pod_dry = eng.dry_mass_t * 1 + tank.dry_mass_t * tanks + dec.dry_mass_t
-            pod_wet = eng.wet_mass_t * 1 + tank.wet_mass_t * tanks + dec.wet_mass_t
-            m0 = mass_above_t + core_wet + count * pod_wet
-            # Δv from burning ONLY the boosters' propellant (core+upper ride as dead mass for this bound):
-            m1 = m0 - count * (pod_wet - pod_dry)
-            ve = eng.isp_asl_s * astro.G0 if eng.isp_asl_s > 0 else eng.isp_vac_s * astro.G0
-            R = math.exp(dv_target / ve) if ve > 0 else 1e9
-            # closed-form whole-tank count so the N-pod propellant reaches dv_target: solve m0/m1 = R.
-            # m0 = A + count*tank_wet*T, m1 = A + count*tank_dry*T  (A = mass_above+core+count*(eng+dec) wet/dry)
             A0 = mass_above_t + core_wet + count * (eng.wet_mass_t + dec.wet_mass_t)
             A1 = mass_above_t + core_wet + count * (eng.dry_mass_t + dec.dry_mass_t)
+            ve = eng.isp_asl_s * astro.G0 if eng.isp_asl_s > 0 else eng.isp_vac_s * astro.G0
+            R = math.exp(dv_target / ve) if ve > 0 else 1e9
             denom = count * (tank.wet_mass_t - R * tank.dry_mass_t)
             need = math.ceil((R * A1 - A0) / denom) if denom > 0 else tanks
             need = max(1, min(40, need))
@@ -385,19 +467,30 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
         combined_thrust_n = core_thrust_n + count * thrust_one
         combined_twr = astro.twr(combined_thrust_n, m0, g)
         if combined_twr < twr_floor - 1e-6:
-            continue                                    # this engine can't lift the stack even strapped on
+            return None                                 # this engine can't lift the stack even strapped on
         # Δv the boosters actually deliver (rocket equation, booster propellant vs the full liftoff mass).
         m1 = m0 - count * (pod_wet - pod_dry)
         booster_dv = astro.rocket_dv(eng.isp_asl_s or eng.isp_vac_s, m0, m1)
-        cand = {
+        return {
             "engine": eng_name, "engine_count": 1, "tank": tank_name, "tanks": tanks,
             "count": count, "diameter_m": tank.diameter_m, "pod_wet_t": round(pod_wet, 2),
             "pod_dry_t": round(pod_dry, 2), "combined_twr": round(combined_twr, 2),
             "booster_dv": round(booster_dv, 0), "liftoff_mass_t": round(m0, 2),
             "total_wet_t": round(count * pod_wet, 2),
         }
-        if best is None or cand["total_wet_t"] < best["total_wet_t"]:
-            best = cand
+
+    # Try the curated booster engines first; only when ``use_full_catalog`` is set AND none of the
+    # curated engines closes the combined liftoff TWR does the search expand to the full stock pool
+    # (Mammoth/Twin-Boar/Vector/...). Keep the lightest feasible build.
+    tiers = [BOOSTER_ENGINES] + ([BOOSTER_ENGINES_FULL] if use_full_catalog else [])
+    best: dict | None = None
+    for tier in tiers:
+        for eng_name in tier:
+            cand = _eval_pod_engine(eng_name)
+            if cand is not None and (best is None or cand["total_wet_t"] < best["total_wet_t"]):
+                best = cand
+        if best is not None:
+            break                                       # the curated tier already produced a feasible pod
     if best is None:
         return None, {}
     spec = RadialBoosterSpec(count=count, engine=best["engine"], tank=best["tank"],
@@ -406,13 +499,19 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
     return spec, best
 
 
-def design_ship(req: ShipRequirements) -> RocketDesign:
+def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> RocketDesign:
     """Build a RocketDesign whose every part count is calculated from `req`.
 
     Process: enumerate the bus (command + crew + heat shield + CALCULATED chutes + docking) -> size each
     propulsive stage from the TOP (last-firing) down by inverting the rocket equation for its Δv while
     carrying the mass above it -> verify TWR per stage. Returns the design with an `estimates` block and
     a `design_log` in notes so every number is traceable.
+
+    ``use_full_catalog`` lets a stage the hand-validated (curated) parts cannot build reach into the FULL
+    materialized stock catalog — every stock liquid engine and LFO tank parsed from GameData — instead of
+    being flagged infeasible. Off by default so the validated everyday builds (and the feasibility gate /
+    radial-booster rescue behaviour) are unchanged; on, a single heavy core can pull a Mammoth/Twin-Boar/
+    Vector or a Jumbo-64 tank from the whole game roster.
     """
     bus = _bus_mass(req)
     # Chute count is sized for the landing mass = bus + the top (landing) stage dry + a fuel reserve.
@@ -445,7 +544,8 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
         # stage carries only its core share when boosters are present.
         is_launch = phase.name == launch_phase_name
         size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0)
-        spec, metrics = _size_stage(size_dv, mass_above, phase, req.max_engine_count, dia_floor)
+        spec, metrics = _size_stage(size_dv, mass_above, phase, req.max_engine_count, dia_floor,
+                                    use_full_catalog=use_full_catalog)
         dia_floor = max(dia_floor, spec.diameter_m)
         stages_rev.append(spec)
         metrics_rev.append(metrics)
@@ -469,7 +569,8 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     if req.radial_booster_count > 0 and phases:
         launch_phase = phases[0]
         radial_boosters, booster_metrics = _size_radial_boosters(
-            launch_phase, metrics_rev[-1], launch_mass_above, req.radial_booster_count, req.max_engine_count)
+            launch_phase, metrics_rev[-1], launch_mass_above, req.radial_booster_count,
+            req.max_engine_count, use_full_catalog=use_full_catalog)
         if radial_boosters is not None:
             log.append(
                 f"radial boosters: {radial_boosters.count}x [{radial_boosters.engine_count}x {radial_boosters.engine} "
