@@ -40,46 +40,46 @@ def _depth_from_root(part) -> int:
     return d
 
 
+def _part_is_below(part, ancestor) -> bool:
+    """True if ``ancestor`` lies on ``part``'s parent-chain (i.e. ``part`` is on the FAR side of ``ancestor``
+    from the root — it would be JETTISONED when ``ancestor`` is decoupled). Walks UP via ``.parent`` (one
+    fetch per step, like ``_depth_from_root``) and uses kRPC's own ``==`` (Python ``id()``/``is`` are
+    UNRELIABLE on kRPC proxies — each ``.part``/``.parent`` access returns a fresh object, which is the bug
+    that made the first version of this cross the decoupler and mis-fire the payload separator)."""
+    p = part
+    guard = 0
+    while p is not None and guard < 1000:
+        try:
+            par = p.parent
+        except Exception:
+            return False
+        if par is None:
+            return False
+        try:
+            if par == ancestor:
+                return True
+        except Exception:
+            return False
+        p = par
+        guard += 1
+    return False
+
+
 def _root_side_keeps_engine(vessel, dec) -> bool:
-    """True if firing ``dec`` leaves the ACTIVE (root/pod) side of the split still holding an engine — i.e.
-    ``dec`` drops a SPENT stage and keeps propulsion. False means firing it would strand the engineless
-    PAYLOAD as the active vessel. This is the robust test for "is this an inter-stage decoupler": the old
-    'shallowest decoupler == payload' heuristic protected only ONE decoupler, but a CREWED vehicle has a
-    SECOND high decoupler (the heat shield's) above the upper stage — firing it kept the capsule and
-    jettisoned the ENTIRE upper stage (engine + fuel), so the crew coasted suborbital. Here we walk the part
-    tree from the root WITHOUT crossing ``dec`` and check the root-side component for any engine."""
+    """True if firing ``dec`` leaves the ACTIVE (root/pod) side still holding an engine — i.e. ``dec`` drops a
+    SPENT stage and keeps propulsion. False means firing it strands the engineless PAYLOAD as the active
+    vessel (the crewed bug: the heat-shield decoupler kept the capsule and jettisoned the whole upper stage).
+    An engine is on the kept side exactly when it is NOT below ``dec`` (its parent-chain doesn't pass through
+    ``dec``). If EVERY engine is below ``dec``, firing it leaves no propulsion -> protect it."""
     try:
-        root = vessel.parts.root
         dec_part = dec.part
+        engines = list(vessel.parts.engines)
     except Exception:
         return True                       # can't tell -> treat as inter-stage (old behaviour)
-    if root is None or dec_part is None or root is dec_part:
-        return True
-    seen = {id(dec_part)}                  # never traverse THROUGH the decoupler -> isolates the root side
-    stack = [root]
-    root_side = set()
-    while stack:
-        p = stack.pop()
-        if p is None or id(p) in seen:
-            continue
-        seen.add(id(p)); root_side.add(id(p))
-        neigh = []
+    for e in engines:
         try:
-            if p.parent is not None:
-                neigh.append(p.parent)
-        except Exception:
-            pass
-        try:
-            neigh.extend(p.children)
-        except Exception:
-            pass
-        for n in neigh:
-            if n is not None and id(n) not in seen:
-                stack.append(n)
-    for e in vessel.parts.engines:
-        try:
-            if id(e.part) in root_side:
-                return True
+            if not _part_is_below(e.part, dec_part):
+                return True               # this engine stays on the kept side -> safe inter-stage decoupler
         except Exception:
             pass
     return False
