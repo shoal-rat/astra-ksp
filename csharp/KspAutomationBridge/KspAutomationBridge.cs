@@ -479,6 +479,22 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => EvaPlantFlagCommand(fields), 30000);
             }
 
+            // ---- EVA-only: put a seated kerbal on EVA WITHOUT planting a flag (e.g. to walk to a
+            // ladder, take surface science, or set up a board). Touches FlightEVA -> main thread.
+            if (request.Method == "POST" && request.Path == "/eva-go")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => EvaGoCommand(fields), 30000);
+            }
+
+            // ---- Re-board: send the active (or named) EVA kerbal back into the nearest crewable part
+            // with a free seat. Closes the loop after /eva-go or /eva-flag. KerbalEVA.BoardPart -> main thread.
+            if (request.Method == "POST" && request.Path == "/eva-board")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => EvaBoardCommand(fields), 30000);
+            }
+
             // ---- Crew spawn: seat a kerbal from the roster into an empty crewable part (a headless
             // launch leaves crewed pods empty). Lets the agent put REAL people aboard before a dock.
             if (request.Method == "POST" && request.Path == "/spawn-crew")
@@ -1279,6 +1295,270 @@ namespace KspAutomationBridge
                 { "longitude", lon }
             };
             return planted ? CommandResult.Ok(data) : CommandResult.Fail(kerbalName + " EVA succeeded but flag-plant could not be invoked. " + flagDetail);
+        }
+
+        // POST /eva-go {"crew"?: name, "vessel"?: name} -> put the named (or first found) seated kerbal
+        // on EVA on a LANDED/SPLASHED vessel WITHOUT planting a flag. Returns the new EVA vessel name +
+        // the kerbal's body/biome/lat/lon. The kerbal stays on EVA; call /eva-board to re-board. MUST run
+        // on the main thread (FlightEVA touches the live scene).
+        private CommandResult EvaGoCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("EVA requires an active vessel in flight.");
+            }
+
+            // Resolve the source vessel (optionally by name substring; default = active vessel).
+            string vesselName = GetOptional(fields, "vessel", "").Trim();
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (vesselName.Length > 0 && FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel cand in FlightGlobals.Vessels)
+                {
+                    if (cand != null && cand.loaded && cand.vesselName != null &&
+                        cand.vesselName.IndexOf(vesselName, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        v = cand;
+                        break;
+                    }
+                }
+            }
+            if (v == null)
+            {
+                return CommandResult.Fail("No vessel resolved for EVA.", 404);
+            }
+            if (v.isEVA)
+            {
+                return CommandResult.Fail("Target vessel is already an EVA kerbal.");
+            }
+            if (!v.LandedOrSplashed)
+            {
+                return CommandResult.Fail("Vessel must be landed/splashed to send a kerbal on EVA.");
+            }
+
+            // Find the first seated kerbal (optionally matched by name) and the part it sits in.
+            string crewName = GetOptional(fields, "crew", "").Trim();
+            Part evaPart = null;
+            ProtoCrewMember pcm = null;
+            if (v.parts != null)
+            {
+                foreach (Part part in v.parts)
+                {
+                    if (part == null || part.protoModuleCrew == null || part.protoModuleCrew.Count == 0)
+                    {
+                        continue;
+                    }
+                    foreach (ProtoCrewMember candidate in part.protoModuleCrew)
+                    {
+                        if (candidate == null)
+                        {
+                            continue;
+                        }
+                        if (crewName.Length == 0 ||
+                            string.Equals(candidate.name, crewName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            evaPart = part;
+                            pcm = candidate;
+                            break;
+                        }
+                    }
+                    if (pcm != null)
+                    {
+                        break;
+                    }
+                }
+            }
+            if (pcm == null || evaPart == null)
+            {
+                return CommandResult.Fail(crewName.Length > 0
+                    ? "Crew member not found in a crewed part: " + crewName
+                    : "No seated crew member found to send on EVA.", 404);
+            }
+
+            KerbalEVA evaController;
+            try
+            {
+                if (FlightEVA.fetch == null)
+                {
+                    return CommandResult.Fail("FlightEVA.fetch is null; cannot spawn EVA.");
+                }
+                evaController = FlightEVA.fetch.spawnEVA(pcm, evaPart, evaPart.airlock, true);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("spawnEVA threw: " + ex.Message);
+            }
+            if (evaController == null)
+            {
+                return CommandResult.Fail("spawnEVA returned null (no free hatch / airlock blocked?).");
+            }
+
+            Vessel evaVessel = evaController.vessel;
+            string kerbalName = pcm.name;
+
+            string biome = "";
+            double lat = 0.0;
+            double lon = 0.0;
+            try
+            {
+                if (evaVessel != null && evaVessel.mainBody != null)
+                {
+                    lat = evaVessel.latitude;
+                    lon = evaVessel.longitude;
+                    biome = ScienceUtil.GetExperimentBiome(evaVessel.mainBody, lat, lon) ?? "";
+                }
+            }
+            catch (Exception)
+            {
+                // Biome lookup is best-effort.
+            }
+
+            AppendStatus("eva", "EVA " + kerbalName + " from " + (evaPart.partInfo != null ? evaPart.partInfo.title : evaPart.name));
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", kerbalName + " is now on EVA." },
+                { "crew", kerbalName },
+                { "evaVessel", evaVessel != null ? evaVessel.vesselName : "" },
+                { "fromVessel", v.vesselName },
+                { "body", evaVessel != null && evaVessel.mainBody != null ? evaVessel.mainBody.bodyName : "" },
+                { "biome", biome },
+                { "latitude", lat },
+                { "longitude", lon }
+            });
+        }
+
+        // POST /eva-board {"crew"?: name} -> re-board the active (or named) EVA kerbal into the nearest
+        // crewable part with a free seat. "Nearest" = smallest world-space distance from the EVA kerbal to
+        // any candidate part across the loaded vessels. Uses KerbalEVA.BoardPart(Part). MUST run on the
+        // main thread.
+        private CommandResult EvaBoardCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("EVA board requires an active vessel in flight.");
+            }
+
+            string crewName = GetOptional(fields, "crew", "").Trim();
+
+            // Resolve the EVA kerbal: prefer the active vessel if it IS an EVA; else search loaded vessels
+            // for an EVA whose crew name matches (or the first EVA if no name given).
+            Vessel evaVessel = null;
+            if (FlightGlobals.ActiveVessel.isEVA && EvaCrewNameMatches(FlightGlobals.ActiveVessel, crewName))
+            {
+                evaVessel = FlightGlobals.ActiveVessel;
+            }
+            if (evaVessel == null && FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel cand in FlightGlobals.Vessels)
+                {
+                    if (cand != null && cand.loaded && cand.isEVA && EvaCrewNameMatches(cand, crewName))
+                    {
+                        evaVessel = cand;
+                        break;
+                    }
+                }
+            }
+            if (evaVessel == null || evaVessel.evaController == null)
+            {
+                return CommandResult.Fail(crewName.Length > 0
+                    ? "No EVA kerbal named '" + crewName + "' found to board."
+                    : "No EVA kerbal found to board.", 404);
+            }
+
+            KerbalEVA eva = evaVessel.evaController;
+            string kerbalName = evaVessel.vesselName;
+
+            // Find the nearest crewable part with a free seat across all loaded vessels (excluding the EVA
+            // vessel itself). Distance = world-space part position to the EVA kerbal.
+            Vector3 evaPos = evaVessel.GetWorldPos3D();
+            Part target = null;
+            double best = double.MaxValue;
+            if (FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel v in FlightGlobals.Vessels)
+                {
+                    if (v == null || !v.loaded || v == evaVessel || v.isEVA || v.parts == null)
+                    {
+                        continue;
+                    }
+                    foreach (Part part in v.parts)
+                    {
+                        if (part == null || part.CrewCapacity <= 0 || part.protoModuleCrew == null)
+                        {
+                            continue;
+                        }
+                        if (part.protoModuleCrew.Count >= part.CrewCapacity)
+                        {
+                            continue;
+                        }
+                        double d = (part.transform.position - evaPos).magnitude;
+                        if (d < best)
+                        {
+                            best = d;
+                            target = part;
+                        }
+                    }
+                }
+            }
+            if (target == null)
+            {
+                return CommandResult.Fail("No crewable part with a free seat found to board into.", 404);
+            }
+
+            string toTitle = target.partInfo != null ? target.partInfo.title : target.name;
+            string toVessel = target.vessel != null ? target.vessel.vesselName : "";
+            try
+            {
+                eva.BoardPart(target);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("BoardPart threw: " + ex.Message);
+            }
+
+            AppendStatus("eva", "Boarded " + kerbalName + " -> " + toTitle);
+            return CommandResult.Ok(new Dictionary<string, object>
+            {
+                { "message", kerbalName + " boarded " + toTitle + " on " + toVessel + "." },
+                { "crew", kerbalName },
+                { "toPart", toTitle },
+                { "toVessel", toVessel },
+                { "distanceM", best == double.MaxValue ? 0.0 : best }
+            });
+        }
+
+        // True if the EVA vessel's kerbal name matches the (optional) needle. Empty needle matches any.
+        private static bool EvaCrewNameMatches(Vessel evaVessel, string needle)
+        {
+            if (needle.Length == 0)
+            {
+                return true;
+            }
+            if (evaVessel == null)
+            {
+                return false;
+            }
+            // The EVA vessel name is the kerbal's name; the seated proto-crew also carries the name.
+            if (evaVessel.vesselName != null &&
+                evaVessel.vesselName.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+            List<ProtoCrewMember> crew = evaVessel.GetVesselCrew();
+            if (crew != null)
+            {
+                foreach (ProtoCrewMember c in crew)
+                {
+                    if (c != null && c.name != null &&
+                        string.Equals(c.name, needle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         // POST /transfer-crew  -> move a kerbal between crewed parts (after docking, both craft are

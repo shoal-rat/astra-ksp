@@ -163,6 +163,28 @@ class BridgeClient:
         payload = {"crew": crew} if crew else {}
         return self._request("POST", "/eva-flag", json=payload)
 
+    def eva_go(self, crew: str = "", vessel: str = "") -> dict:
+        """Put a seated kerbal on EVA on a LANDED/SPLASHED vessel WITHOUT planting a flag (walk to a
+        ladder, take surface science, set up a board). ``crew`` (optional) names the kerbal by exact
+        name; empty = the first seated crew member found. ``vessel`` (optional) targets a craft by a
+        substring of its name; empty = the active vessel. The bridge returns the new EVA vessel name
+        plus the landed body/biome/lat/lon. The kerbal stays on EVA; call ``eva_board`` to re-board."""
+        payload: dict = {}
+        if crew:
+            payload["crew"] = crew
+        if vessel:
+            payload["vessel"] = vessel
+        return self._request("POST", "/eva-go", json=payload)
+
+    def eva_board(self, crew: str = "") -> dict:
+        """Re-board the active (or named) EVA kerbal into the nearest crewable part with a free seat —
+        closes the loop after ``eva_go``/``eva_flag``. ``crew`` (optional) selects the EVA kerbal by
+        name (matched against the EVA vessel/kerbal name); empty = the first EVA kerbal found. "Nearest"
+        is the smallest world-space distance to a candidate part across the loaded vessels. The bridge
+        returns the boarded part/vessel and the distance travelled (``distanceM``)."""
+        payload = {"crew": crew} if crew else {}
+        return self._request("POST", "/eva-board", json=payload)
+
     def _request(self, method: str, path: str, **kwargs) -> dict:
         url = self.base_url.rstrip("/") + path
         if "json" in kwargs:
