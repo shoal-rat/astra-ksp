@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ksp_lab import bodies
+from ksp_lab.craft_writer import CraftWriter
+from tools import design_chart
 from tools.commander import design_for_target
 
 
@@ -55,5 +57,17 @@ def test_commander_duna_round_trip_reserves_a_dedicated_orbit_insertion_stage():
 
     roles = [stage.role for stage in design.stages]
     assert roles[:3] == ["launch", "orbit_insertion", "trans_target_injection"], design.notes
+    assert design.stages[0].diameter_m >= 3.75
     assert design.stages[1].engine != "liquidEngine3.v2", design.notes
     assert "orbit_insertion: need" in design.notes
+
+
+def test_commander_duna_round_trip_passes_prelaunch_geometry_gate():
+    design = design_for_target(FakeSpaceCenter(), "Duna", crew=1, want_return=True, name="AI-DUNA-CMDR")
+    CraftWriter()._build_nodes(design, part_bodies=None)
+
+    rep = design_chart.looks_like_a_rocket(design)
+
+    assert rep["looks_like_a_rocket"], rep
+    assert rep["max_diameter_m"] >= 3.75
+    assert rep["fineness_ratio"] <= 28.0

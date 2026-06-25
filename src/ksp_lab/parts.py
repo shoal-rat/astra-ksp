@@ -74,6 +74,15 @@ STOCK_PARTS: dict[str, StockPart] = {
     "Rockomax32.BW": StockPart(
         "Rockomax32.BW", "Rockomax X200-32 Fuel Tank", 2.0, 18.0, 3000, 3.72, liquid_fuel=1440, oxidizer=1760
     , diameter_m=2.5),
+    "Size3SmallTank": StockPart(
+        "Size3SmallTank", "Kerbodyne S3-3600 Tank", 2.25, 20.25, 3250, 1.927, liquid_fuel=1620, oxidizer=1980
+    , diameter_m=3.75),
+    "Size3MediumTank": StockPart(
+        "Size3MediumTank", "Kerbodyne S3-7200 Tank", 4.5, 40.5, 6500, 3.868, liquid_fuel=3240, oxidizer=3960
+    , diameter_m=3.75),
+    "Size3LargeTank": StockPart(
+        "Size3LargeTank", "Kerbodyne S3-14400 Tank", 9.0, 81.0, 13000, 7.48, liquid_fuel=6480, oxidizer=7920
+    , diameter_m=3.75),
     "liquidEngine": StockPart(
         "liquidEngine", "LV-T30 Reliant", 1.25, 1.25, 1100, 1.63, 205, 240, 265, 310
     ),
@@ -89,6 +98,9 @@ STOCK_PARTS: dict[str, StockPart] = {
     "liquidEngineMainsail.v2": StockPart(
         "liquidEngineMainsail.v2", "RE-M3 Mainsail", 6.0, 6.0, 13000, 2.97, 1379.03, 1500, 285, 310
     , diameter_m=2.5),
+    "Size3AdvancedEngine": StockPart(
+        "Size3AdvancedEngine", 'Kerbodyne KR-2L+ "Rhino"', 9.0, 9.0, 25000, 4.025, 1205.88, 2000, 205, 340
+    , diameter_m=3.75),
     # Avionics / payload accessories (no propellant; mass/cost for the budget only).
     "longAntenna": StockPart("longAntenna", "Communotron 16 (direct antenna)", 0.005, 0.005, 300, 0.3),
     "RelayAntenna5": StockPart("RelayAntenna5", "RA-2 Relay (relay antenna)", 0.015, 0.015, 600, 0.3),
@@ -118,6 +130,13 @@ STOCK_PARTS: dict[str, StockPart] = {
     # diameter_m is the WIDE (lower) end; the cone tapers to 1.25 m on top.
     "adapterSize2-Size1": StockPart("adapterSize2-Size1", "Rockomax Brand Adapter (2.5 -> 1.25 m)",
                                     0.8, 0.8, 800, 2.5, diameter_m=2.5),
+    "Size3To2Adapter_v2": StockPart(
+        "Size3To2Adapter_v2", "Kerbodyne ADTP-2-3 (3.75 -> 2.5 m)",
+        # Used as a structural aero adapter in generated launch stacks. The stock part can carry
+        # fuel, but craft_writer strips those resources so hidden adapter propellant is not counted
+        # outside the calculated stage budgets.
+        1.875, 1.875, 1623, 2.25, diameter_m=3.75
+    ),
     # PAYLOAD FAIRING bases. The base node-attaches below the payload; its ModuleProceduralFairing shell
     # (a list of XSECTIONS) wraps everything above it into an ogive nose and is jettisoned in space. This
     # is how a real satellite rides: enclosed + protected through max-Q, then the shroud splits away

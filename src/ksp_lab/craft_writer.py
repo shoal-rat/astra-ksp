@@ -144,7 +144,10 @@ class CraftWriter:
         # RelayAntenna100 (RA-100) MUST be harvested or the bus_layout silently falls back to the weak
         # longAntenna (Communotron 16) — which is exactly why the relays could not hold the Kerbin<->Duna
         # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
-        names.update({"longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank", "rtg", "basicFin", "asasmodule1-2", "adapterSize2-Size1"})
+        names.update({
+            "longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank",
+            "rtg", "basicFin", "R8winglet", "asasmodule1-2", "adapterSize2-Size1", "Size3To2Adapter_v2",
+        })
         if not design.crewed and not design.landing_legs:
             names.add("fairingSize1")  # probe comsat rides in a payload fairing (harvest the working module)
         if design.landing_legs:
@@ -415,6 +418,26 @@ class CraftWriter:
             if (prev_dia is not None and abs(stage.diameter_m - 2.5) < 0.1 and abs(prev_dia - 1.25) < 0.1
                     and (part_bodies is None or "adapterSize2-Size1" in part_bodies)):
                 adapter = new_node("adapterSize2-Size1", render_index)
+                self._attach(current, adapter, "bottom", "top")
+                nodes.append(adapter)
+                current = adapter
+            if (prev_dia is not None and abs(stage.diameter_m - 3.75) < 0.1 and abs(prev_dia - 1.25) < 0.1
+                    and (part_bodies is None or (
+                        "adapterSize2-Size1" in part_bodies and "Size3To2Adapter_v2" in part_bodies
+                    ))):
+                # Smooth the full 1.25 -> 3.75 m step with two real conical adapters instead of leaving
+                # a flat aerodynamic shoulder under the upper stack.
+                adapter_125_250 = new_node("adapterSize2-Size1", render_index)
+                self._attach(current, adapter_125_250, "bottom", "top")
+                nodes.append(adapter_125_250)
+                current = adapter_125_250
+                adapter_250_375 = new_node("Size3To2Adapter_v2", render_index)
+                self._attach(current, adapter_250_375, "bottom", "top")
+                nodes.append(adapter_250_375)
+                current = adapter_250_375
+            if (prev_dia is not None and abs(stage.diameter_m - 3.75) < 0.1 and abs(prev_dia - 2.5) < 0.1
+                    and (part_bodies is None or "Size3To2Adapter_v2" in part_bodies)):
+                adapter = new_node("Size3To2Adapter_v2", render_index)
                 self._attach(current, adapter, "bottom", "top")
                 nodes.append(adapter)
                 current = adapter
@@ -704,6 +727,11 @@ class CraftWriter:
             # Replace the harvested fairing's XSECTION shell (sized for the donor craft) with the
             # computed ogive that wraps THIS payload, keeping it inside the ModuleProceduralFairing.
             body = re.sub(r"(?:\n\t\tXSECTION\n\t\t\{[^}]*\})+", "\n" + node.fairing_xsections, body, count=1)
+        if body and node.part_name == "Size3To2Adapter_v2":
+            # The ADTP-2-3 is used here as an aerodynamic structural adapter, not as unplanned fuel
+            # storage. Remove stock RESOURCE blocks so the live vessel mass matches the calculated dry
+            # adapter mass in parts.py.
+            body = re.sub(r"(?:\n\tRESOURCE\n\t\{(?:\n\t\t[^\n]*)+\n\t\})+", "", body)
         if body:
             # Splice the part's real KSP serialization (EVENTS/ACTIONS/PARTDATA/MODULE/RESOURCE)
             # so launch finalization has full module state and does not NullReference.

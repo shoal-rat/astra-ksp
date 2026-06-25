@@ -32,6 +32,11 @@ from typing import Callable
 
 import krpc
 
+try:
+    import design_chart
+except ModuleNotFoundError:  # imported as tools.commander under pytest
+    from tools import design_chart
+
 from ksp_lab import astro, design, execute, plan
 from ksp_lab.bridge_client import BridgeClient
 from ksp_lab.config import load_config
@@ -161,7 +166,7 @@ def design_for_target(sc, target_body: str, *, crew: int, want_return: bool, nam
     landing_reserve = design.default_reserve_frac(g_target, is_landing=True)
     phases = [
         Phase("launch", launch_dv, twr_body_g=kerbin.surface_gravity, min_twr=1.4,
-              reserve_frac=launch_reserve),
+              min_diameter_m=3.75, reserve_frac=launch_reserve),
         # Live ascent audit: MechJeb may need a finite high-thrust circularization push after the
         # booster reaches the target apoapsis. Make that an explicit ascent phase so the Duna transfer
         # stage is not consumed before the spacecraft is parked in orbit.
@@ -372,6 +377,28 @@ def run_mission(config_path: str, description: str, target_body: str, *, connect
     log(f"  estimates: {design_obj.estimates}")
     design_obj.estimates = estimate_design(design_obj)
     runner.writer.write(design_obj, runner._craft_dir(), template_path=None)
+
+    chart_dir = runner.run_dir / "design_charts"
+    chart_dir.mkdir(parents=True, exist_ok=True)
+    chart_path = chart_dir / f"design_chart_{ship_name}.svg"
+    chart_path.write_text(design_chart.render_svg(design_obj), encoding="utf-8")
+    shape = design_chart.looks_like_a_rocket(design_obj)
+    log(f"  geometry chart: {chart_path}")
+    log(f"  geometry: L/D {shape['fineness_ratio']}:1, length {shape['length_m']} m, "
+        f"body dia {shape['max_diameter_m']} m, ascent span {shape['radial_span_m']} m")
+    if not shape["looks_like_a_rocket"]:
+        for label, ok in shape["checks"].items():
+            if not ok:
+                log(f"  geometry FAIL: {label}")
+        log("  stopping before launch: generated craft failed the three-view geometry gate")
+        conn.close()
+        return 2
+    if not getattr(design_obj, "feasible", True):
+        for reason in getattr(design_obj, "infeasible_reasons", []):
+            log(f"  feasibility FAIL: {reason}")
+        log("  stopping before launch: generated craft failed the feasibility gate")
+        conn.close()
+        return 2
 
     ctx = MissionContext(sc=sc, bridge=bridge, target_body=target_body, config=cfg,
                          design_obj=design_obj, vessel_name=ship_name)

@@ -86,8 +86,19 @@ class ShipRequirements:
 # ATMOSPHERE (phase.twr_body_g > 5 -> Kerbin/Eve liftoff) draws from the BOOSTER pool (sized on
 # SEA-LEVEL thrust); a vacuum/upper/landing stage draws from the VACUUM pool (high Isp, modest thrust).
 # Each pool is ordered small -> large so the designer still picks the LIGHTEST that meets TWR + Δv.
-BOOSTER_ENGINES = ["liquidEngine", "liquidEngine2", "engineLargeSkipper", "liquidEngineMainsail.v2"]  # Reliant/Swivel/Skipper/Mainsail
-VACUUM_ENGINES = ["liquidEngine3.v2", "engineLargeSkipper", "liquidEngineMainsail.v2"]                # Terrier (Isp 345) then thrustier
+BOOSTER_ENGINES = [
+    "liquidEngine",
+    "liquidEngine2",
+    "engineLargeSkipper",
+    "liquidEngineMainsail.v2",
+    "Size3AdvancedEngine",
+]  # Reliant/Swivel/Skipper/Mainsail/Rhino
+VACUUM_ENGINES = [
+    "liquidEngine3.v2",
+    "engineLargeSkipper",
+    "liquidEngineMainsail.v2",
+    "Size3AdvancedEngine",
+]  # Terrier (Isp 345) then thrustier/wider options
 
 
 def engine_pool(phase: "Phase") -> list[str]:
@@ -101,6 +112,7 @@ TANK_FOR_ENGINE = {
     "liquidEngine": "Rockomax16.BW",
     "engineLargeSkipper": "Rockomax16.BW",
     "liquidEngineMainsail.v2": "Rockomax32.BW",
+    "Size3AdvancedEngine": "Size3LargeTank",
 }
 
 
@@ -179,6 +191,7 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_e
         "diameter_m": tank.diameter_m,
         "twr": round(achieved_twr, 2), "stage_dv": round(actual_dv, 0), "m0_t": round(m0, 2),
         "wet_t": round(wet, 2), "parts": n_eng + tanks,
+        "diameter_ok": diameter_ok,
         "ok": tanks < 9000 and actual_dv >= dv * 0.995 and diameter_ok
               and (phase.min_twr <= 0 or achieved_twr >= phase.min_twr),
     }
@@ -196,6 +209,9 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
         # No engine meets min_twr within the cluster cap; pick the most launchable (highest TWR) that
         # still delivers the required Δv, else the highest TWR available.
         capped = [m for m in candidates if m["engine_count"] <= max_engine_count]
+        diameter_capped = [m for m in capped if m.get("diameter_ok", True)]
+        if diameter_capped:
+            capped = diameter_capped
         dv_ok = [m for m in capped if m["stage_dv"] >= dv * 0.995]
         chosen = max(dv_ok or capped or candidates, key=lambda m: m["twr"])
     spec = StageSpec(phase.name, chosen["engine"], chosen["tank"], chosen["tanks"],

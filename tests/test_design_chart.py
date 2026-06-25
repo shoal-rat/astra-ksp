@@ -23,10 +23,13 @@ def test_relay_comsat_passes_the_looks_like_a_rocket_gate():
     assert 6.0 <= rep["fineness_ratio"] <= 28.0       # slender like a launch vehicle, not a pancake/noodle
 
 
-def test_design_chart_renders_a_side_view_svg():
+def test_design_chart_renders_a_three_view_svg():
     svg = design_chart.render_svg(_relay_comsat())
     assert svg.startswith("<svg")
     assert "LOOKS LIKE A ROCKET" in svg
+    assert "SIDE" in svg
+    assert "FRONT" in svg
+    assert "TOP" in svg
     assert "#fde68a" in svg                           # the fairing ogive is drawn on top
 
 
@@ -34,5 +37,5 @@ def test_gate_rejects_a_non_rocket_shape():
     # A short, fat, fin-less blob is NOT a rocket: force a pancake by hand and confirm the gate fails it.
     rep = design_chart.looks_like_a_rocket(_relay_comsat())
     # sanity: tamper a copy of the checks the way an absurd shape would read, ensure the verdict is AND-gated
-    bad = dict(rep["checks"]); bad["slender (6 <= fineness <= 28)"] = False
+    bad = dict(rep["checks"]); bad["slender body (6 <= L/D <= 28)"] = False
     assert not all(bad.values())
