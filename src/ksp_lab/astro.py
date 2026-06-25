@@ -186,7 +186,11 @@ def twr(thrust_n: float, mass_t: float, g: float) -> float:
 # the budget planner so the mission's Δv requirement is derived, not a flat magic number.
 # --------------------------------------------------------------------------------------------------
 
-def gravity_drag_loss(mu: float, r_surface: float, atmosphere_top_m: float) -> float:
+KERBIN_SL_DENSITY = 1.225  # kg/m^3 — the calibration reference for the drag term
+
+
+def gravity_drag_loss(mu: float, r_surface: float, atmosphere_top_m: float,
+                      surface_density: float = KERBIN_SL_DENSITY) -> float:
     """Closed-form estimate of the gravity + drag Δv lost climbing to orbit from `r_surface`.
 
     Gravity loss is the impulse spent holding weight up during the finite pitch-over climb; for a TWR
@@ -201,7 +205,11 @@ def gravity_drag_loss(mu: float, r_surface: float, atmosphere_top_m: float) -> f
     if atmosphere_top_m > 0:
         h_turn = atmosphere_top_m
         gravity = math.sqrt(2.0 * g_surface * h_turn) * 0.55  # only the steep early climb pays full g
-        drag = 0.0085 * atmosphere_top_m                       # column-depth drag work (m/s per m)
+        # Drag work scales with the atmospheric COLUMN MASS — depth AND sea-level DENSITY, not depth
+        # alone. Eve's ~6.2 kg/m^3 air (~5x Kerbin's 1.225) costs ~5x the drag of Kerbin's: the
+        # difference between this estimate's old ~4900 m/s and the real ~8000 m/s Eve ascent. The
+        # Kerbin-density default keeps Kerbin/Duna budgets unchanged (factor 1.0).
+        drag = 0.0085 * atmosphere_top_m * (surface_density / KERBIN_SL_DENSITY)
         return gravity + drag
     # Airless: a near-impulsive prograde kick at the surface; the only loss is the short vertical
     # clearance to get the periapsis above the terrain.
@@ -209,15 +217,16 @@ def gravity_drag_loss(mu: float, r_surface: float, atmosphere_top_m: float) -> f
 
 
 def ascent_dv(mu: float, r_surface: float, r_low_orbit: float, atmosphere_top_m: float,
-              surface_rotation_mps: float = 0.0) -> float:
+              surface_rotation_mps: float = 0.0, surface_density: float = KERBIN_SL_DENSITY) -> float:
     """Δv to reach a low circular orbit of radius `r_low_orbit` from the surface.
 
     Ideal part = the orbital speed at the target orbit (vis-viva, here circular) minus the free
     eastward speed the rotating surface already gives a prograde launch. Loss part = the calculated
-    gravity+drag overhead. Everything from the body's measured mu/radius/atmosphere — no flat number."""
+    gravity+drag overhead, the drag scaled by the body's sea-level density (Eve's thick air costs far
+    more than Kerbin's). Everything from the body's measured mu/radius/atmosphere — no flat number."""
     v_orbit = circular_speed(mu, r_low_orbit)
     ideal = max(0.0, v_orbit - max(0.0, surface_rotation_mps))
-    return ideal + gravity_drag_loss(mu, r_surface, atmosphere_top_m)
+    return ideal + gravity_drag_loss(mu, r_surface, atmosphere_top_m, surface_density)
 
 
 def surface_to_orbit_dv(mu: float, r_surface: float, r_low_orbit: float) -> float:
