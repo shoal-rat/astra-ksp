@@ -912,18 +912,24 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         sc.target_body = target
     except Exception as exc:
         log(f"  could not set target ({exc})")
-    warp_to = win["ut_dep"] + 0.5 * win["tof"]                 # halfway out: the cheap-correction zone
-    if v.orbit.body.name != target_name and warp_to > sc.ut + 120.0:
-        sc.warp_to(warp_to); time.sleep(2)
+    # Anchor the correction on the ACTUAL post-ejection time (NOT the stale original window — the launch
+    # reverts the clock + warp_via_high moves us, so win["ut_dep"] is in the past and the old 0.5*tof
+    # warp fired the correction at the wrong geometry). Warp ~1/3 of the flight, then ESTABLISH the
+    # encounter with one correction — ALLOW it to be sizeable (it MAKES the SOI intercept; the earlier
+    # >400 skip left no encounter at all), only refusing a runaway burn the bigger budget still can't
+    # afford on top of capture + Hohmann-to-sync.
+    mid = sc.ut + 0.35 * win["tof"]
+    if v.orbit.body.name != target_name and mid > sc.ut + 120.0:
+        sc.warp_to(mid); time.sleep(2)
     if v.orbit.body.name != target_name and not (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
         try:
             r = bridge.mj_plan(target=target_name, operation="correction")
             dv = r.get("dv", 0.0) if r.get("planned") else 0.0
-            if r.get("planned") and v.control.nodes and dv < 400.0:
-                log(f"  CORRECTION (MechJeb, early/cheap): {dv:.0f} m/s")
-                _execute_node_manually(conn, sc, v, max_burn_s=150.0, max_throttle=0.8)
+            if r.get("planned") and v.control.nodes and dv < 2500.0:
+                log(f"  CORRECTION (MechJeb, establish encounter): {dv:.0f} m/s")
+                _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
             else:
-                log(f"  skipping a {dv:.0f} m/s correction (too expensive near SOI — capturing at the natural encounter)")
+                log(f"  correction {dv:.0f} m/s over cap; removing node, trying the natural approach")
                 v.control.remove_nodes()
         except Exception as exc:
             log(f"  MechJeb correction unavailable ({exc})")
@@ -1018,13 +1024,17 @@ def main() -> int:
     # Eve flight proved the correction is far bigger than the 80 m/s first assumed (a 2.5x-SOI ejection
     # miss needs ~200-500 m/s to fine-tune), so budget generously: 562 + 1025 + 400 + 600 + 230 ≈ 2820,
     # round to 3000 for margin (the dry relay #1 was the lesson). Other interplanetary targets default high.
-    insertion_override = {"Duna": 4400.0, "Eve": 3000.0}.get(target_body, 0.0)
+    # Eve sync (10,328 km) is HIGH, so the in-space budget is large: LKO-circ ~560 + eject ~1020 +
+    # encounter-establishing correction + low capture ~600 + Hohmann low->sync ~1710. Budget 5000 closes
+    # as a FEASIBLE 204 t stack (TWR 1.38, L/D 7.7) when the booster clusters 4 Mainsails; the relays kept
+    # stranding because the upper couldn't afford the correction + the high Hohmann.
+    insertion_override = {"Duna": 4400.0, "Eve": 5000.0}.get(target_body, 0.0)
     if insertion_override == 0.0 and target_body not in ("Mun",):
         try:
             insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
         except Exception:
             pass
-    booster_engines = 2 if target_body in ("Duna", "Eve") else 1
+    booster_engines = {"Duna": 2, "Eve": 4}.get(target_body, 1)  # Eve's heavy 5000 m/s upper needs a 4-Mainsail base
     if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0,
                                       insertion_dv_override=insertion_override, booster_max_engines=booster_engines):
         log("launch to parking orbit FAILED"); return 2
