@@ -43,9 +43,19 @@ def _role(part_name: str, fairing_xsections: str | None = None) -> str:
     return "body"
 
 
-def assembly_geometry(design) -> list[dict]:
-    """All generated craft parts in the writer coordinate system, including surface attachments."""
-    nodes = CraftWriter()._build_nodes(design, part_bodies=None)
+def assembly_geometry(design, part_bodies: dict | None = None) -> list[dict]:
+    """All generated craft parts in the writer coordinate system, including surface attachments.
+
+    ``part_bodies`` must mirror what ``CraftWriter.write()`` will actually emit. When a real harvested
+    part-body library is supplied, optional parts whose serialization was NOT harvested (payload
+    service bays, the inter-stage adapters when no donor craft carries them, ...) are DROPPED from the
+    build here exactly as ``can_emit()`` drops them from the ``.craft`` file. Passing ``None``
+    (offline/tests) keeps every part, which is consistent because the offline writer also emits every
+    part. Threading the SAME library the writer uses is what keeps the prelaunch chart in step with the
+    launched vessel — otherwise the chart counts phantom parts the craft never carries and over-reports
+    length (the 21.6 m chart vs 12.9 m live discrepancy was ~6.5 m of un-harvested service bays +
+    adapters that the live craft silently dropped)."""
+    nodes = CraftWriter()._build_nodes(design, part_bodies=part_bodies)
     out: list[dict] = []
     for n in nodes:
         p = part(n.part_name)
@@ -85,9 +95,9 @@ def assembly_geometry(design) -> list[dict]:
     return out
 
 
-def stack_geometry(design) -> list[dict]:
+def stack_geometry(design, part_bodies: dict | None = None) -> list[dict]:
     """Stack-attached parts only, kept for older callers/tests."""
-    return [g for g in assembly_geometry(design) if not g["surface"]]
+    return [g for g in assembly_geometry(design, part_bodies) if not g["surface"]]
 
 
 def _body_boxes(geom: list[dict]) -> list[dict]:
@@ -103,9 +113,12 @@ def _radial_span(geom: list[dict], include_landing_gear: bool = False) -> float:
     return 2.0 * max(radii, default=0.0)
 
 
-def looks_like_a_rocket(design) -> dict:
-    """Calculate vehicle proportions and return a hard PASS/FAIL report."""
-    geom = assembly_geometry(design)
+def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
+    """Calculate vehicle proportions and return a hard PASS/FAIL report.
+
+    Pass the same ``part_bodies`` the writer will use so the report describes the craft that actually
+    launches (see ``assembly_geometry``)."""
+    geom = assembly_geometry(design, part_bodies)
     body = _body_boxes(geom)
     if not body:
         checks = {"has stack geometry": False}
@@ -114,6 +127,10 @@ def looks_like_a_rocket(design) -> dict:
     y_top = max(b["top"] for b in body)
     y_bot = min(b["bot"] for b in body)
     length = y_top - y_bot
+    # Part-ORIGIN span (centre of the top box to centre of the bottom box). kRPC's verify_against_live
+    # measures live part ORIGINS (Part.position), so this — not the box-envelope ``length`` above, which
+    # is ~half a part-height longer at each end — is the apples-to-apples number to compare against live.
+    origin_length = max(b["y"] for b in body) - min(b["y"] for b in body)
     max_dia = max(b["dia"] for b in body)
     fineness = length / max_dia if max_dia > 0 else float("inf")
 
@@ -158,6 +175,7 @@ def looks_like_a_rocket(design) -> dict:
     }
     return {
         "length_m": round(length, 2),
+        "origin_length_m": round(origin_length, 2),
         "max_diameter_m": round(max_dia, 2),
         "fineness_ratio": round(fineness, 1),
         "radial_span_m": round(radial_span, 2),
@@ -259,9 +277,9 @@ def _draw_side_part(g: dict, cx: float, yy, scale: float, front: bool = False) -
     )
 
 
-def render_svg(design) -> str:
-    geom = assembly_geometry(design)
-    rep = looks_like_a_rocket(design)
+def render_svg(design, part_bodies: dict | None = None) -> str:
+    geom = assembly_geometry(design, part_bodies)
+    rep = looks_like_a_rocket(design, part_bodies)
     body = _body_boxes(geom)
     y_top = max(b["top"] for b in body)
     y_bot = min(b["bot"] for b in body)
@@ -345,30 +363,42 @@ def render_svg(design) -> str:
 </svg>'''
 
 
-def verify_against_live(conn, design) -> dict:
-    """Compare calculated geometry/mass with the assembled live vessel from kRPC."""
+def verify_against_live(conn, design, part_bodies: dict | None = None) -> dict:
+    """Compare calculated geometry/mass with the assembled live vessel from kRPC.
+
+    Pass the SAME ``part_bodies`` the writer used so ``calc`` describes the craft that was actually
+    assembled (un-harvested optional parts are dropped from both) — without it the chart counts phantom
+    parts and over-reports length. Two axis/measurement fixes vs the old version:
+      * The live LENGTH is the largest part-origin extent across all THREE vessel-frame axes (the long
+        axis), and the DIAMETER is the widest radial spread in the perpendicular plane — so it is robust
+        to whichever frame axis the control part aligns the stack with, instead of assuming the y-axis.
+      * ``Part.position`` is the part ORIGIN, so the live span is origin-to-origin; it is compared to
+        ``calc['origin_length_m']`` (same convention), not the box-envelope ``length_m`` which is ~one
+        part-height longer at each end. ``calc_envelope_length_m`` keeps the gate's end-to-end length
+        for reference."""
     v = conn.space_center.active_vessel
-    calc = looks_like_a_rocket(design)
+    calc = looks_like_a_rocket(design, part_bodies)
     calc_mass = float(getattr(design, "estimates", {}).get("wet_mass_t", 0.0))
     live_mass_t = v.mass / 1000.0
     length = width = None
     try:
         rf = v.reference_frame
-        ys, rs = [], []
-        for p in v.parts.all:
-            x, y, z = p.position(rf)
-            ys.append(y)
-            rs.append((x * x + z * z) ** 0.5)
-        if ys:
-            length = max(ys) - min(ys)
-            width = 2.0 * max(rs)
+        pts = [p.position(rf) for p in v.parts.all]
+        if pts:
+            ext = [max(c[i] for c in pts) - min(c[i] for c in pts) for i in range(3)]
+            axis = ext.index(max(ext))                       # long axis = largest part-origin extent
+            length = ext[axis]
+            perp = [i for i in range(3) if i != axis]
+            width = 2.0 * max((c[perp[0]] ** 2 + c[perp[1]] ** 2) ** 0.5 for c in pts)
         if length is not None and not (0.0 < length < 500.0 and 0.0 < width < 500.0):
             length = width = None
     except Exception:
         length = width = None
+    calc_origin_len = calc.get("origin_length_m", calc["length_m"])
     out = {
         "live_length_m": round(length, 2) if length else None,
-        "calc_length_m": calc["length_m"],
+        "calc_length_m": calc_origin_len,                    # origin-to-origin, matches the live measure
+        "calc_envelope_length_m": calc["length_m"],          # box end-to-end (what the L/D gate uses)
         "live_max_diameter_m": round(width, 2) if width else None,
         "calc_max_diameter_m": calc["max_diameter_m"],
         "live_fineness": round(length / width, 1) if (length and width) else None,
@@ -379,7 +409,7 @@ def verify_against_live(conn, design) -> dict:
     }
     out["mass_match"] = abs(live_mass_t - calc_mass) <= 0.10 * max(calc_mass, 1.0)
     out["dimensions_match"] = bool(length and width and (
-        abs(length - calc["length_m"]) <= 0.25 * calc["length_m"] + 2.0
+        abs(length - calc_origin_len) <= 0.15 * calc_origin_len + 1.0
         and abs(width - calc["max_diameter_m"]) <= 0.5 * calc["max_diameter_m"] + 0.5
     ))
     return out

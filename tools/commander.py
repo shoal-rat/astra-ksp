@@ -376,13 +376,21 @@ def run_mission(config_path: str, description: str, target_body: str, *, connect
         log("  " + line)
     log(f"  estimates: {design_obj.estimates}")
     design_obj.estimates = estimate_design(design_obj)
-    runner.writer.write(design_obj, runner._craft_dir(), template_path=None)
+    craft_dir = runner._craft_dir()
+    runner.writer.write(design_obj, craft_dir, template_path=None)
 
+    # Model the chart on the SAME harvested part library write() used, so it reflects the parts that
+    # actually launch (un-harvested optional parts are dropped from both — otherwise the chart counts
+    # phantom parts and over-reports length). None offline keeps every part.
+    try:
+        part_bodies = runner.writer._part_body_library(design_obj, craft_dir)
+    except Exception:
+        part_bodies = None
     chart_dir = runner.run_dir / "design_charts"
     chart_dir.mkdir(parents=True, exist_ok=True)
     chart_path = chart_dir / f"design_chart_{ship_name}.svg"
-    chart_path.write_text(design_chart.render_svg(design_obj), encoding="utf-8")
-    shape = design_chart.looks_like_a_rocket(design_obj)
+    chart_path.write_text(design_chart.render_svg(design_obj, part_bodies=part_bodies), encoding="utf-8")
+    shape = design_chart.looks_like_a_rocket(design_obj, part_bodies=part_bodies)
     log(f"  geometry chart: {chart_path}")
     log(f"  geometry: L/D {shape['fineness_ratio']}:1, length {shape['length_m']} m, "
         f"body dia {shape['max_diameter_m']} m, ascent span {shape['radial_span_m']} m")
