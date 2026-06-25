@@ -147,10 +147,21 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # RULE 1 (AGENTS.md): write the design chart + HARD-GATE the shape before flying anything.
     import design_chart
     from pathlib import Path as _Path
-    shape = design_chart.looks_like_a_rocket(d)
+    # Resolve the SAME harvested part-body library write() will use, so the chart/gate model the parts
+    # that will ACTUALLY be launched. Optional parts with no harvested serialization (service bays, the
+    # inter-stage adapters when no donor craft carries them) are dropped from BOTH the craft and the
+    # chart; without threading this the chart counted phantom parts and over-reported length (21.6 m
+    # chart vs 12.9 m live). _part_body_library returns None offline, which keeps every part (consistent
+    # with the offline writer).
+    craft_dir = runner._craft_dir()
+    try:
+        part_bodies = runner.writer._part_body_library(d, craft_dir)
+    except Exception:
+        part_bodies = None
+    shape = design_chart.looks_like_a_rocket(d, part_bodies=part_bodies)
     chart = _Path(__file__).resolve().parents[1] / "docs" / f"design_chart_{name}.svg"
     try:
-        chart.write_text(design_chart.render_svg(d), encoding="utf-8")
+        chart.write_text(design_chart.render_svg(d, part_bodies=part_bodies), encoding="utf-8")
     except Exception:
         pass
     log(f"DESIGN CHART {chart.name}: fineness {shape['fineness_ratio']}:1, length {shape['length_m']}m, "
@@ -164,7 +175,7 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     log("SEPARATION SEQUENCE + control logic (separators placed by calculated inverse-stage):")
     for e in separation_sequence(d, req):
         log("   - " + e)
-    runner.writer.write(d, runner._craft_dir(), template_path=None)
+    runner.writer.write(d, craft_dir, template_path=None)
     log(f"craft written ({name}): S1 {d.stages[0].engine_count}x{d.stages[0].engine} S2 {d.stages[1].engine}; "
         f"aero Cd={d.drag_cd} dragloss={d.ascent_drag_loss_mps}m/s margin={d.static_margin_m}m stable={d.ascent_stable}; launching ...")
     runner._load_and_launch(bridge, name)
@@ -182,10 +193,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     kv = c2.space_center.active_vessel
     # RULE 1: read the REAL assembled craft back from the live API (kRPC) and compare to the calculation.
     try:
-        live = design_chart.verify_against_live(c2, d)
+        live = design_chart.verify_against_live(c2, d, part_bodies=part_bodies)
         log(f"LIVE-API check: mass {live['live_mass_t']}t (calc {live['calc_wet_mass_t']}t, "
             f"match={live['mass_match']}), {live['live_part_count']} parts; "
-            f"length {live['live_length_m']}m (calc {live['calc_length_m']}m), "
+            f"length {live['live_length_m']}m (calc {live['calc_length_m']}m, "
+            f"envelope {live['calc_envelope_length_m']}m), "
             f"max-dia {live['live_max_diameter_m']}m (calc {live['calc_max_diameter_m']}m), "
             f"dims_match={live['dimensions_match']}")
     except Exception as exc:

@@ -1024,17 +1024,20 @@ def main() -> int:
     # Eve flight proved the correction is far bigger than the 80 m/s first assumed (a 2.5x-SOI ejection
     # miss needs ~200-500 m/s to fine-tune), so budget generously: 562 + 1025 + 400 + 600 + 230 ≈ 2820,
     # round to 3000 for margin (the dry relay #1 was the lesson). Other interplanetary targets default high.
-    # Eve sync (10,328 km) is HIGH, so the in-space budget is large: LKO-circ ~560 + eject ~1020 +
-    # encounter-establishing correction + low capture ~600 + Hohmann low->sync ~1710. Budget 5000 closes
-    # as a FEASIBLE 204 t stack (TWR 1.38, L/D 7.7) when the booster clusters 4 Mainsails; the relays kept
-    # stranding because the upper couldn't afford the correction + the high Hohmann.
-    insertion_override = {"Duna": 4400.0, "Eve": 5000.0}.get(target_body, 0.0)
+    # Eve upper budget. NOTE the open problem: Eve sync (10,328 km) is HIGH, so the full single-upper
+    # budget (eject + encounter correction + low capture + ~1700 m/s Hohmann low->sync) is ~5000 m/s,
+    # which makes a single relay infeasible/unliftable (478 t). The real fix is a SMARTER profile — a
+    # CHEAP correction (well-timed ejection) + capture DIRECTLY near the sync radius (aim the encounter
+    # periapsis high, so the Hohmann is ~230 not ~1700) — which keeps the upper near 2300 and the relay
+    # at a feasible 90 t. Until that lands, 3000 keeps the relay LAUNCHABLE (it just can't yet afford a
+    # bad-geometry correction). See memory: the in-isolation test path.
+    insertion_override = {"Duna": 4400.0, "Eve": 3000.0}.get(target_body, 0.0)
     if insertion_override == 0.0 and target_body not in ("Mun",):
         try:
             insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
         except Exception:
             pass
-    booster_engines = {"Duna": 2, "Eve": 4}.get(target_body, 1)  # Eve's heavy 5000 m/s upper needs a 4-Mainsail base
+    booster_engines = {"Duna": 2, "Eve": 2}.get(target_body, 1)
     if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0,
                                       insertion_dv_override=insertion_override, booster_max_engines=booster_engines):
         log("launch to parking orbit FAILED"); return 2
