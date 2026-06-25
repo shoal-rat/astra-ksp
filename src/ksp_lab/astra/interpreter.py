@@ -21,6 +21,7 @@ from ..bodies import KERBIN, _REGISTRY
 from ..mission import MissionPlanner
 from ..models import MissionSpec
 from . import primitives
+from . import planning_context as _pc
 
 _DEFAULT_MODEL = os.environ.get("ASTRA_MODEL", "claude-opus-4-8")
 _API_URL = "https://api.anthropic.com/v1/messages"
@@ -165,26 +166,96 @@ class Interpreter:
                       f"relay={wants_relay}, land={wants_land}, flag={wants_flag}, return={wants_return}.",
         )
 
-    # ----- LLM decomposer -----
-    def _interpret_llm(self, command: str) -> MissionPlan:
-        catalog = primitives.catalog_for_prompt()
-        bodies = [b.name for b in _REGISTRY.values()]
-        system = (
-            "You are the mission DECOMPOSER for ASTRA, a general agent that flies Kerbal Space Program 1. "
-            "Break the user's one-line goal into an ORDERED list of atomic PRIMITIVE calls from the catalog "
-            "below. Be BODY-AGNOSTIC: read the destination from the text (any of these bodies: "
-            + ", ".join(bodies) + "; the launch body is Kerbin). Flight order matters: launch, then "
-            "transfer to the target, then on-body actions (land, plant_flag, ascend), then transfer home + "
-            "recover for a round trip. Use crew>0 and heatshield/chutes/radial_boosters for crewed or "
-            "interplanetary missions.\n\nPRIMITIVE CATALOG (JSON):\n" + json.dumps(catalog, ensure_ascii=False)
-            + "\n\nRespond with ONLY a JSON object: "
-            "{\"target_body\": str, \"steps\": [{\"primitive\": str, \"args\": {..}}, ...], "
-            "\"rationale\": str}. Use only primitive names and arg names from the catalog."
+    # ----- LLM mission ARCHITECT -----
+    def _build_system_prompt(self, planning_ctx: dict) -> str:
+        """The MISSION-ARCHITECT system prompt: Claude is a reasoning flight planner, not a word-guesser.
+        It is given the full planning context (catalog + body constants + calculation helpers + any live
+        state) and told to DECOMPOSE the goal, REASON about each step's parameters (target/altitude/window/
+        capture mode), and emit strict JSON with a per-step rationale + a mission rationale."""
+        context_text = _pc.render_context_text(planning_ctx)
+        return (
+            "You are ASTRA's MISSION ARCHITECT — a careful spaceflight reasoning agent flying Kerbal "
+            "Space Program 1. You are NOT a phrase-matcher: you are Claude, with real orbital-mechanics "
+            "comprehension. Given ONE line of plain English, design the whole mission.\n\n"
+            "DO THREE THINGS, in this order, thinking like a flight director:\n"
+            "(a) DECOMPOSE the goal into an ORDERED list of atomic PRIMITIVE steps from the catalog. "
+            "Flight order matters: launch -> (interplanetary transfer) -> on-body actions (land, "
+            "plant_flag, ascend) -> (transfer home) -> recover. You have LEEWAY to sequence creatively "
+            "for NOVEL multi-leg missions: a Moho 'loop near the Sun' (chain Kerbin->Eve gravity assist "
+            "->Moho), a grand tour of several bodies, a constellation of relays, a refuel-depot pattern. "
+            "Invent the right sequence — do not force a goal into a canned 3-step template.\n"
+            "(b) REASON about each step's PARAMETERS and CALCULATE them from the body constants and the "
+            "calculation helpers, not from guesswork. Specifically:\n"
+            "   - TARGET / ALTITUDE: read the destination body from the text. Parse altitude words to "
+            "real numbers using the BODIES table: 'synchronous'/'stationary'/'keostationary' -> that "
+            "body's synchronous_alt_km; 'low orbit' -> low_orbit_alt_km; 'high orbit' -> a high but "
+            "sub-SOI altitude. Put the number in capture_alt_km / target_alt_km.\n"
+            "   - CAPTURE MODE: 'circular' for a relay/station that must hold a precise orbit; "
+            "'aerocapture' to arrive cheaply at a body WITH an atmosphere when you will land or recover; "
+            "'loose' for a cheap bound ellipse (flybys, fuel-limited captures).\n"
+            "   - WINDOW / TIMING: for any Sun-to-Sun transfer (Kerbin<->Duna/Eve/Moho/etc.) note in the "
+            "step reasoning that the agent must call transfer_planner.find_transfer_window(dep,tgt) to "
+            "get ut_dep, then WAIT ON THE GROUND / in parking orbit and time-warp (e.g. 1000x) to that "
+            "departure UT before the ejection burn. Give a rough sense of how long the wait is "
+            "(a fraction of the synodic period). Moon transfers (Kerbin->Mun/Minmus) need only phasing, "
+            "not a heliocentric window.\n"
+            "   - LAUNCH PROFILE: set crew>0 for crewed goals; heatshield + chutes for re-entry/return; "
+            "radial_boosters and max_core_engines for heavy interplanetary or crewed uppers.\n"
+            "   - DOCKING / RETURN: add rendezvous+dock for assembly/refuel; a round trip needs a "
+            "transfer back to Kerbin then recover.\n"
+            "(c) For each step add an 'args.notes' string with the short CALCULATION you used (e.g. "
+            "\"Duna sync alt = 2880 km from synchronous_altitude_m\", or \"wait ~0.4*synodic for the "
+            "next Kerbin->Duna window, warp 1000x to ut_dep\").\n\n"
+            "You may ONLY use primitive names and arg names that appear in the catalog. Pick the target "
+            "body from any body in the BODIES table; the launch body is Kerbin.\n\n"
+            "================ PLANNING CONTEXT ================\n" + context_text + "\n"
+            "=================================================\n\n"
+            "Respond with ONLY a strict JSON object, no prose around it:\n"
+            "{\n"
+            '  "target_body": "<primary destination>",\n'
+            '  "steps": [ {"primitive": "<name>", "args": { ... , "notes": "<calc>"}, '
+            '"reasoning": "<why this step, what you computed>"}, ... ],\n'
+            '  "mission_rationale": "<one-paragraph plan overview>",\n'
+            '  "open_questions": ["<assumptions or things you could not fully resolve>", ...]\n'
+            "}"
         )
+
+    def _interpret_llm(self, command: str, planning_ctx: dict | None = None) -> MissionPlan:
+        # Offline planning briefing (catalog + body constants + calc helpers). The live variant can be
+        # passed in by a caller that already holds a kRPC handle; otherwise we plan from the static one.
+        if planning_ctx is None:
+            planning_ctx = _pc.build_planning_context_static(command)
+        system = self._build_system_prompt(planning_ctx)
+        text = self._call_llm(system, command)
+        data = json.loads(_extract_json(text))
+        steps = _validate_steps(data.get("steps", []))
+        if not steps:
+            raise ValueError("LLM returned no valid primitive steps")
+        mission = self.planner.interpret(command)
+        target = str(data.get("target_body") or self._parse_target_body(command.lower()) or "Kerbin")
+        # Accept either the new "mission_rationale" or the legacy "rationale" key.
+        rationale = str(data.get("mission_rationale") or data.get("rationale") or "")
+        open_qs = data.get("open_questions") or []
+        extra = {"open_questions": open_qs} if open_qs else {}
+        return MissionPlan(
+            command=command,
+            target_body=target,
+            steps=steps,
+            mission=mission,
+            source="llm",
+            rationale=rationale,
+            notes=f"Architected by {self.model}.",
+            extra=extra,
+        )
+
+    def _call_llm(self, system: str, command: str) -> str:
+        """POST the architect prompt to the Anthropic Messages API; return the concatenated text.
+        Raised to 4000 max_tokens so the model has room to REASON per step. Network/parse errors
+        propagate to interpret(), which falls back to the heuristic."""
         body = json.dumps(
             {
                 "model": self.model,
-                "max_tokens": 1200,
+                "max_tokens": 4000,
                 "system": system,
                 "messages": [{"role": "user", "content": command}],
             }
@@ -199,26 +270,11 @@ class Interpreter:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
-        text = "".join(
+        return "".join(
             blk.get("text", "") for blk in payload.get("content", []) if blk.get("type") == "text"
         ).strip()
-        data = json.loads(_extract_json(text))
-        steps = _validate_steps(data.get("steps", []))
-        if not steps:
-            raise ValueError("LLM returned no valid primitive steps")
-        mission = self.planner.interpret(command)
-        target = str(data.get("target_body") or self._parse_target_body(command.lower()) or "Kerbin")
-        return MissionPlan(
-            command=command,
-            target_body=target,
-            steps=steps,
-            mission=mission,
-            source="llm",
-            rationale=str(data.get("rationale") or ""),
-            notes=f"Decomposed by {self.model}.",
-        )
 
 
 def _prune(args: dict) -> dict:
@@ -231,18 +287,36 @@ def _prune(args: dict) -> dict:
 
 
 def _validate_steps(raw: list) -> list[dict]:
-    """Keep only steps whose primitive exists in the catalog; coerce args to a dict."""
+    """Robustly turn a raw LLM 'steps' list into executable steps.
+
+    - Keep only steps whose primitive EXISTS in the catalog (drop/repair unknown ones rather than
+      crashing — an unknown primitive would explode the executor).
+    - Coerce args to a dict; preserve the per-step ``reasoning`` so the report can show the LLM's
+      thinking. The executor only reads step['primitive'] / step['args'], so extra keys are inert.
+    - Lift the architect's free-text ``args.notes`` calculation OUT of the executable args (the live
+      primitives take no ``notes`` kwarg and would raise) onto a step-level ``notes`` field, and DROP
+      any other arg name that is not a real parameter of that primitive (repair hallucinated args).
+    """
     steps: list[dict] = []
     for s in raw or []:
         if not isinstance(s, dict):
             continue
         name = s.get("primitive")
         if name not in primitives.CATALOG:
-            continue
-        args = s.get("args") or {}
-        if not isinstance(args, dict):
-            args = {}
-        steps.append({"primitive": name, "args": args})
+            continue  # repair: silently drop an unknown/hallucinated primitive
+        raw_args = s.get("args") or {}
+        if not isinstance(raw_args, dict):
+            raw_args = {}
+        notes = raw_args.get("notes")
+        valid_params = set(primitives.CATALOG[name].params)
+        args = {k: v for k, v in raw_args.items() if k in valid_params}
+        step: dict = {"primitive": name, "args": args}
+        if notes:
+            step["notes"] = str(notes)
+        reasoning = s.get("reasoning")
+        if reasoning:
+            step["reasoning"] = str(reasoning)
+        steps.append(step)
     return steps
 
 
