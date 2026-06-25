@@ -243,6 +243,24 @@ class BridgeClient:
         payload = {"vessel": vessel} if vessel else {}
         return self._request("POST", "/resources", json=payload)
 
+    def part_database(self) -> dict:
+        """The GAME's authoritative loaded part catalog from ``PartLoader.LoadedPartsList`` — post-load,
+        module-PROCESSED truth (what KSP actually instantiated after cfg parse + patches + variant
+        resolution), so it catches anything the lab's raw cfg parse (``data/stock_parts.json``) missed.
+
+        Returns ``{"ok": True, "count": N, "parts": [ ... ]}`` where each part is::
+
+            {"name", "title", "category", "bulkhead", "crewCapacity", "dryMassT",
+             "maxThrustKn"?, "ispVacS"?, "ispAslS"?, "resources": {"ResourceName": maxAmount, ...}}
+
+        ``maxThrustKn``/``ispVacS``/``ispAslS`` are present only for parts with a ModuleEngines(FX).
+        Used by ``tools/validate_parts_live.py`` to cross-check the materialized catalog against the
+        live game. Available from any scene (the part DB loads at game start). Read-only.
+
+        NOTE: raises ``BridgeError`` (wrapping HTTP 404) if the running bridge DLL predates this endpoint —
+        the consolidated DLL must be installed and KSP restarted for it to answer."""
+        return self._request("GET", "/part-database")
+
     def eva_board(self, crew: str = "") -> dict:
         """Re-board the active (or named) EVA kerbal into the nearest crewable part with a free seat —
         closes the loop after ``eva_go``/``eva_flag``. ``crew`` (optional) selects the EVA kerbal by

@@ -612,6 +612,15 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => ResourcesCommand(fields), 20000);
             }
 
+            // ---- Authoritative loaded part catalog (post-load, module-processed truth) ----
+            // GET /part-database dumps PartLoader.LoadedPartsList so the lab can cross-check the
+            // materialized data/stock_parts.json against what the GAME itself loaded. Larger payload,
+            // so a 60s timeout. Read-only; works from ANY scene (the part DB loads at game start).
+            if (request.Method == "GET" && request.Path == "/part-database")
+            {
+                return RunOnMainThread(PartDatabaseCommand, 60000);
+            }
+
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
         }
 
@@ -3167,6 +3176,96 @@ namespace KspAutomationBridge
             {
                 _lastError = ex.ToString();
                 return CommandResult.Fail("resources failed: " + ex.Message);
+            }
+        }
+
+        // GET /part-database -> the GAME's authoritative loaded part catalog (PartLoader.LoadedPartsList).
+        // This is post-load, module-PROCESSED truth: it reflects what KSP actually instantiated after the
+        // .cfg parse + ModuleManager patches + variant resolution, so it catches anything the lab's raw
+        // cfg parse (data/stock_parts.json) missed or got wrong. tools/validate_parts_live.py cross-checks
+        // the materialized catalog against this. Read-only; available from any scene (the DB loads at start).
+        //
+        // For each AvailablePart we emit a compact object (fields kept minimal — the array is large):
+        //   name, title, category, bulkhead (bulkheadProfiles), crewCapacity, dryMassT (partPrefab.mass),
+        //   maxThrustKn + ispAslS/ispVacS (from a ModuleEngines/ModuleEnginesFX, atmosphereCurve at 1/0 atm),
+        //   resources { ResourceName: maxAmount, ... } (from partPrefab.Resources).
+        private CommandResult PartDatabaseCommand()
+        {
+            try
+            {
+                if (PartLoader.LoadedPartsList == null)
+                {
+                    return CommandResult.Fail("PartLoader.LoadedPartsList is null (part DB not loaded yet).", 503);
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[");
+                int count = 0;
+                foreach (AvailablePart ap in PartLoader.LoadedPartsList)
+                {
+                    if (ap == null) { continue; }
+                    Part prefab = ap.partPrefab;
+                    if (prefab == null) { continue; }   // category placeholders etc. have no prefab
+                    if (count > 0) { sb.Append(","); }
+                    count++;
+
+                    sb.Append("{");
+                    sb.Append("\"name\":\"").Append(JsonEscape(ap.name ?? "")).Append("\",");
+                    sb.Append("\"title\":\"").Append(JsonEscape(ap.title ?? "")).Append("\",");
+                    sb.Append("\"category\":\"").Append(JsonEscape(ap.category.ToString())).Append("\",");
+                    sb.Append("\"bulkhead\":\"").Append(JsonEscape(ap.bulkheadProfiles ?? "")).Append("\",");
+                    sb.Append("\"crewCapacity\":").Append(prefab.CrewCapacity.ToString(CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"dryMassT\":").Append(((double)prefab.mass).ToString("R", CultureInfo.InvariantCulture));
+
+                    // Engine stats: ModuleEnginesFX derives from ModuleEngines, so one lookup catches both.
+                    ModuleEngines eng = null;
+                    if (prefab.Modules != null)
+                    {
+                        foreach (PartModule pm in prefab.Modules)
+                        {
+                            ModuleEngines me = pm as ModuleEngines;
+                            if (me != null) { eng = me; break; }
+                        }
+                    }
+                    if (eng != null)
+                    {
+                        sb.Append(",\"maxThrustKn\":").Append(((double)eng.maxThrust).ToString("R", CultureInfo.InvariantCulture));
+                        // atmosphereCurve maps ATMOSPHERES -> Isp(s): Evaluate(0)=vacuum, Evaluate(1)=1 atm (ASL).
+                        if (eng.atmosphereCurve != null)
+                        {
+                            double ispVac = eng.atmosphereCurve.Evaluate(0f);
+                            double ispAsl = eng.atmosphereCurve.Evaluate(1f);
+                            sb.Append(",\"ispVacS\":").Append(ispVac.ToString("R", CultureInfo.InvariantCulture));
+                            sb.Append(",\"ispAslS\":").Append(ispAsl.ToString("R", CultureInfo.InvariantCulture));
+                        }
+                    }
+
+                    // Resource capacities (maxAmount) keyed by resource name, from the prefab's Resources.
+                    sb.Append(",\"resources\":{");
+                    if (prefab.Resources != null)
+                    {
+                        bool firstR = true;
+                        foreach (PartResource pr in prefab.Resources)
+                        {
+                            if (pr == null) { continue; }
+                            if (!firstR) { sb.Append(","); }
+                            firstR = false;
+                            sb.Append("\"").Append(JsonEscape(pr.resourceName ?? "")).Append("\":");
+                            sb.Append(((double)pr.maxAmount).ToString("R", CultureInfo.InvariantCulture));
+                        }
+                    }
+                    sb.Append("}}");
+                }
+                sb.Append("]");
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "count", count },
+                    { "parts", new RawJson(sb.ToString()) }
+                });
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("part-database failed: " + ex.Message);
             }
         }
     }
