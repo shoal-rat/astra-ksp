@@ -131,7 +131,7 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # falls back from apoapsis, so it needs real thrust — a slow Terrier (60 kN) leaves it suborbital
     # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
     # comsat upper still circularises fine on the Terrier (no floor).
-    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3000.0 else (0.0, 0.0)
+    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
         # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat

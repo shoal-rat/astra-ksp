@@ -1081,17 +1081,19 @@ def main() -> int:
     # periapsis high, so the Hohmann is ~230 not ~1700) — which keeps the upper near 2300 and the relay
     # at a feasible 90 t. Until that lands, 3000 keeps the relay LAUNCHABLE (it just can't yet afford a
     # bad-geometry correction). See memory: the in-isolation test path.
-    # Eve 3800: the 90 t/3000 relay reached Eve + captured but ran DRY at e=0.626 before circularizing —
-    # the in-space chain (eject 1015 + grid corrections + FULL capture + Hohmann-to-sync) plus ~25%
-    # execution overhead needs ~3800. With the insertion TWR floor (deploy_relay) this builds a feasible
-    # 205 t relay (TWR 1.37, Reliant upper that circularizes — also fixes #8) on a 4-Mainsail booster.
-    insertion_override = {"Duna": 4400.0, "Eve": 3800.0}.get(target_body, 0.0)
+    # Eve 3000 keeps the relay a LAUNCHABLE 90 t (a 3800 m/s upper makes it 205 t, which HANGS at the
+    # post-ascent circularization — the heavy-upper tension). The 90 t relay reaches Eve and captures
+    # (bound, e~0.6) but runs DRY before fully circularizing to sync; closing that last gap is a FUEL-
+    # EFFICIENCY problem (the grid+capture+Hohmann + ~25% MechJeb execution overhead), not more tankage:
+    # aim the grid encounter nearer sync (cheaper capture, no Hohmann), tighten the corrections, or
+    # aerocapture in Eve's 5-atm air. See memory.
+    insertion_override = {"Duna": 4400.0, "Eve": 3000.0}.get(target_body, 0.0)
     if insertion_override == 0.0 and target_body not in ("Mun",):
         try:
             insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
         except Exception:
             pass
-    booster_engines = {"Duna": 2, "Eve": 4}.get(target_body, 1)  # Eve's 205 t relay needs a 4-Mainsail base
+    booster_engines = {"Duna": 2, "Eve": 2}.get(target_body, 1)
     if not deploy_relay.launch_to_lko(sc, cfg, runner, bridge, name, 100.0,
                                       insertion_dv_override=insertion_override, booster_max_engines=booster_engines):
         log("launch to parking orbit FAILED"); return 2
