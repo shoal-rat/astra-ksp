@@ -805,48 +805,46 @@ def _encounter_periapsis(node, target_name: str):
     return None
 
 
-def _search_correction(sc, v, target_name: str, ut: float, want_pe_m: float,
-                       pg_w: float, pg_s: float, nrm_w: float, nrm_s: float):
-    """Grid-search a small (prograde, normal) correction at ``ut`` whose target-SOI encounter periapsis
-    is CLOSEST to ``want_pe_m`` (the synchronous altitude). Body-agnostic. Returns best node dict / None."""
-    best = None
-    for pg in _frange(-pg_w, pg_w, pg_s):
-        for nrm in _frange(-nrm_w, nrm_w, nrm_s):
-            v.control.remove_nodes()
-            node = v.control.add_node(ut, prograde=pg, normal=nrm, radial=0.0)
-            pe = _encounter_periapsis(node, target_name)
-            v.control.remove_nodes()
-            if pe is None:
-                continue
-            score = abs(pe - want_pe_m)
-            if best is None or score < best["score"]:
-                best = {"ut": ut, "prograde": pg, "normal": nrm, "radial": 0.0, "pe": pe, "score": score}
-    return best
-
-
-def _circularize_here(conn, sc, v, log):
-    """At the current point (intended: the target periapsis = synchronous radius), burn to circularize:
-    node prograde = v_circ - v_now (retrograde capture). Returns the achieved eccentricity."""
+def _circularize_at(conn, sc, v, r_apsis_label: str):
+    """Circularize at the current point: node prograde = v_circ - v_now. r_apsis_label only labels the log."""
     o = v.orbit
     mu = o.body.gravitational_parameter
     r = o.radius
-    v_circ = math.sqrt(mu / r)
-    dv = v_circ - o.speed                              # negative => retrograde capture burn
     v.control.remove_nodes()
-    v.control.add_node(sc.ut + 1.0, prograde=dv, normal=0.0, radial=0.0)
+    v.control.add_node(sc.ut + 5.0, prograde=math.sqrt(mu / r) - o.speed, normal=0.0, radial=0.0)
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     return v.orbit.eccentricity
 
 
+def _hohmann_to_radius(conn, sc, v, r_target: float):
+    """From a ~circular orbit, Hohmann-transfer to a circular orbit of radius r_target: burn at the
+    current point to set the far apsis to r_target, coast there, circularize. Body-agnostic; no refuel."""
+    o = v.orbit
+    mu = o.body.gravitational_parameter
+    r0 = o.radius
+    if abs(r0 - r_target) <= 0.02 * r_target:
+        return                                          # already at the target radius
+    a_t = 0.5 * (r0 + r_target)
+    v_trans0 = math.sqrt(mu * (2.0 / r0 - 1.0 / a_t))
+    v.control.remove_nodes()
+    v.control.add_node(sc.ut + 5.0, prograde=v_trans0 - o.speed, normal=0.0, radial=0.0)
+    _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
+    o = v.orbit
+    t = o.time_to_apoapsis if r_target > r0 else o.time_to_periapsis
+    if t and 0 < t < 1e7:
+        sc.warp_to(sc.ut + t - 20.0); time.sleep(2)
+    _circularize_at(conn, sc, v, "target radius")
+
+
 def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float) -> bool:
-    """Eject (precise Lambert) -> correct to a synchronous-altitude encounter -> coast to SOI -> capture
-    + circularize at the synchronous radius. Body-agnostic; the relay ends in a near-circular orbit at
-    ``target_alt_km`` around ``target_name``."""
+    """Eject (precise Lambert) -> MechJeb course-correction to the encounter -> capture low -> Hohmann to
+    the synchronous radius. Body-agnostic; the relay ends near-circular at ``target_alt_km`` around
+    ``target_name``. The correction is DELEGATED to MechJeb's OperationCourseCorrection (robust) rather
+    than a hand-rolled grid (AGENTS.md RULE 1: delegate, don't hand-roll)."""
     from ksp_lab import transfer_planner as _tp
     target = sc.bodies[target_name]
-    R_t = target.equatorial_radius
-    want_pe = target_alt_km * 1000.0
-    # 1) PRECISE ejection (validated body-agnostic Lambert; node placed at the parking-orbit periapsis).
+    r_target = target.equatorial_radius + target_alt_km * 1000.0
+    # 1) PRECISE Lambert ejection (validated body-agnostic; node at the parking-orbit periapsis).
     plan = _tp.plan_transfer(sc, v, v.orbit.body.name, target_name)
     nd, win = plan["ejection"], plan["window"]
     v.control.remove_nodes()
@@ -855,44 +853,51 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         f"(Lambert |vinf| {win['vinf_mag']:.0f} m/s, tof {win['tof']/(426*21600):.2f} yr)")
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     if not _wait_until_sun_orbit(sc, v):
-        log(f"  did not escape Kerbin SOI after the ejection (still {v.orbit.body.name})"); return False
-    # 2) Mid-course correction: aim the encounter periapsis at the synchronous radius.
-    for attempt in range(1, 4):
-        mid_ut = sc.ut + max(6 * 3600.0, 0.06 * win["tof"])
-        best = _search_correction(sc, v, target_name, mid_ut, want_pe, 300.0, 30.0, 150.0, 30.0)
-        if best is None:
-            best = _search_correction(sc, v, target_name, mid_ut, want_pe, 900.0, 45.0, 500.0, 50.0)
-        if best is None:
-            log(f"  correction {attempt}/3: no {target_name} encounter in grid; coasting a bit and retrying ...")
-            sc.warp_to(sc.ut + 5.0 * 6 * 3600.0); continue
-        v.control.remove_nodes()
-        v.control.add_node(best["ut"], prograde=best["prograde"], normal=best["normal"], radial=best["radial"])
-        log(f"  CORRECTION {attempt}: aim encounter pe {best['pe']/1000:.0f} km (want {target_alt_km:.0f}) "
-            f"-> pg {best['prograde']:.0f} nrm {best['normal']:.0f}")
-        _execute_node_manually(conn, sc, v, max_burn_s=150.0, max_throttle=0.7)
-        if 0 < (v.orbit.time_to_soi_change or 0) < 1e9:
-            break
-    # 3) Coast to the target SOI.
-    for _ in range(3):
+        log(f"  did not escape the departure SOI (still {v.orbit.body.name})"); return False
+    # 2) MID-COURSE CORRECTION delegated to MechJeb. Set the target, warp partway toward arrival, plan a
+    # course correction, execute. Iterate twice — a later correction (closer to arrival) is small + precise.
+    try:
+        sc.target_body = target
+    except Exception as exc:
+        log(f"  could not set target ({exc})")
+    for i, frac in enumerate((0.5, 0.85), start=1):
+        warp_to = win["ut_dep"] + frac * win["tof"]
+        if v.orbit.body.name != target_name and warp_to > sc.ut + 120.0:
+            sc.warp_to(warp_to); time.sleep(2)
         if v.orbit.body.name == target_name:
             break
-        soi_dt = v.orbit.time_to_soi_change
-        if soi_dt and 0 < soi_dt < 1e9:
-            log(f"  coasting {soi_dt/(6*3600):.0f} Kerbin-days to the {target_name} SOI ...")
-            sc.warp_to(sc.ut + soi_dt + 30.0); time.sleep(3)
+        try:
+            r = bridge.mj_plan(target=target_name, operation="correction")
+            if r.get("planned") and v.control.nodes:
+                log(f"  CORRECTION {i} (MechJeb course-correct): {r.get('dv', 0):.0f} m/s")
+                _execute_node_manually(conn, sc, v, max_burn_s=150.0, max_throttle=0.8)
+        except Exception as exc:
+            log(f"  MechJeb correction {i} unavailable ({exc})")
+    # 3) Coast to the target SOI.
+    for _ in range(4):
+        if v.orbit.body.name == target_name:
+            break
+        dt = v.orbit.time_to_soi_change
+        if dt and 0 < dt < 1e9:
+            log(f"  coasting {dt/(6*3600):.0f} Kerbin-days to the {target_name} SOI ...")
+            sc.warp_to(sc.ut + dt + 30.0); time.sleep(3)
         else:
             break
     if v.orbit.body.name != target_name:
         log(f"  ABORT: never entered the {target_name} SOI (still {v.orbit.body.name})"); return False
-    # 4) Warp to periapsis (intended = synchronous radius) and circularize.
+    # 4) Capture at the encounter periapsis (cheap Oberth low capture), then Hohmann up to the sync radius.
     ttp = v.orbit.time_to_periapsis
     if ttp and 0 < ttp < 1e7:
         log(f"  in {target_name} SOI; pe {v.orbit.periapsis_altitude/1000:.0f} km; warping {ttp/(6*3600):.0f} d to periapsis ...")
-        sc.warp_to(sc.ut + ttp - 30.0); time.sleep(2)
-    ecc = _circularize_here(conn, sc, v, log)
-    alt = (v.orbit.apoapsis_altitude + v.orbit.periapsis_altitude) / 2000.0
-    log(f"  CAPTURED at {target_name}: ~{alt:.0f} km circular (e={ecc:.3f}), target {target_alt_km:.0f} km")
-    return v.orbit.body.name == target_name and ecc < 0.2
+        sc.warp_to(sc.ut + ttp - 20.0); time.sleep(2)
+    _circularize_at(conn, sc, v, "capture periapsis")
+    log(f"  captured {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km; "
+        f"Hohmann to {target_alt_km:.0f} km synchronous ...")
+    _hohmann_to_radius(conn, sc, v, r_target)
+    o = v.orbit
+    log(f"  SYNCHRONOUS at {target_name}: {o.periapsis_altitude/1000:.0f}x{o.apoapsis_altitude/1000:.0f} km "
+        f"(target {target_alt_km:.0f}, e={o.eccentricity:.3f})")
+    return o.body.name == target_name and o.eccentricity < 0.25
 
 
 def main() -> int:
