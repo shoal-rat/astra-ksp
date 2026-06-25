@@ -912,29 +912,20 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         sc.target_body = target
     except Exception as exc:
         log(f"  could not set target ({exc})")
-    # Anchor the correction on the ACTUAL post-ejection time (NOT the stale original window — the launch
-    # reverts the clock + warp_via_high moves us, so win["ut_dep"] is in the past and the old 0.5*tof
-    # warp fired the correction at the wrong geometry). Warp ~1/3 of the flight, then ESTABLISH the
-    # encounter with one correction — ALLOW it to be sizeable (it MAKES the SOI intercept; the earlier
-    # >400 skip left no encounter at all), only refusing a runaway burn the bigger budget still can't
-    # afford on top of capture + Hohmann-to-sync.
-    mid = sc.ut + 0.35 * win["tof"]
-    if v.orbit.body.name != target_name and mid > sc.ut + 120.0:
-        sc.warp_to(mid); time.sleep(2)
+    # Correct IMMEDIATELY after escape, FAR from Eve, where a course correction is CHEAPEST. The hard
+    # lesson: correcting progressively LATER (near the SOI) made the burn grow 338 -> 622 -> 1502 m/s and
+    # ran the relay dry; the EARLIEST correction was by far the cheapest. One early correction establishes
+    # the naturally-HIGH (~20,000 km) Eve encounter, which we then capture and Hohmann DOWN to sync — all
+    # inside the 90 t relay's budget (eject ~1020 + correction ~340 + capture ~600 + Hohmann ~230).
     if v.orbit.body.name != target_name and not (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
         try:
             r = bridge.mj_plan(target=target_name, operation="correction")
             dv = r.get("dv", 0.0) if r.get("planned") else 0.0
-            # Cap at what the 90 t relay can afford on top of capture + Hohmann (~400 m/s). A SMALL cheap
-            # correction nudges a near-miss into the SOI; a BIG one (the recurring 1800+ m/s) means the
-            # EJECTION geometry is wrong — execute it and you strand the relay DRY. So skip it and KEEP THE
-            # FUEL (the relay stays in solar orbit, recoverable / re-targetable), rather than burning out.
-            # The real cure is a better-timed ejection so the encounter is natural (see in-code note above).
-            if r.get("planned") and v.control.nodes and dv < 400.0:
-                log(f"  CORRECTION (MechJeb, cheap): {dv:.0f} m/s")
-                _execute_node_manually(conn, sc, v, max_burn_s=200.0, max_throttle=1.0)
+            if r.get("planned") and v.control.nodes and dv < 700.0:
+                log(f"  CORRECTION (MechJeb, early/far = cheap): {dv:.0f} m/s")
+                _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
             else:
-                log(f"  correction {dv:.0f} m/s too big — EJECTION geometry off; keeping fuel (no dry-out), aborting clean")
+                log(f"  correction {dv:.0f} m/s too big even early — ejection geometry off; keeping fuel, aborting clean")
                 v.control.remove_nodes()
         except Exception as exc:
             log(f"  MechJeb correction unavailable ({exc})")
