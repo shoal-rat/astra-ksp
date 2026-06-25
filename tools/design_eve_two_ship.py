@@ -34,7 +34,7 @@ def crew_ferry() -> ShipRequirements:
     """Light one-way crew delivery to Eve orbit (no return fuel, no heat shield — the crew rides the tug
     home). Docking port + RCS for the final approach."""
     return ShipRequirements(
-        name="AI-Eve-Ferry", mission_type="crewed", crew=1, payload_t=0.3,
+        name="AI-Eve-Ferry2", mission_type="crewed", crew=1, payload_t=0.3,
         phases=_phases(3800.0), landing=None, needs_heatshield=False, needs_docking=True,
         max_engine_count=1, radial_booster_count=4,
     )
@@ -46,7 +46,7 @@ def return_tug() -> ShipRequirements:
     kerbal transfers into (it launches headless; the seat fills at the dock). Needs 8 strap-ons + a
     2-engine core to lift the heavy return-fuel upper."""
     return ShipRequirements(
-        name="AI-Eve-Tug", mission_type="crewed", crew=1, payload_t=0.3,
+        name="AI-Eve-Tug2", mission_type="crewed", crew=1, payload_t=0.3,
         phases=_phases(4000.0), landing=LandingSite(KERBIN_G, KERBIN_SL_RHO),
         needs_heatshield=True, needs_docking=True, max_engine_count=2, radial_booster_count=8,
     )

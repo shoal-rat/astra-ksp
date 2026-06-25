@@ -55,11 +55,14 @@ class Interpreter:
         self.planner = MissionPlanner()
 
     # ----- public -----
-    def interpret(self, command: str) -> MissionPlan:
+    def interpret(self, command: str, planning_ctx: dict | None = None) -> MissionPlan:
+        """Decompose+plan a command. ``planning_ctx`` (from planning_context.build_planning_context) lets
+        the LLM reason over the LIVE universe state (vessel orbits, resources) — the agent passes it for a
+        live run; for a dry-run it's None and the LLM falls back to the static (bodies+catalog) context."""
         plan = None
         if self.allow_llm and os.environ.get("ANTHROPIC_API_KEY"):
             try:
-                plan = self._interpret_llm(command)
+                plan = self._interpret_llm(command, planning_ctx)
             except Exception:  # network/parse/key issues -> graceful fallback
                 plan = None
         if plan is None:

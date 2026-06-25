@@ -106,7 +106,26 @@ class AstraAgent:
 
     # ---------- public ----------
     def run(self, command: str) -> AstraResult:
-        plan = self.interpreter.interpret(command)
+        # LIVE run: connect FIRST so the LLM mission-architect reasons over the LIVE universe state (vessel
+        # orbits + resources/mass via the bridge), not just the static bodies+catalog — the user's "give the
+        # LLM sufficient information". DRY-RUN: plan from the static context only (no connection needed).
+        ctx = None
+        planning_ctx = None
+        if not self.dry_run:
+            ctx = self._connect_context()
+            if ctx is None:
+                plan = self.interpreter.interpret(command)
+                res = AstraResult(command=command, plan=plan)
+                res.success = False
+                return res
+            try:
+                from . import planning_context as _pc
+                planning_ctx = _pc.build_planning_context(ctx.conn, ctx.sc, command, bridge=ctx.bridge)
+            except Exception as _exc:
+                _log(f"live planning context unavailable ({_exc}); planning from the static context")
+                planning_ctx = None
+
+        plan = self.interpreter.interpret(command, planning_ctx=planning_ctx)
         self._status("decompose", f"[{plan.source}] {plan.target_body}: {plan.step_summary()}")
         if plan.rationale:
             _log(f"rationale: {plan.rationale}")
@@ -124,11 +143,7 @@ class AstraAgent:
             result.success = True
             return result
 
-        # Connect ONCE, build the live context, thread it through every step.
-        ctx = self._connect_context()
-        if ctx is None:
-            result.success = False
-            return result
+        # ctx is already connected above (live run).
 
         overall = True
         for i, step in enumerate(plan.steps, start=1):
