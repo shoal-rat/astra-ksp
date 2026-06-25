@@ -120,16 +120,23 @@ every part count**:
 - **Tanks** by the closed-form rocket equation — `_tank_count_for_dv` inverts
   `R = exp(Δv/v_e) = m₀/m₁`, carrying the full wet mass of the stages above. Stages are sized
   top-down (last-firing first) so each lower stage carries the cascade above it.
-- **Engine clusters** by the TWR the body demands — `_size_one` runs a clustering fixed-point that
-  grows `engine_count` until thrust meets `min_twr` at the resulting ignition mass. `_size_stage`
-  searches the engine catalogue and picks the **lightest valid stage**, a calculated selection rather
-  than a hand-pick.
+- **A diameter that makes it look like a real rocket.** Each stage picks the **narrowest** standard
+  diameter (1.25 / 2.5 / 3.75 m) that holds its propellant within a per-stage fineness budget (no skinny
+  noodle) and is **≥ every stage above it** — a monotonic non-increasing taper, base widest, with
+  conical adapters at each step. No more 22:1 needles.
+- **Engine clusters that fit.** `_size_one` grows `engine_count` until thrust meets `min_twr`, but caps
+  the cluster at how many engine **bells** physically fit a 1.5× mounting plate (`max_cluster_in_tank`,
+  Saturn-V / Falcon-9 octaweb) — engines never hang off the side of the tank.
+- **The payload is housed.** A probe rides inside a procedural-fairing ogive shroud; a crew capsule is
+  its own nose. Landing legs sit at the **landing stage's** base, not floating mid-stack.
 - **Parachutes** by terminal velocity in the target body's **live** atmospheric density —
-  `parachute_count` calls `astro.parachutes_for_touchdown`, and returns **0 for a propulsive,
-  Starship-style lander** (no `LandingSite`).
+  `parachute_count` calls `astro.parachutes_for_touchdown`, returning **0 for a propulsive lander**.
 
-`design_ship` returns a `RocketDesign` with an `estimates` block (total wet mass, total Δv, launch TWR,
-parachute count) and a human-readable `design_log` in its notes, so **every number is traceable**.
+`design_ship` returns a `RocketDesign` with an `estimates` block and a traceable `design_log`. Before
+anything flies, `tools/design_chart.py` renders a **three-view** and hard-gates the proportions
+(`looks_like_a_rocket`: L/D 4–19, monotonic taper, housed payload, engine at the base, flyable), and
+`tools/render_chart_png.py` rasterizes that chart to **PNG via headless Chrome** so clipping or floating
+parts are caught by the eye — the gate is necessary but not sufficient, so you *look*.
 
 ### `plan.py` — calculated planners (live state in, a maneuver out)
 
@@ -292,6 +299,9 @@ ksp1-automation-lab/
 │   ├── mj_to_mun.py               # TMI (MechJeb node executor) + kRPC capture
 │   ├── mj_to_duna.py / mj_duna_capture.py / mj_land_duna.py   # the Duna ("Mars") chain
 │   ├── mj_land_vessel.py          # MechJeb Landing Autopilot reentry + touchdown
+│   ├── design_chart.py            # three-view chart + looks_like_a_rocket geometry gate + live verify
+│   ├── render_chart_png.py        # rasterize a chart SVG -> PNG (headless Chrome) to inspect by eye
+│   ├── validate_against_game.py   # cross-check the math vs kRPC + MechJeb (proves it matches the game)
 │   └── fly_relay_once.py / fly_hls_*.py / fly_orion.py        # milestone drivers
 ├── src/ksp_lab/
 │   ├── astro.py                   # CALCULATED physics core (vis-viva, Oberth, rocket eqn, hoverslam)
@@ -330,6 +340,15 @@ ksp1-automation-lab/
   **`0 km` RK4 round-trip** to Duna *and* Eve, and the `ν = arccos(−1/e)` asymptote ejection at a
   **`5.3× SOI` (Duna) / `2.5× SOI` (Eve)** timed miss — versus ~70× for MechJeb's planner. Body-agnostic and
   ready for **Eve (Venus)**.
+- **Every number proven against the live game.** `tools/validate_against_game.py` cross-checks the math
+  versus kRPC and MechJeb: apoapsis / periapsis / SMA / eccentricity / period match the stock conic to
+  **0 m**, vis-viva to `3e-6 m/s`, and the rocket-equation **burn duration matches MechJeb's
+  FuelFlowSimulation to `~1e-6 s`** across every stage — the agent's `t = m₀v_e/F·(1−e^{−Δv/v_e})` *is*
+  MechJeb's method. Maneuver timing follows MechJeb's half-burn-before-the-node convention.
+- **Rockets that actually look like rockets.** The diameter-laddered designer + three-view geometry gate,
+  verified by rendering each chart to PNG: a housed payload, a monotonic taper through real adapters, an
+  engine cluster on the base plate (never hung off the side), and legs at the lander base — relay `L/D 7.2`,
+  Mars vehicle `L/D 9.1`, single-launch Duna round-trip `L/D 18.4`, all feasible.
 
 ---
 
