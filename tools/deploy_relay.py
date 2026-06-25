@@ -40,19 +40,70 @@ def _depth_from_root(part) -> int:
     return d
 
 
+def _root_side_keeps_engine(vessel, dec) -> bool:
+    """True if firing ``dec`` leaves the ACTIVE (root/pod) side of the split still holding an engine — i.e.
+    ``dec`` drops a SPENT stage and keeps propulsion. False means firing it would strand the engineless
+    PAYLOAD as the active vessel. This is the robust test for "is this an inter-stage decoupler": the old
+    'shallowest decoupler == payload' heuristic protected only ONE decoupler, but a CREWED vehicle has a
+    SECOND high decoupler (the heat shield's) above the upper stage — firing it kept the capsule and
+    jettisoned the ENTIRE upper stage (engine + fuel), so the crew coasted suborbital. Here we walk the part
+    tree from the root WITHOUT crossing ``dec`` and check the root-side component for any engine."""
+    try:
+        root = vessel.parts.root
+        dec_part = dec.part
+    except Exception:
+        return True                       # can't tell -> treat as inter-stage (old behaviour)
+    if root is None or dec_part is None or root is dec_part:
+        return True
+    seen = {id(dec_part)}                  # never traverse THROUGH the decoupler -> isolates the root side
+    stack = [root]
+    root_side = set()
+    while stack:
+        p = stack.pop()
+        if p is None or id(p) in seen:
+            continue
+        seen.add(id(p)); root_side.add(id(p))
+        neigh = []
+        try:
+            if p.parent is not None:
+                neigh.append(p.parent)
+        except Exception:
+            pass
+        try:
+            neigh.extend(p.children)
+        except Exception:
+            pass
+        for n in neigh:
+            if n is not None and id(n) not in seen:
+                stack.append(n)
+    for e in vessel.parts.engines:
+        try:
+            if id(e.part) in root_side:
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _inter_stage_decouplers(vessel) -> list:
     """The decouplers ascent staging may fire, DEEPEST-first (the booster decoupler before any upper one),
-    EXCLUDING the payload decoupler. The payload decoupler is the SHALLOWEST decoupler (it separates the
-    comsat from the final stage) — never fired during ascent, so the payload is never jettisoned when the
-    upper stage later runs dry. Returns [] when there is only a payload decoupler (or none)."""
+    EXCLUDING any decoupler that would strand the engineless payload. An inter-stage decoupler drops a SPENT
+    stage while the active (root/pod) side KEEPS an engine (``_root_side_keeps_engine``); a PAYLOAD decoupler
+    leaves the payload with no propulsion and must never fire during ascent. The crewed vehicle has TWO such
+    payload decouplers (heat-shield boundary + upper boundary), which the old shallowest-only heuristic
+    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire."""
     try:
         decs = list(vessel.parts.decouplers)
     except Exception:
         return []
     if len(decs) <= 1:
         return []
-    payload = min(decs, key=lambda dd: _depth_from_root(dd.part))   # shallowest = the payload decoupler
-    inter = [dd for dd in decs if dd is not payload]
+    inter = [dd for dd in decs if _root_side_keeps_engine(vessel, dd)]
+    if not inter:
+        # Defensive fallback (no decoupler keeps an engine on the root side — shouldn't happen): protect only
+        # the shallowest, the prior behaviour, so a conventional stack can still stage.
+        payload = min(decs, key=lambda dd: _depth_from_root(dd.part))
+        inter = [dd for dd in decs if dd is not payload]
     inter.sort(key=lambda dd: -_depth_from_root(dd.part))           # deepest (lowest booster) fires first
     return inter
 
