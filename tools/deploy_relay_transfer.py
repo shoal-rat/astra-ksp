@@ -917,16 +917,28 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     # ran the relay dry; the EARLIEST correction was by far the cheapest. One early correction establishes
     # the naturally-HIGH (~20,000 km) Eve encounter, which we then capture and Hohmann DOWN to sync — all
     # inside the 90 t relay's budget (eject ~1020 + correction ~340 + capture ~600 + Hohmann ~230).
-    if v.orbit.body.name != target_name and not (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
+    # ITERATE cheap early corrections until the encounter is ESTABLISHED. One correction often only
+    # narrows the miss without an SOI intercept; doing 2-3 in a row RIGHT HERE (the craft barely moves
+    # between them, so each stays cheap, unlike correcting progressively later) converges onto the
+    # encounter. Stop as soon as time_to_soi_change is set, or if a correction balloons (geometry off).
+    _corr_total = 0.0
+    for _ci in range(4):
+        if v.orbit.body.name == target_name or (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
+            break
         try:
             r = bridge.mj_plan(target=target_name, operation="correction")
             dv = r.get("dv", 0.0) if r.get("planned") else 0.0
-            if r.get("planned") and v.control.nodes and dv < 700.0:
-                log(f"  CORRECTION (MechJeb, early/far = cheap): {dv:.0f} m/s")
+            if r.get("planned") and v.control.nodes and dv < 700.0 and _corr_total < 1400.0:
+                log(f"  CORRECTION {_ci+1} (MechJeb, early/cheap): {dv:.0f} m/s")
                 _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
+                _corr_total += dv
             else:
-                log(f"  correction {dv:.0f} m/s too big even early — ejection geometry off; keeping fuel, aborting clean")
+                log(f"  correction {dv:.0f} m/s (total {_corr_total:.0f}) over budget — keeping fuel, aborting clean")
                 v.control.remove_nodes()
+                break
+        except Exception as exc:
+            log(f"  MechJeb correction unavailable ({exc})")
+            break
         except Exception as exc:
             log(f"  MechJeb correction unavailable ({exc})")
     # 3) Coast to the target SOI.
