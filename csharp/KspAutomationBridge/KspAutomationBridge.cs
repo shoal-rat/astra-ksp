@@ -566,6 +566,52 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => FlyVesselCommand(fields), 30000);
             }
 
+            // ---- Precise EVA movement: drive the active EVA kerbal toward a surface target. We compute
+            // the world-space target from {lat,lon} with CelestialBody.GetWorldSurfacePosition (the body's
+            // OWN geodesy, so the destination is exact) and hand it to KerbalEVA.SetWaypoint, which is the
+            // stock engine's own walk/jet pathing — movement is "error-free" because the game does it, not us.
+            if (request.Method == "POST" && request.Path == "/eva-walk-to")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => EvaWalkToCommand(fields), 30000);
+            }
+
+            // ---- EVA read-back: position (lat/lon/alt), surface velocity, ladder/ground state, fuel.
+            if (request.Method == "GET" && request.Path == "/eva-status")
+            {
+                return RunOnMainThread(EvaStatusCommand, 15000);
+            }
+
+            // ---- Comprehensive crew/personnel read-back ----
+            if (request.Method == "GET" && request.Path == "/crew-list")
+            {
+                return RunOnMainThread(CrewListCommand, 15000);
+            }
+
+            if (request.Method == "GET" && request.Path == "/crew-roster")
+            {
+                return RunOnMainThread(CrewRosterCommand, 15000);
+            }
+
+            // ---- Game-data read-back for the LLM planner's own calculations ----
+            if (request.Method == "POST" && request.Path == "/vessel-info")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => VesselInfoCommand(fields), 20000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/parts-list")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => PartsListCommand(fields), 20000);
+            }
+
+            if (request.Method == "POST" && request.Path == "/resources")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => ResourcesCommand(fields), 20000);
+            }
+
             return CommandResult.Fail("Unknown route: " + request.Method + " " + request.Path, 404);
         }
 
@@ -2506,6 +2552,622 @@ namespace KspAutomationBridge
         {
             string value;
             return fields.TryGetValue(key, out value) ? value : fallback;
+        }
+
+        // ================= EVA movement + personnel + game-data read-back =================
+        // All of the following touch the live KSP scene and are invoked via RunOnMainThread. Each one
+        // is wrapped so a thrown exception becomes a CommandResult.Fail rather than killing the main
+        // thread. Every number is pulled from the KSP API (body radius, masses, resources) — nothing is
+        // hardcoded — so the LLM planner can reason over the SAME numbers the game uses.
+
+        // Resolve a vessel by an optional name substring; empty/absent -> the active vessel.
+        private static Vessel ResolveVessel(string nameSubstr)
+        {
+            Vessel active = FlightGlobals.ActiveVessel;
+            if (string.IsNullOrEmpty(nameSubstr))
+            {
+                return active;
+            }
+            if (FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel v in FlightGlobals.Vessels)
+                {
+                    if (v != null && v.loaded && v.vesselName != null &&
+                        v.vesselName.IndexOf(nameSubstr, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return v;
+                    }
+                }
+            }
+            return active;
+        }
+
+        // Find the active (or named) EVA kerbal vessel. Prefers the active vessel if it IS an EVA.
+        private static Vessel ResolveEvaVessel(string crewName)
+        {
+            Vessel active = FlightGlobals.ActiveVessel;
+            if (active != null && active.isEVA && EvaCrewNameMatches(active, crewName))
+            {
+                return active;
+            }
+            if (FlightGlobals.Vessels != null)
+            {
+                foreach (Vessel v in FlightGlobals.Vessels)
+                {
+                    if (v != null && v.loaded && v.isEVA && EvaCrewNameMatches(v, crewName))
+                    {
+                        return v;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static KerbalEVA GetEvaModule(Vessel evaVessel)
+        {
+            if (evaVessel == null || evaVessel.parts == null)
+            {
+                return null;
+            }
+            foreach (Part p in evaVessel.parts)
+            {
+                if (p == null) { continue; }
+                KerbalEVA eva = p.FindModuleImplementing<KerbalEVA>();
+                if (eva != null) { return eva; }
+            }
+            return null;
+        }
+
+        // Great-circle (haversine) distance + initial bearing between two lat/lon points on a sphere of
+        // the given radius. Pure math, identical to the formula the Python helper uses, returned so the
+        // planner can sanity-check the move it asked for. lat/lon in DEGREES, radius in METRES.
+        private static void Geodesic(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg,
+                                     double radiusM, out double distanceM, out double bearingDeg)
+        {
+            double toRad = Math.PI / 180.0;
+            double phi1 = lat1Deg * toRad;
+            double phi2 = lat2Deg * toRad;
+            double dPhi = (lat2Deg - lat1Deg) * toRad;
+            double dLam = (lon2Deg - lon1Deg) * toRad;
+            double a = Math.Sin(dPhi / 2.0) * Math.Sin(dPhi / 2.0) +
+                       Math.Cos(phi1) * Math.Cos(phi2) * Math.Sin(dLam / 2.0) * Math.Sin(dLam / 2.0);
+            double c = 2.0 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(Math.Max(0.0, 1.0 - a)));
+            distanceM = radiusM * c;
+            double y = Math.Sin(dLam) * Math.Cos(phi2);
+            double x = Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(dLam);
+            double brng = Math.Atan2(y, x) / toRad;   // -180..180
+            bearingDeg = (brng + 360.0) % 360.0;       // 0..360, clockwise from north
+        }
+
+        // POST /eva-walk-to {lat, lon, [crew]} OR {bearing, distance, [crew]} -> drive the active (or
+        // named) EVA kerbal toward a surface target. The target world position is computed from the body's
+        // OWN geodesy (GetWorldSurfacePosition at the target lat/lon and the terrain altitude there), then
+        // handed to KerbalEVA.SetWaypoint so the stock engine walks/jets the kerbal precisely. When the
+        // caller gives bearing+distance instead of lat/lon, we project the destination along the great
+        // circle from the kerbal's current position using the body radius — no guessing, exact spherical
+        // trig. Returns the computed target lat/lon, geodesic distance and bearing so the planner can verify.
+        private CommandResult EvaWalkToCommand(Dictionary<string, string> fields)
+        {
+            try
+            {
+                if (!HighLogic.LoadedSceneIsFlight)
+                {
+                    return CommandResult.Fail("EVA walk requires flight.");
+                }
+                string crewName = GetOptional(fields, "crew", "").Trim();
+                Vessel eva = ResolveEvaVessel(crewName);
+                if (eva == null)
+                {
+                    return CommandResult.Fail("No EVA kerbal found to move (call /eva-go first).", 404);
+                }
+                KerbalEVA module = GetEvaModule(eva);
+                if (module == null)
+                {
+                    return CommandResult.Fail("EVA vessel has no KerbalEVA module.");
+                }
+                CelestialBody body = eva.mainBody;
+                if (body == null)
+                {
+                    return CommandResult.Fail("EVA kerbal has no main body.");
+                }
+
+                double radius = body.Radius;
+                double curLat = eva.latitude;
+                double curLon = eva.longitude;
+
+                bool haveLatLon = fields.ContainsKey("lat") && fields.ContainsKey("lon");
+                bool haveVector = fields.ContainsKey("bearing") && fields.ContainsKey("distance");
+                double tgtLat;
+                double tgtLon;
+
+                if (haveLatLon)
+                {
+                    tgtLat = GetOptionalDouble(fields, "lat", curLat);
+                    tgtLon = GetOptionalDouble(fields, "lon", curLon);
+                }
+                else if (haveVector)
+                {
+                    // Project a destination along the great circle: given an initial bearing and a surface
+                    // distance, compute the endpoint lat/lon on the sphere (standard direct geodesic).
+                    double bearing = GetOptionalDouble(fields, "bearing", 0.0) * Math.PI / 180.0;
+                    double dist = GetOptionalDouble(fields, "distance", 0.0);
+                    double angular = dist / radius;       // central angle
+                    double phi1 = curLat * Math.PI / 180.0;
+                    double lam1 = curLon * Math.PI / 180.0;
+                    double phi2 = Math.Asin(Math.Sin(phi1) * Math.Cos(angular) +
+                                            Math.Cos(phi1) * Math.Sin(angular) * Math.Cos(bearing));
+                    double lam2 = lam1 + Math.Atan2(Math.Sin(bearing) * Math.Sin(angular) * Math.Cos(phi1),
+                                                    Math.Cos(angular) - Math.Sin(phi1) * Math.Sin(phi2));
+                    tgtLat = phi2 * 180.0 / Math.PI;
+                    tgtLon = ((lam2 * 180.0 / Math.PI) + 540.0) % 360.0 - 180.0;
+                }
+                else
+                {
+                    return CommandResult.Fail("Provide either {lat,lon} or {bearing,distance}.");
+                }
+
+                // The body's own surface position at the target (terrain altitude from the body, never guessed).
+                double tgtAlt = body.TerrainAltitude(tgtLat, tgtLon, true);
+                Vector3d worldTarget = body.GetWorldSurfacePosition(tgtLat, tgtLon, tgtAlt);
+
+                double distM;
+                double bearingDeg;
+                Geodesic(curLat, curLon, tgtLat, tgtLon, radius, out distM, out bearingDeg);
+
+                try
+                {
+                    module.SetWaypoint((Vector3)worldTarget);
+                }
+                catch (Exception ex)
+                {
+                    return CommandResult.Fail("KerbalEVA.SetWaypoint threw: " + ex.Message);
+                }
+
+                AppendStatus("eva", "Walk " + eva.vesselName + " -> " + tgtLat.ToString("F4") + "," +
+                                    tgtLon.ToString("F4") + " (" + distM.ToString("F1") + " m)");
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "message", eva.vesselName + " is walking to the target. VERIFY arrival in-game (stock pathing)." },
+                    { "evaVessel", eva.vesselName ?? "" },
+                    { "body", body.bodyName ?? "" },
+                    { "fromLatitude", curLat },
+                    { "fromLongitude", curLon },
+                    { "targetLatitude", tgtLat },
+                    { "targetLongitude", tgtLon },
+                    { "targetTerrainAlt", tgtAlt },
+                    { "distanceM", distM },
+                    { "bearingDeg", bearingDeg },
+                    { "bodyRadiusM", radius }
+                });
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("eva-walk-to failed: " + ex.Message);
+            }
+        }
+
+        // GET /eva-status -> position (lat/lon/alt), surface velocity, ladder/ground state, fuel of the
+        // active (or first) EVA kerbal. Read-only.
+        private CommandResult EvaStatusCommand()
+        {
+            try
+            {
+                Dictionary<string, object> data = new Dictionary<string, object>();
+                bool flight = HighLogic.LoadedSceneIsFlight;
+                data["flight"] = flight;
+                if (!flight)
+                {
+                    return CommandResult.Ok(data);
+                }
+                Vessel eva = ResolveEvaVessel("");
+                data["onEva"] = eva != null;
+                if (eva == null)
+                {
+                    return CommandResult.Ok(data);
+                }
+                data["evaVessel"] = eva.vesselName ?? "";
+                data["body"] = eva.mainBody != null ? eva.mainBody.bodyName : "";
+                data["latitude"] = eva.latitude;
+                data["longitude"] = eva.longitude;
+                data["altitude"] = eva.altitude;
+                data["radarAltitude"] = eva.radarAltitude;
+                data["srfSpeed"] = eva.srfSpeed;
+                data["horizontalSrfSpeed"] = eva.horizontalSrfSpeed;
+                data["verticalSpeed"] = eva.verticalSpeed;
+                data["landed"] = eva.Landed;
+                data["splashed"] = eva.Splashed;
+                List<ProtoCrewMember> crew = eva.GetVesselCrew();
+                data["kerbal"] = (crew != null && crew.Count > 0 && crew[0] != null) ? crew[0].name : (eva.vesselName ?? "");
+
+                KerbalEVA module = GetEvaModule(eva);
+                data["hasEvaModule"] = module != null;
+                if (module != null)
+                {
+                    data["fuel"] = module.Fuel;
+                    data["fuelCapacity"] = module.FuelCapacity;
+                    data["onLadder"] = module.OnALadder;
+                    data["jetpackDeployed"] = module.JetpackDeployed;
+                    data["hasJetpack"] = module.HasJetpack;
+                    data["fsmState"] = module.fsm != null && module.fsm.currentStateName != null
+                        ? module.fsm.currentStateName : "";
+                    data["ladderPart"] = module.LadderPart != null && module.LadderPart.partInfo != null
+                        ? module.LadderPart.partInfo.title : "";
+                }
+                return CommandResult.Ok(data);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("eva-status failed: " + ex.Message);
+            }
+        }
+
+        // GET /crew-list -> every kerbal currently in the loaded scene: name, type, trait, level, the
+        // vessel + part + seat index they occupy (or "EVA"). Read-only.
+        private CommandResult CrewListCommand()
+        {
+            try
+            {
+                if (!HighLogic.LoadedSceneIsFlight)
+                {
+                    return CommandResult.Fail("crew-list requires flight.");
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[");
+                int count = 0;
+                if (FlightGlobals.Vessels != null)
+                {
+                    foreach (Vessel v in FlightGlobals.Vessels)
+                    {
+                        if (v == null || !v.loaded || v.parts == null) { continue; }
+                        foreach (Part part in v.parts)
+                        {
+                            if (part == null || part.protoModuleCrew == null || part.protoModuleCrew.Count == 0)
+                            {
+                                continue;
+                            }
+                            string partTitle = part.partInfo != null ? part.partInfo.title : part.name;
+                            foreach (ProtoCrewMember pcm in part.protoModuleCrew)
+                            {
+                                if (pcm == null) { continue; }
+                                if (count > 0) { sb.Append(","); }
+                                sb.Append("{");
+                                sb.Append("\"name\":\"").Append(JsonEscape(pcm.name)).Append("\",");
+                                sb.Append("\"type\":\"").Append(JsonEscape(pcm.type.ToString())).Append("\",");
+                                sb.Append("\"trait\":\"").Append(JsonEscape(pcm.trait ?? "")).Append("\",");
+                                sb.Append("\"level\":").Append(pcm.experienceLevel.ToString(CultureInfo.InvariantCulture)).Append(",");
+                                sb.Append("\"vessel\":\"").Append(JsonEscape(v.vesselName ?? "")).Append("\",");
+                                sb.Append("\"part\":\"").Append(JsonEscape(partTitle)).Append("\",");
+                                sb.Append("\"seat\":").Append(pcm.seatIdx.ToString(CultureInfo.InvariantCulture)).Append(",");
+                                sb.Append("\"isEva\":").Append(v.isEVA ? "true" : "false");
+                                sb.Append("}");
+                                count++;
+                            }
+                        }
+                    }
+                }
+                sb.Append("]");
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "count", count },
+                    { "crew", new RawJson(sb.ToString()) }
+                });
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("crew-list failed: " + ex.Message);
+            }
+        }
+
+        // GET /crew-roster -> the whole game roster (Available/Assigned/Dead/Missing) from
+        // HighLogic.CurrentGame.CrewRoster, with counts. Read-only.
+        private CommandResult CrewRosterCommand()
+        {
+            try
+            {
+                if (HighLogic.CurrentGame == null || HighLogic.CurrentGame.CrewRoster == null)
+                {
+                    return CommandResult.Fail("No crew roster (no game loaded).");
+                }
+                KerbalRoster roster = HighLogic.CurrentGame.CrewRoster;
+                // KerbalRoster.Kerbals() has NO zero-arg overload in this build; the typed IEnumerable
+                // properties (Crew/Applicants/Tourist/Unowned) cover every kerbal in the roster.
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[");
+                int count = 0;
+                List<IEnumerable<ProtoCrewMember>> groups = new List<IEnumerable<ProtoCrewMember>>();
+                groups.Add(roster.Crew);
+                groups.Add(roster.Applicants);
+                groups.Add(roster.Tourist);
+                groups.Add(roster.Unowned);
+                HashSet<string> seen = new HashSet<string>();
+                foreach (IEnumerable<ProtoCrewMember> group in groups)
+                {
+                    if (group == null) { continue; }
+                    foreach (ProtoCrewMember pcm in group)
+                    {
+                        if (pcm == null || pcm.name == null || seen.Contains(pcm.name)) { continue; }
+                        seen.Add(pcm.name);
+                        if (count > 0) { sb.Append(","); }
+                        sb.Append("{");
+                        sb.Append("\"name\":\"").Append(JsonEscape(pcm.name)).Append("\",");
+                        sb.Append("\"type\":\"").Append(JsonEscape(pcm.type.ToString())).Append("\",");
+                        sb.Append("\"trait\":\"").Append(JsonEscape(pcm.trait ?? "")).Append("\",");
+                        sb.Append("\"level\":").Append(pcm.experienceLevel.ToString(CultureInfo.InvariantCulture)).Append(",");
+                        sb.Append("\"status\":\"").Append(JsonEscape(pcm.rosterStatus.ToString())).Append("\"");
+                        sb.Append("}");
+                        count++;
+                    }
+                }
+                sb.Append("]");
+                Dictionary<string, object> data = new Dictionary<string, object>
+                {
+                    { "count", count },
+                    { "roster", new RawJson(sb.ToString()) }
+                };
+                try
+                {
+                    data["available"] = roster.GetAvailableCrewCount();
+                    data["assigned"] = roster.GetAssignedCrewCount();
+                    data["kia"] = roster.GetKIACrewCount();
+                    data["missing"] = roster.GetMissingCrewCount();
+                }
+                catch (Exception)
+                {
+                    // counts are best-effort
+                }
+                return CommandResult.Ok(data);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("crew-roster failed: " + ex.Message);
+            }
+        }
+
+        // POST /vessel-info {vessel?} -> mass (total/dry/resource), part/stage counts, crew, and the
+        // aggregated resource totals (LiquidFuel/Oxidizer/MonoProp/EC + everything else). If MechJeb
+        // stage-stats are available on the ACTIVE vessel, the vacuum total Δv is included. Read-only.
+        private CommandResult VesselInfoCommand(Dictionary<string, string> fields)
+        {
+            try
+            {
+                if (!HighLogic.LoadedSceneIsFlight)
+                {
+                    return CommandResult.Fail("vessel-info requires flight.");
+                }
+                Vessel v = ResolveVessel(GetOptional(fields, "vessel", "").Trim());
+                if (v == null)
+                {
+                    return CommandResult.Fail("No vessel resolved.", 404);
+                }
+
+                double totalMass = v.totalMass;          // tonnes
+                double resourceMass = 0.0;
+                int partCount = v.parts != null ? v.parts.Count : 0;
+                int maxStage = 0;
+                Dictionary<string, double[]> res = new Dictionary<string, double[]>(); // name -> {amount, max, density}
+
+                if (v.parts != null)
+                {
+                    foreach (Part part in v.parts)
+                    {
+                        if (part == null) { continue; }
+                        if (part.inverseStage > maxStage) { maxStage = part.inverseStage; }
+                        resourceMass += part.GetResourceMass();
+                        if (part.Resources != null)
+                        {
+                            foreach (PartResource pr in part.Resources)
+                            {
+                                if (pr == null) { continue; }
+                                double density = pr.info != null ? pr.info.density : 0.0;
+                                double[] acc;
+                                if (!res.TryGetValue(pr.resourceName, out acc))
+                                {
+                                    acc = new double[3];
+                                    acc[2] = density;
+                                    res[pr.resourceName] = acc;
+                                }
+                                acc[0] += pr.amount;
+                                acc[1] += pr.maxAmount;
+                            }
+                        }
+                    }
+                }
+
+                double dryMass = totalMass - resourceMass;
+                List<ProtoCrewMember> crew = v.GetVesselCrew();
+                int crewCount = crew != null ? crew.Count : 0;
+                int crewCapacity = v.GetCrewCapacity();
+
+                StringBuilder rs = new StringBuilder();
+                rs.Append("{");
+                bool firstR = true;
+                foreach (KeyValuePair<string, double[]> kv in res)
+                {
+                    if (!firstR) { rs.Append(","); }
+                    firstR = false;
+                    rs.Append("\"").Append(JsonEscape(kv.Key)).Append("\":{");
+                    rs.Append("\"amount\":").Append(kv.Value[0].ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    rs.Append("\"maxAmount\":").Append(kv.Value[1].ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    rs.Append("\"density\":").Append(kv.Value[2].ToString("R", CultureInfo.InvariantCulture));
+                    rs.Append("}");
+                }
+                rs.Append("}");
+
+                Dictionary<string, object> data = new Dictionary<string, object>
+                {
+                    { "vessel", v.vesselName ?? "" },
+                    { "body", v.mainBody != null ? v.mainBody.bodyName : "" },
+                    { "situation", v.situation.ToString() },
+                    { "partCount", partCount },
+                    { "stageCount", maxStage + 1 },
+                    { "currentStage", v.currentStage },
+                    { "totalMassT", totalMass },
+                    { "dryMassT", dryMass },
+                    { "resourceMassT", resourceMass },
+                    { "crewCount", crewCount },
+                    { "crewCapacity", crewCapacity },
+                    { "resources", new RawJson(rs.ToString()) }
+                };
+
+                // Δv: only meaningful for the active vessel that has a MechJeb core + stage stats.
+                if (v == FlightGlobals.ActiveVessel)
+                {
+                    try
+                    {
+                        MechJebCore core = GetMasterCore(v);
+                        if (core != null)
+                        {
+                            MechJebModuleStageStats st = core.GetComputerModule<MechJebModuleStageStats>();
+                            if (st != null)
+                            {
+                                st.RequestUpdate();
+                                data["vacTotalDeltaV"] = FuelStatsDeltaV(st.VacStats);
+                                data["deltaVPending"] = st.VacStats.Count == 0;
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Δv is best-effort; never fail vessel-info on it.
+                    }
+                }
+                return CommandResult.Ok(data);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("vessel-info failed: " + ex.Message);
+            }
+        }
+
+        // POST /parts-list {vessel?} -> every part: name, title, mass (dry + resource), inverseStage and
+        // the module class names on it. Lets the planner see the staging tree and what each part does.
+        private CommandResult PartsListCommand(Dictionary<string, string> fields)
+        {
+            try
+            {
+                if (!HighLogic.LoadedSceneIsFlight)
+                {
+                    return CommandResult.Fail("parts-list requires flight.");
+                }
+                Vessel v = ResolveVessel(GetOptional(fields, "vessel", "").Trim());
+                if (v == null || v.parts == null)
+                {
+                    return CommandResult.Fail("No vessel/parts resolved.", 404);
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[");
+                int count = 0;
+                foreach (Part part in v.parts)
+                {
+                    if (part == null) { continue; }
+                    if (count > 0) { sb.Append(","); }
+                    string title = part.partInfo != null ? part.partInfo.title : "";
+                    double dryMass = part.mass;                 // tonnes, dry
+                    double resMass = part.GetResourceMass();    // tonnes, resources
+                    sb.Append("{");
+                    sb.Append("\"name\":\"").Append(JsonEscape(part.name ?? "")).Append("\",");
+                    sb.Append("\"title\":\"").Append(JsonEscape(title)).Append("\",");
+                    sb.Append("\"dryMassT\":").Append(dryMass.ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"resourceMassT\":").Append(resMass.ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"stage\":").Append(part.inverseStage.ToString(CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"crew\":").Append((part.protoModuleCrew != null ? part.protoModuleCrew.Count : 0).ToString(CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"crewCapacity\":").Append(part.CrewCapacity.ToString(CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"modules\":[");
+                    if (part.Modules != null)
+                    {
+                        bool firstM = true;
+                        foreach (PartModule pm in part.Modules)
+                        {
+                            if (pm == null) { continue; }
+                            if (!firstM) { sb.Append(","); }
+                            firstM = false;
+                            sb.Append("\"").Append(JsonEscape(pm.moduleName ?? pm.ClassName ?? "")).Append("\"");
+                        }
+                    }
+                    sb.Append("]}");
+                    count++;
+                }
+                sb.Append("]");
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "vessel", v.vesselName ?? "" },
+                    { "count", count },
+                    { "parts", new RawJson(sb.ToString()) }
+                });
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("parts-list failed: " + ex.Message);
+            }
+        }
+
+        // POST /resources {vessel?} -> aggregated per-resource amount/maxAmount/mass across the vessel.
+        // A focused, lighter alternative to /vessel-info for fuel/EC budgeting. Read-only.
+        private CommandResult ResourcesCommand(Dictionary<string, string> fields)
+        {
+            try
+            {
+                if (!HighLogic.LoadedSceneIsFlight)
+                {
+                    return CommandResult.Fail("resources requires flight.");
+                }
+                Vessel v = ResolveVessel(GetOptional(fields, "vessel", "").Trim());
+                if (v == null || v.parts == null)
+                {
+                    return CommandResult.Fail("No vessel/parts resolved.", 404);
+                }
+                Dictionary<string, double[]> res = new Dictionary<string, double[]>(); // name -> {amount, max, density}
+                foreach (Part part in v.parts)
+                {
+                    if (part == null || part.Resources == null) { continue; }
+                    foreach (PartResource pr in part.Resources)
+                    {
+                        if (pr == null) { continue; }
+                        double density = pr.info != null ? pr.info.density : 0.0;
+                        double[] acc;
+                        if (!res.TryGetValue(pr.resourceName, out acc))
+                        {
+                            acc = new double[3];
+                            acc[2] = density;
+                            res[pr.resourceName] = acc;
+                        }
+                        acc[0] += pr.amount;
+                        acc[1] += pr.maxAmount;
+                    }
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.Append("{");
+                bool first = true;
+                foreach (KeyValuePair<string, double[]> kv in res)
+                {
+                    if (!first) { sb.Append(","); }
+                    first = false;
+                    double massT = kv.Value[0] * kv.Value[2]; // amount * density (tonnes)
+                    sb.Append("\"").Append(JsonEscape(kv.Key)).Append("\":{");
+                    sb.Append("\"amount\":").Append(kv.Value[0].ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"maxAmount\":").Append(kv.Value[1].ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"density\":").Append(kv.Value[2].ToString("R", CultureInfo.InvariantCulture)).Append(",");
+                    sb.Append("\"massT\":").Append(massT.ToString("R", CultureInfo.InvariantCulture));
+                    sb.Append("}");
+                }
+                sb.Append("}");
+                return CommandResult.Ok(new Dictionary<string, object>
+                {
+                    { "vessel", v.vesselName ?? "" },
+                    { "resources", new RawJson(sb.ToString()) }
+                });
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("resources failed: " + ex.Message);
+            }
         }
     }
 

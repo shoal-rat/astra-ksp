@@ -176,6 +176,73 @@ class BridgeClient:
             payload["vessel"] = vessel
         return self._request("POST", "/eva-go", json=payload)
 
+    def eva_walk_to(
+        self,
+        lat: float | None = None,
+        lon: float | None = None,
+        bearing: float | None = None,
+        distance: float | None = None,
+        crew: str = "",
+    ) -> dict:
+        """Drive the active (or named) EVA kerbal toward a surface target with PRECISE, calculated
+        movement. Pass either an absolute target ``lat``/``lon`` OR a ``bearing`` (deg, clockwise from
+        north) + ``distance`` (m) relative to the kerbal's current position. The bridge computes the
+        world-space point from the body's own geodesy (``CelestialBody.GetWorldSurfacePosition`` at the
+        terrain altitude there) and hands it to ``KerbalEVA.SetWaypoint`` — the stock engine does the
+        pathing, so the move is error-free by construction. Returns the resolved target lat/lon, the
+        great-circle distance/bearing, and the body radius used. Arrival must still be VERIFIED in-game.
+
+        Exactly one of {lat & lon} or {bearing & distance} must be supplied."""
+        has_latlon = lat is not None and lon is not None
+        has_vector = bearing is not None and distance is not None
+        if has_latlon == has_vector:
+            raise BridgeError("eva_walk_to: pass exactly one of {lat,lon} or {bearing,distance}.")
+        payload: dict[str, str] = {}
+        if has_latlon:
+            payload["lat"] = str(lat)
+            payload["lon"] = str(lon)
+        else:
+            payload["bearing"] = str(bearing)
+            payload["distance"] = str(distance)
+        if crew:
+            payload["crew"] = crew
+        return self._request("POST", "/eva-walk-to", json=payload)
+
+    def eva_status(self) -> dict:
+        """Read the active (or first) EVA kerbal's state: body, lat/lon/alt, surface velocity,
+        landed/splashed, on-ladder, jetpack, EVA propellant fuel/capacity, and the FSM state name."""
+        return self._request("GET", "/eva-status")
+
+    def crew_list(self) -> dict:
+        """Every kerbal currently in the loaded flight scene: name, type, trait, level, the vessel +
+        part they occupy, seat index, and whether they are on EVA."""
+        return self._request("GET", "/crew-list")
+
+    def crew_roster(self) -> dict:
+        """The whole game roster from ``HighLogic.CurrentGame.CrewRoster`` (Available/Assigned/Dead/…)
+        plus Available/Assigned/KIA/Missing counts."""
+        return self._request("GET", "/crew-roster")
+
+    def vessel_info(self, vessel: str = "") -> dict:
+        """Mass (total/dry/resource, tonnes), part/stage counts, current stage, crew count/capacity, and
+        aggregated per-resource amount/maxAmount/density for ``vessel`` (substring; empty = active). If the
+        ACTIVE vessel has a MechJeb core, the vacuum total Δv is included. Lets the planner reason over the
+        SAME numbers the game uses."""
+        payload = {"vessel": vessel} if vessel else {}
+        return self._request("POST", "/vessel-info", json=payload)
+
+    def parts_list(self, vessel: str = "") -> dict:
+        """Every part on ``vessel`` (substring; empty = active): name, title, dry/resource mass (tonnes),
+        inverse stage, crew/capacity, and the module class names on it."""
+        payload = {"vessel": vessel} if vessel else {}
+        return self._request("POST", "/parts-list", json=payload)
+
+    def resources(self, vessel: str = "") -> dict:
+        """Aggregated per-resource amount/maxAmount/density/mass across ``vessel`` (substring; empty =
+        active). A focused, lighter alternative to ``vessel_info`` for fuel/EC budgeting."""
+        payload = {"vessel": vessel} if vessel else {}
+        return self._request("POST", "/resources", json=payload)
+
     def eva_board(self, crew: str = "") -> dict:
         """Re-board the active (or named) EVA kerbal into the nearest crewable part with a free seat —
         closes the loop after ``eva_go``/``eva_flag``. ``crew`` (optional) selects the EVA kerbal by
