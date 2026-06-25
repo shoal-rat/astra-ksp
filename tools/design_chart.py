@@ -104,13 +104,50 @@ def _body_boxes(geom: list[dict]) -> list[dict]:
     return [g for g in geom if not g["surface"] and g["role"] != "fin"]
 
 
-def _radial_span(geom: list[dict], include_landing_gear: bool = False) -> float:
+def _radial_span(geom: list[dict], include_landing_gear: bool = False,
+                 exclude_names: set | None = None) -> float:
     radii: list[float] = []
     for g in geom:
         if g["role"] == "leg" and not include_landing_gear:
             continue
+        if exclude_names is not None and g["name"] in exclude_names:
+            continue
         radii.append(math.hypot(g["x"], g["z"]) + g["draw_dia"] / 2.0)
     return 2.0 * max(radii, default=0.0)
+
+
+def _booster_part_names(design) -> set:
+    """The part names that make up the radial (strap-on) booster pods, or an empty set for a single
+    core. Used so the geometry gate can treat the symmetric cluster as legitimate, not as overhang."""
+    rb = getattr(design, "radial_boosters", None)
+    if rb is None or getattr(rb, "count", 0) <= 0:
+        return set()
+    return {rb.engine, rb.tank, rb.decoupler}
+
+
+def _boosters_are_symmetric(geom: list[dict], booster_names: set, expected_count: int) -> bool:
+    """A legitimate strap-on cluster is N pods evenly spaced around the axis at a common radius — NOT a
+    lopsided overhang. Verify it: take the booster TANK parts (one column per pod), confirm there are
+    `expected_count` of them at (nearly) equal radius and roughly even azimuths. Returns True for a clean
+    symmetric cluster, False for an asymmetric/garbled one (which should still fail the gate)."""
+    if not booster_names or expected_count <= 0:
+        return False
+    pods = [g for g in geom if g["surface"] and g["name"] in booster_names]
+    # Group by azimuth to count distinct pods (parts in the same pod share an angle).
+    angles = sorted({round(math.degrees(math.atan2(g["z"], g["x"])) % 360.0, 0) for g in pods})
+    if len(angles) != expected_count:
+        return False
+    radii = [math.hypot(g["x"], g["z"]) for g in pods if math.hypot(g["x"], g["z"]) > 1e-6]
+    if not radii:
+        return False
+    r_mean = sum(radii) / len(radii)
+    # all pod parts within 25% of the mean radius (a tight, even ring)
+    if any(abs(r - r_mean) > 0.25 * r_mean + 0.5 for r in radii):
+        return False
+    # azimuths roughly evenly spaced: each gap close to 360/N
+    gaps = [(angles[(i + 1) % len(angles)] - angles[i]) % 360.0 for i in range(len(angles))]
+    target = 360.0 / expected_count
+    return all(abs(g - target) <= 0.35 * target for g in gaps)
 
 
 def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
@@ -152,12 +189,26 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
     # otherwise slender and finned; this still rejects the original 2.5 m Duna tower (~-1.7 calibers).
     active_control_stable = bool(getattr(design, "ascent_stable", True)) or static_margin_cal >= -1.50
 
-    radial_span = _radial_span(geom, include_landing_gear=False)
     full_span = _radial_span(geom, include_landing_gear=True)
-    # Ascent envelope: with engines now clustered INSIDE the tank, the only legitimate protrusions are
-    # fins (~0.4 m past the hull). Anything wider than ~1.6x the body diameter is an overhang and FAILS
-    # (the old 1.85x + 2.5 m envelope passed a 6.4 m cluster on a 3.75 m tank).
-    radial_ok = radial_span <= max(max_dia * 1.6, max_dia + 1.2)
+    # RADIAL (strap-on) BOOSTERS are a LEGITIMATE wide protrusion — a Soyuz/Falcon-Heavy clusters tank+
+    # engine pods well outside the core hull, on purpose. So judge the ascent envelope on the CORE only
+    # (boosters excluded), then accept the booster cluster separately IF it is symmetric (N even pods at a
+    # common radius), not a lopsided overhang. The full span is reported for reference.
+    booster_names = _booster_part_names(design)
+    rb_count = int(getattr(getattr(design, "radial_boosters", None), "count", 0) or 0)
+    core_span = _radial_span(geom, include_landing_gear=False, exclude_names=booster_names)
+    radial_span = _radial_span(geom, include_landing_gear=False)
+    # Core ascent envelope: with engines clustered INSIDE the tank, the only core protrusions are fins
+    # (~0.4 m past the hull). Anything wider than ~1.6x the body diameter is a core overhang and FAILS.
+    core_radial_ok = core_span <= max(max_dia * 1.6, max_dia + 1.2)
+    # Booster cluster: legitimate when the pods are SYMMETRIC and the whole cluster stays within a sane
+    # strap-on envelope (~core + 2 full pod diameters of reach, i.e. <= ~4x the core diameter — a Soyuz is
+    # ~3x). A symmetric ring up to that bound is a real rocket; a lopsided or runaway cluster still fails.
+    boosters_present = bool(booster_names) and rb_count > 0
+    boosters_symmetric = (not boosters_present) or _boosters_are_symmetric(geom, booster_names, rb_count)
+    booster_envelope_ok = (not boosters_present) or (
+        boosters_symmetric and radial_span <= max(max_dia * 4.0, max_dia + 12.0))
+    radial_ok = core_radial_ok and booster_envelope_ok
     drag_loss = float(getattr(design, "ascent_drag_loss_mps", 0.0) or 0.0)
     landed_ok = (not bool(getattr(design, "landing_legs", False))) or bool(getattr(design, "landed_stable", True))
 
@@ -170,16 +221,23 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
         "payload housed (fairing or capsule top)": top_part["name"] in NOSE_PARTS or any(b["role"] == "fairing" for b in body),
         "engine at the base": bottom_part["role"] == "engine",
         "controlled ascent margin": active_control_stable,
+        # The envelope check now passes the CORE protrusion bound AND (if any) a SYMMETRIC strap-on
+        # cluster — so 4 even radial boosters read as a real rocket, while a lopsided overhang still fails.
         "radial protrusions within ascent envelope": radial_ok,
         "landing gear tip-over stable": landed_ok,
     }
+    if boosters_present:
+        # Surface the strap-on verdict explicitly so a bad (asymmetric) cluster is visible in the report.
+        checks["symmetric strap-on boosters"] = boosters_symmetric
     return {
         "length_m": round(length, 2),
         "origin_length_m": round(origin_length, 2),
         "max_diameter_m": round(max_dia, 2),
         "fineness_ratio": round(fineness, 1),
         "radial_span_m": round(radial_span, 2),
+        "core_span_m": round(core_span, 2),
         "full_span_m": round(full_span, 2),
+        "radial_booster_count": rb_count,
         "static_margin_m": round(static_margin_m, 2),
         "static_margin_calibers": round(static_margin_cal, 2),
         "ascent_drag_loss_mps": drag_loss,
@@ -334,13 +392,15 @@ def render_svg(design, part_bodies: dict | None = None) -> str:
         f'L/D {rep["fineness_ratio"]}:1',
         f'length {rep["length_m"]} m',
         f'body dia {rep["max_diameter_m"]} m',
-        f'ascent span {rep["radial_span_m"]} m',
+        f'core span {rep.get("core_span_m", rep["radial_span_m"])} m',
         f'full span {rep["full_span_m"]} m',
         f'static {rep["static_margin_calibers"]} cal',
         f'Cd {getattr(design, "drag_cd", "?")}',
         f'drag loss {getattr(design, "ascent_drag_loss_mps", "?")} m/s',
         f'max-Q {getattr(design, "max_q_kpa", "?")} kPa',
     ]
+    if rep.get("radial_booster_count", 0):
+        metrics.insert(4, f'{rep["radial_booster_count"]}x radial boosters (span {rep["radial_span_m"]} m)')
     metric_svg = []
     for i, m in enumerate(metrics):
         metric_svg.append(f'<text x="805" y="{ty + 10 + 18*i}" font-size="12" fill="#0f172a">{escape(m)}</text>')
