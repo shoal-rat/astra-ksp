@@ -90,3 +90,36 @@ def test_chart_renders_boosters_in_all_three_views():
     assert "LOOKS LIKE A ROCKET" in svg
     assert "radial boosters" in svg                    # the booster metric line is drawn
     assert "strap-on boosters" in svg                  # the symmetric-strap-on check is listed
+
+
+def _eav_boosted():
+    """A HEAVY booster design (the Eve Ascent Vehicle): 6 pods, multi-engine ascent stages. Unlike the
+    light relay, each pod's engine is tucked toward the core at the bell plane and its decoupler sits
+    inboard against the hull, so the engine/decoupler radii differ from the tall outboard tank column."""
+    from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
+    from ksp_lab.bodies import EVE
+
+    req = ShipRequirements(
+        name="AI-EAV", mission_type="eve_ascent_vehicle", crew=1,
+        phases=[Phase("eve_ascent", 7400.0, twr_body_g=EVE.surface_g, min_twr=1.5,
+                      reserve_frac=default_reserve_frac(EVE.surface_g)),
+                Phase("eve_to_kerbin", 1399.0, twr_body_g=0.0, min_twr=0.0,
+                      reserve_frac=default_reserve_frac(0.0))],
+        landing=None, needs_heatshield=True, needs_legs=True, radial_booster_count=6)
+    return design_ship(req)
+
+
+def test_symmetric_check_ignores_engine_decoupler_radii_for_even_pods():
+    # REGRESSION: a perfectly symmetric N-pod cluster must PASS the symmetry check even though each
+    # pod's engine (near the core bell plane) and decoupler (inboard) sit at SMALLER radii than the
+    # outboard tank column. Folding those into the radius mean made the EAV's even hex of boosters read
+    # as a 1.8->3.6 m "spread" and falsely fail the gate; the check must judge the tank column only.
+    design = _eav_boosted()
+    rb = design.radial_boosters
+    assert rb is not None and rb.count == 6
+    names = {rb.engine, rb.tank, rb.decoupler}
+    geom = design_chart.assembly_geometry(design)
+    assert design_chart._boosters_are_symmetric(geom, names, rb.count) is True
+    rep = design_chart.looks_like_a_rocket(design)
+    assert rep["checks"]["symmetric strap-on boosters"]
+    assert rep["looks_like_a_rocket"], rep["checks"]

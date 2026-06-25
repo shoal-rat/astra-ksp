@@ -312,13 +312,20 @@ class CraftWriter:
         # field default to 1 (Kerbin recovery), preserving older craft.
         n_chute = int(round(design.estimates.get("parachutes", 1)))
         chute_r = part(root.part_name).height_m * 0.55 + 0.15
+        # A CREWED capsule keeps the nose cone (the pod apex) as the very top part and mounts EVERY chute
+        # radially around the pod — the real Mk16-radial capsule layout. Stacking the first chute on the
+        # nose put a body-role part ABOVE the nose cone, so the top part was no longer a NOSE_PARTS member
+        # and the geometry gate's "payload housed (fairing or capsule top)" check failed a sound crew
+        # vehicle. An uncrewed probe keeps the original nose-stacked first chute (its comsat rides in a
+        # fairing, so the gate passes on the fairing branch regardless).
+        stack_first_chute = (not design.crewed) and (not design.docking_port)
         for i in range(n_chute):
             chute = new_node("parachuteSingle", 0)
-            if i == 0 and not design.docking_port:
-                # First chute on the nose unless the docking port reserves it.
+            if i == 0 and stack_first_chute:
+                # First chute on the nose unless the docking port reserves it (uncrewed probe only).
                 self._attach(root, chute, "top", "bottom", up=True)
             else:
-                # Remaining chutes distributed radially around the command pod.
+                # Chutes distributed radially around the command pod (all of them on a crewed capsule).
                 ang = 2.0 * math.pi * i / max(1, n_chute)
                 self._attach_surface(root, chute, (chute_r * math.cos(ang), root.y, chute_r * math.sin(ang)))
             nodes.append(chute)
@@ -717,11 +724,13 @@ class CraftWriter:
             self._attach(root, dock, "top", "bottom", up=True)
             nodes.append(dock)
         elif can_emit("noseCone") and not has_fairing:
-            # Nose cone for streamlining (the aero requirement): above the parachute if one exists, else
-            # straight on the command pod's top node. SKIPPED when a payload fairing is present — the
-            # fairing's ogive shell IS the nose (never a cone on top of a fairing).
+            # Nose cone for streamlining (the aero requirement): above a STACK-mounted parachute if one
+            # exists (uncrewed probe), else straight on the command pod's top node. SKIPPED when a payload
+            # fairing is present — the fairing's ogive shell IS the nose (never a cone on top of a fairing).
+            # On a crewed capsule the chutes are radial (stack_first_chute is False), so the nose cone caps
+            # the pod directly — keeping a NOSE_PARTS member as the very top part (the "capsule top" gate).
             nose = new_node("noseCone", 0)
-            top = chute if n_chute > 0 else root
+            top = chute if (n_chute > 0 and stack_first_chute) else root
             self._attach(top, nose, "top", "bottom", up=True)
             nodes.append(nose)
 
