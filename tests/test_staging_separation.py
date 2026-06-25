@@ -9,6 +9,9 @@ class _Part:
     def __init__(self, name, parent=None):
         self.name = name
         self.parent = parent
+        self.children = []
+        if parent is not None:
+            parent.children.append(self)
 
 
 class _Dec:
@@ -17,36 +20,50 @@ class _Dec:
         self.decoupled = False
 
 
+class _Eng:
+    def __init__(self, part):
+        self.part = part
+
+
 class _Vessel:
     class _Parts:
-        def __init__(self, decs):
+        def __init__(self, decs, root, engines):
             self.decouplers = decs
+            self.root = root
+            self.engines = engines
 
-    def __init__(self, decs):
-        self.parts = _Vessel._Parts(decs)
+    def __init__(self, decs, root, engines):
+        self.parts = _Vessel._Parts(decs, root, engines)
 
 
 def _stack(n_inter):
     """Build a mock part tree: probe(root) -> bus -> PAYLOAD decoupler -> upper tank -> upper engine ->
-    [inter decoupler -> booster tank -> booster engine] x n_inter (each deeper than the last)."""
-    cur = _Part("probe")
-    cur = _Part("bus", cur)
-    payload_dec = _Part("payload_decoupler", cur)
-    cur = _Part("upper_tank", payload_dec)
-    cur = _Part("upper_engine", cur)
+    [inter decoupler -> booster tank -> booster engine] x n_inter (each deeper than the last).
+
+    The PAYLOAD decoupler must be protected because firing it would leave the active (root) side — the
+    probe + bus — with NO engine. Each inter-stage decoupler is safe to fire because the upper engine stays
+    on the root side."""
+    probe = _Part("probe")
+    bus = _Part("bus", probe)
+    payload_dec = _Part("payload_decoupler", bus)
+    upper_tank = _Part("upper_tank", payload_dec)
+    upper_engine = _Part("upper_engine", upper_tank)
+    engines = [upper_engine]
+    cur = upper_engine
     inter_parts = []
     for i in range(n_inter):
         d = _Part(f"inter_decoupler_{i}", cur)
         inter_parts.append(d)
-        cur = _Part(f"booster_tank_{i}", d)
-        cur = _Part(f"booster_engine_{i}", cur)
+        bt = _Part(f"booster_tank_{i}", d)
+        cur = _Part(f"booster_engine_{i}", bt)
+        engines.append(cur)
     decs = [_Dec(payload_dec)] + [_Dec(ip) for ip in inter_parts]
-    return _Vessel(decs), payload_dec, inter_parts
+    return _Vessel(decs, probe, [_Eng(e) for e in engines]), payload_dec, inter_parts
 
 
 def test_payload_decoupler_is_never_an_ascent_separator():
-    # The shallowest decoupler (between the comsat bus and the final stage) must NEVER be returned, so the
-    # payload can never be jettisoned when the upper stage later runs dry during circularization.
+    # The payload decoupler (firing it leaves the root/probe side without an engine) must NEVER be returned,
+    # so the payload can never be jettisoned when the upper stage later runs dry during circularization.
     vessel, payload_dec, inter_parts = _stack(1)
     inter = deploy_relay._inter_stage_decouplers(vessel)
     assert len(inter) == 1
@@ -65,5 +82,32 @@ def test_inter_stage_decouplers_fire_deepest_first():
 
 def test_lone_payload_decoupler_yields_no_ascent_separators():
     # A craft with only the payload decoupler (a single stage) has nothing to separate during ascent.
-    vessel = _Vessel([_Dec(_Part("payload_decoupler", _Part("probe")))])
+    probe = _Part("probe")
+    vessel = _Vessel([_Dec(_Part("payload_decoupler", probe))], probe, [])
     assert deploy_relay._inter_stage_decouplers(vessel) == []
+
+
+def test_crewed_two_payload_decouplers_are_both_protected():
+    """REGRESSION for the crewed-launch bug: the crewed vehicle has TWO high decouplers above the engine —
+    the heat-shield boundary AND the upper-stage boundary. Firing EITHER keeps the engineless capsule as the
+    active vessel and jettisons the whole upper stage (it coasted suborbital on every crewed launch). The old
+    'protect only the shallowest' heuristic shielded one and fired the other. The engine-aware rule protects
+    BOTH (root side has no engine) and fires only the genuine booster decoupler.
+    Tree: pod(root) -> heatshield -> hs_dec -> probe -> fairing -> payload_dec -> upper_tank -> upper_engine
+          -> inter_dec -> booster_tank -> booster_engine."""
+    pod = _Part("pod")
+    hs = _Part("heatshield", pod)
+    hs_dec = _Part("hs_decoupler", hs)
+    probe = _Part("probe", hs_dec)
+    fairing = _Part("fairing", probe)
+    payload_dec = _Part("payload_decoupler", fairing)
+    upper_tank = _Part("upper_tank", payload_dec)
+    upper_engine = _Part("upper_engine", upper_tank)
+    inter_dec = _Part("inter_decoupler", upper_engine)
+    booster_tank = _Part("booster_tank", inter_dec)
+    booster_engine = _Part("booster_engine", booster_tank)
+    decs = [_Dec(hs_dec), _Dec(payload_dec), _Dec(inter_dec)]
+    vessel = _Vessel(decs, pod, [_Eng(upper_engine), _Eng(booster_engine)])
+    inter = deploy_relay._inter_stage_decouplers(vessel)
+    assert [d.part.name for d in inter] == ["inter_decoupler"]          # only the booster decoupler fires
+    assert all(d.part not in (hs_dec, payload_dec) for d in inter)      # both payload decouplers protected
