@@ -11,7 +11,7 @@ Public surface:
 from __future__ import annotations
 
 from .agent import AstraAgent, AstraResult
-from .interpreter import Interpreter, MissionPlan
+from .interpreter import Interpreter, LLMUnavailableError, MissionPlan
 from .knowledge import KnowledgeBase
 from .ledger import ExperienceLedger, LedgerEntry
 from .primitives import CATALOG, PrimitiveContext, PrimitiveResult, run_primitive
@@ -20,6 +20,7 @@ __all__ = [
     "AstraAgent",
     "AstraResult",
     "Interpreter",
+    "LLMUnavailableError",
     "MissionPlan",
     "KnowledgeBase",
     "ExperienceLedger",

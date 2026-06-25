@@ -7,9 +7,9 @@ description: Map one line of natural language to a target body, an ordered capab
 
 Turn the user's one line into a concrete plan before any flight. Primitive:
 `Interpreter.interpret(command) -> MissionPlan(target_body, capabilities, mission, source, rationale)`
-in `src/ksp_lab/astra/interpreter.py`. With `ANTHROPIC_API_KEY` set, Claude maps the goal to the
-EXACT capability set; otherwise the deterministic heuristic (`_interpret_heuristic`) runs. Either way
-you must produce the same fields.
+in `src/ksp_lab/astra/interpreter.py`. `ANTHROPIC_API_KEY` is REQUIRED: Claude maps the goal to the
+EXACT capability set. There is no offline/heuristic fallback — without a key, or on a failed/garbage
+Claude response, `interpret()` raises `LLMUnavailableError`.
 
 ## METHOD
 
@@ -58,7 +58,7 @@ Command: `"just throw a comsat around the Mun"` → `["relay"]`, no crew, no hea
 ## SUCCESS / FAILURE MARKERS
 
 - Plan is valid when `capabilities` is non-empty and every entry is in the known set
-  (`KNOWN_CAPABILITIES`). The LLM path raises `"LLM returned no known capabilities"` if the model
-  invents one — fall back to the heuristic.
+  (`KNOWN_CAPABILITIES`). If the model returns no usable steps, `interpret()` raises
+  `LLMUnavailableError` — there is no heuristic fallback to catch it.
 - A plan that omits `crew_return` for a "bring them home" goal is a planning error; re-read the
   keywords.

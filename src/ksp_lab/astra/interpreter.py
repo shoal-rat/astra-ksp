@@ -1,14 +1,15 @@
-"""Natural-language -> a DECOMPOSED mission plan.
+"""Natural-language -> a DECOMPOSED mission plan, ALWAYS by the Claude LLM mission-architect.
 
 ASTRA accepts one line of plain English and breaks it into an ORDERED list of atomic, body-agnostic
-PRIMITIVES (see primitives.py). This is the redesign's core: instead of mapping a command to one of three
-coarse, MUN-hardcoded bundles, the interpreter forces a task DECOMPOSITION.
+PRIMITIVES (see primitives.py). The interpreter forces a task DECOMPOSITION via Claude: the LLM is shown
+the primitive CATALOG (names + descriptions + param schemas) plus the body constants + calculation
+helpers (and, on a live run, the live universe state) and returns
+``{"steps": [{"primitive": ..., "args": {...}}, ...], "rationale": ...}``.
 
-  * When ANTHROPIC_API_KEY is set, the LLM is shown the primitive CATALOG (names + descriptions + param
-    schemas) and returns ``{"steps": [{"primitive": ..., "args": {...}}, ...], "rationale": ...}``.
-  * Otherwise a DETERMINISTIC, BODY-AGNOSTIC heuristic decomposer parses the target body from ANY body
-    name in bodies.py and the crew/flag/relay/land/return keywords, and emits a sensible primitive
-    sequence. No ``body="Mun"`` default — the body is inferred from the text.
+There is NO offline/heuristic fallback. ``interpret()`` REQUIRES ``ANTHROPIC_API_KEY`` and a working
+Claude call; if the key is unset or the call/parse fails, it RAISES rather than silently degrading to a
+keyword guesser. The user's directive: "fully leverage the capabilities of Claude — no superfluous
+offline fallback." A ``--dry-run`` still calls the LLM to PLAN; it just doesn't fly.
 """
 from __future__ import annotations
 
@@ -17,7 +18,6 @@ import os
 import urllib.request
 from dataclasses import dataclass, field
 
-from ..bodies import KERBIN, _REGISTRY
 from ..mission import MissionPlanner
 from ..models import MissionSpec
 from . import primitives
@@ -27,13 +27,18 @@ _DEFAULT_MODEL = os.environ.get("ASTRA_MODEL", "claude-opus-4-8")
 _API_URL = "https://api.anthropic.com/v1/messages"
 
 
+class LLMUnavailableError(RuntimeError):
+    """Raised when ASTRA cannot reach the Claude mission-architect (no key, or the call/parse failed).
+    ASTRA has NO offline fallback by design — surfacing this loudly is the intended behaviour."""
+
+
 @dataclass(slots=True)
 class MissionPlan:
     command: str
     target_body: str
     steps: list[dict]                      # ordered [{"primitive": str, "args": {...}}, ...]
     mission: MissionSpec
-    source: str = "heuristic"              # "llm" | "heuristic"
+    source: str = "llm"                    # always "llm" — the only planner ASTRA has
     notes: str = ""
     rationale: str = ""
     extra: dict = field(default_factory=dict)
@@ -49,125 +54,53 @@ def _fmt_args(args: dict) -> str:
 
 
 class Interpreter:
-    def __init__(self, *, model: str | None = None, allow_llm: bool = True):
+    def __init__(self, *, model: str | None = None):
         self.model = model or _DEFAULT_MODEL
-        self.allow_llm = allow_llm
         self.planner = MissionPlanner()
 
     # ----- public -----
     def interpret(self, command: str, planning_ctx: dict | None = None) -> MissionPlan:
-        """Decompose+plan a command. ``planning_ctx`` (from planning_context.build_planning_context) lets
-        the LLM reason over the LIVE universe state (vessel orbits, resources) — the agent passes it for a
-        live run; for a dry-run it's None and the LLM falls back to the static (bodies+catalog) context."""
-        plan = None
-        if self.allow_llm and os.environ.get("ANTHROPIC_API_KEY"):
-            try:
-                plan = self._interpret_llm(command, planning_ctx)
-            except Exception:  # network/parse/key issues -> graceful fallback
-                plan = None
-        if plan is None:
-            plan = self._interpret_heuristic(command)
-        return plan
+        """Decompose+plan a command with the Claude mission-architect. ``planning_ctx`` (from
+        planning_context.build_planning_context) lets the LLM reason over the LIVE universe state
+        (vessel orbits, resources) — the agent passes it for a live run; for a dry-run it's None and the
+        LLM plans from the static (bodies+catalog) context.
 
-    # ----- body parsing (body-agnostic, shared) -----
+        HARD-REQUIRES the LLM: if ANTHROPIC_API_KEY is unset, raises immediately; if the Claude call or
+        its parse fails, the error propagates (wrapped in LLMUnavailableError). There is NO offline
+        fallback — failures are surfaced, never masked."""
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise LLMUnavailableError(
+                "ASTRA requires ANTHROPIC_API_KEY — no offline fallback. Set the key so the Claude "
+                "mission-architect can decompose the command."
+            )
+        try:
+            return self._interpret_llm(command, planning_ctx)
+        except LLMUnavailableError:
+            raise
+        except Exception as exc:  # network / parse / empty-plan -> fail loudly, do NOT silently degrade
+            raise LLMUnavailableError(
+                f"ASTRA mission-architect failed for {command!r}: {exc} — no offline fallback."
+            ) from exc
+
+    # ----- body parsing (a small default-only helper for when the LLM omits target_body) -----
     @staticmethod
-    def _parse_target_body(text: str) -> str | None:
-        """Find a destination body by scanning the text for ANY catalogue body name (longest first, so
-        'Mun' isn't shadowed by 'Minmus' etc.). Returns None if no body is named (caller decides default)."""
+    def _default_target_body(text: str) -> str:
+        """Best-effort destination body when the LLM did not return an explicit ``target_body`` (it almost
+        always does). Scans the text for any catalogue body name (longest first, so 'Mun' isn't shadowed by
+        'Minmus'); defaults to the launch body Kerbin if none is named."""
+        from ..bodies import _REGISTRY
+
         t = text.lower()
-        # Real catalogue body names take precedence (longest first so 'Mun' isn't shadowed by 'Minmus').
-        # 'home'/'back'/'return' are RETURN cues, not destinations, so they are NOT aliases here.
         names = sorted((b.name for b in _REGISTRY.values() if b.name not in ("Sun",)),
                        key=len, reverse=True)
         for name in names:
             if name.lower() in t:
                 return name
-        # Common nicknames, only if no catalogue name appeared.
         aliases = {"moon": "Mun", "luna": "Mun", "mars": "Duna", "venus": "Eve"}
         for alias, real in aliases.items():
             if alias in t:
                 return real
-        return None
-
-    # ----- heuristic decomposer (body-agnostic) -----
-    def _interpret_heuristic(self, command: str) -> MissionPlan:
-        text = command.lower()
-        target = self._parse_target_body(text)            # None if unspecified
-        from ..bodies import body as _lookup, parent_of
-
-        wants_relay = any(k in text for k in ("relay", "comsat", "satellite", "signal", "comm", "network"))
-        wants_flag = any(k in text for k in ("flag", "plant"))
-        wants_land = wants_flag or any(
-            k in text for k in ("land", "lander", "surface", "touchdown", "descent", "rover", "probe on"))
-        wants_crew = any(
-            k in text for k in ("crew", "astronaut", "kerbal", "man", "manned", "people", "person", "pilot"))
-        wants_return = any(
-            k in text for k in ("return", "bring", "home", "recover", "round trip", "round-trip", "back"))
-        wants_dock = any(k in text for k in ("dock", "rendezvous", "berth"))
-
-        steps: list[dict] = []
-        crew = 1 if (wants_crew or wants_flag) else 0
-        # An interplanetary or crewed-return mission needs heat shield + chutes + a heavy upper.
-        interplanetary = bool(target) and parent_of(_lookup(target)).name == "Sun" and target != "Kerbin"
-        heavy = interplanetary or wants_return or wants_crew
-        name = f"AI-{(target or 'Kerbin')}-{'Crew' if crew else ('Relay' if wants_relay else 'Craft')}"
-
-        # 1) Launch to a parking orbit of the LAUNCH body (Kerbin in stock).
-        steps.append({"primitive": "launch", "args": _prune({
-            "target_alt_km": 100.0,
-            "crew": crew,
-            "heatshield": heavy,
-            "chutes": wants_return or wants_land or crew,
-            "radial_boosters": 4 if heavy else 0,
-            "name": name,
-        })})
-
-        # 2) Transfer to the target body (if any named, and it isn't the launch body).
-        if target and target != "Kerbin":
-            tb = _lookup(target)
-            mode = "circular" if wants_relay else "loose"
-            # If we will land on a body with atmosphere, aerocapture is the cheap arrival.
-            if wants_land and tb.atmosphere_top_m > 0 and not wants_relay:
-                mode = "aerocapture"
-            steps.append({"primitive": "transfer", "args": _prune({
-                "target_body": target, "capture_mode": mode,
-            })})
-
-        # 3) On-body actions in flight order: land -> (flag) -> ascend(if returning) -> recover.
-        landing_body = target or "Kerbin"
-        if wants_relay and not wants_land:
-            steps.append({"primitive": "commission_relay", "args": {}})
-        if wants_land:
-            steps.append({"primitive": "land", "args": {}})
-            if wants_flag:
-                steps.append({"primitive": "plant_flag", "args": {}})
-            if wants_return:
-                steps.append({"primitive": "ascend", "args": {"target_alt_km": 30.0}})
-        if wants_dock:
-            # A rendezvous+dock needs a named target; left generic for the heuristic (LLM fills the name).
-            steps.append({"primitive": "rendezvous", "args": {"target_name": ""}})
-            steps.append({"primitive": "dock", "args": {"target_name": ""}})
-        if wants_return:
-            # Transfer home from an interplanetary/moon body before recovering.
-            if target and target != "Kerbin":
-                steps.append({"primitive": "transfer", "args": {"target_body": "Kerbin",
-                                                                "capture_mode": "aerocapture"}})
-            steps.append({"primitive": "recover", "args": {}})
-
-        if not steps:
-            steps = [{"primitive": "launch", "args": {"target_alt_km": 100.0, "name": name}}]
-
-        mission = self.planner.interpret(command)
-        return MissionPlan(
-            command=command,
-            target_body=target or "Kerbin",
-            steps=steps,
-            mission=mission,
-            source="heuristic",
-            notes="Heuristic decomposition (no ANTHROPIC_API_KEY, or LLM unavailable). Body-agnostic.",
-            rationale=f"Inferred target={target or 'Kerbin (launch body)'}, crew={crew}, "
-                      f"relay={wants_relay}, land={wants_land}, flag={wants_flag}, return={wants_return}.",
-        )
+        return "Kerbin"
 
     # ----- LLM mission ARCHITECT -----
     def _build_system_prompt(self, planning_ctx: dict) -> str:
@@ -224,8 +157,8 @@ class Interpreter:
         )
 
     def _interpret_llm(self, command: str, planning_ctx: dict | None = None) -> MissionPlan:
-        # Offline planning briefing (catalog + body constants + calc helpers). The live variant can be
-        # passed in by a caller that already holds a kRPC handle; otherwise we plan from the static one.
+        # Offline-of-flight planning briefing (catalog + body constants + calc helpers). A live caller that
+        # already holds a kRPC handle passes the live variant; otherwise we plan from the static one.
         if planning_ctx is None:
             planning_ctx = _pc.build_planning_context_static(command)
         system = self._build_system_prompt(planning_ctx)
@@ -235,7 +168,7 @@ class Interpreter:
         if not steps:
             raise ValueError("LLM returned no valid primitive steps")
         mission = self.planner.interpret(command)
-        target = str(data.get("target_body") or self._parse_target_body(command.lower()) or "Kerbin")
+        target = str(data.get("target_body") or self._default_target_body(command.lower()))
         # Accept either the new "mission_rationale" or the legacy "rationale" key.
         rationale = str(data.get("mission_rationale") or data.get("rationale") or "")
         open_qs = data.get("open_questions") or []
@@ -254,7 +187,7 @@ class Interpreter:
     def _call_llm(self, system: str, command: str) -> str:
         """POST the architect prompt to the Anthropic Messages API; return the concatenated text.
         Raised to 4000 max_tokens so the model has room to REASON per step. Network/parse errors
-        propagate to interpret(), which falls back to the heuristic."""
+        propagate to interpret(), which wraps them in LLMUnavailableError and FAILS — no fallback."""
         body = json.dumps(
             {
                 "model": self.model,
@@ -278,15 +211,6 @@ class Interpreter:
         return "".join(
             blk.get("text", "") for blk in payload.get("content", []) if blk.get("type") == "text"
         ).strip()
-
-
-def _prune(args: dict) -> dict:
-    """Drop falsy/default args so the dry-run summary stays readable (keep explicit numeric alts)."""
-    out = {}
-    for k, v in args.items():
-        if k in ("target_alt_km",) or v not in (None, "", False, 0):
-            out[k] = v
-    return out
 
 
 def _validate_steps(raw: list) -> list[dict]:

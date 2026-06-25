@@ -1,18 +1,20 @@
 """Tests for the ASTRA LLM MISSION ARCHITECT (offline — no network).
 
-These exercise the new reasoning-planner path without ever touching kRPC or the Anthropic API:
+These exercise the reasoning-planner path without ever touching kRPC or the Anthropic API:
   * the STATIC planning context carries the bodies + the primitive catalog + the calc-helper names,
   * a well-formed (stubbed) LLM JSON response parses into ORDERED steps that keep their reasoning,
   * an unknown-primitive / hallucinated-arg response is REPAIRED (bad steps/args dropped),
-  * a fully-garbage response makes interpret() fall back to the heuristic instead of crashing,
+  * a fully-garbage or empty-steps response makes interpret() RAISE (no offline fallback),
   * "synchronous orbit around Duna" (stubbed response) yields a Duna synchronous-altitude arg.
 """
 from __future__ import annotations
 
 import json
 
+import pytest
+
 from ksp_lab.astra import planning_context as pc
-from ksp_lab.astra.interpreter import Interpreter
+from ksp_lab.astra.interpreter import Interpreter, LLMUnavailableError
 from ksp_lab.bodies import DUNA, synchronous_altitude_m
 
 
@@ -124,7 +126,7 @@ def test_architect_parses_ordered_steps_with_reasoning(monkeypatch):
     })
     _stub_llm(monkeypatch, response)
 
-    plan = Interpreter(allow_llm=True).interpret("land a probe on Duna")
+    plan = Interpreter().interpret("land a probe on Duna")
     assert plan.source == "llm"
     assert plan.target_body == "Duna"
     names = [s["primitive"] for s in plan.steps]
@@ -153,7 +155,7 @@ def test_architect_repairs_unknown_primitive_and_bad_args(monkeypatch):
     })
     _stub_llm(monkeypatch, response)
 
-    plan = Interpreter(allow_llm=True).interpret("put a relay in Mun orbit")
+    plan = Interpreter().interpret("put a relay in Mun orbit")
     names = [s["primitive"] for s in plan.steps]
     assert "warp_drive" not in names                          # hallucinated primitive repaired away
     assert names == ["launch", "transfer", "commission_relay"]
@@ -162,22 +164,21 @@ def test_architect_repairs_unknown_primitive_and_bad_args(monkeypatch):
     assert plan.steps[0]["args"]["target_alt_km"] == 100.0
 
 
-def test_architect_garbage_falls_back_to_heuristic(monkeypatch):
-    # No JSON at all -> _extract_json raises -> interpret() must fall back, never crash.
+def test_architect_garbage_raises_no_fallback(monkeypatch):
+    # No JSON at all -> _extract_json raises -> interpret() must RAISE (no offline heuristic fallback).
     _stub_llm(monkeypatch, "I think we should fly to the Mun, but here is no JSON.")
-    plan = Interpreter(allow_llm=True).interpret("land a probe on Duna")
-    assert plan.source == "heuristic"
-    assert plan.target_body == "Duna"
+    with pytest.raises(LLMUnavailableError):
+        Interpreter().interpret("land a probe on Duna")
 
 
-def test_architect_empty_steps_falls_back_to_heuristic(monkeypatch):
-    # Valid JSON but every step is an unknown primitive -> no usable steps -> heuristic fallback.
+def test_architect_empty_steps_raises_no_fallback(monkeypatch):
+    # Valid JSON but every step is an unknown primitive -> no usable steps -> RAISE (no fallback).
     response = json.dumps({"target_body": "Mun",
                            "steps": [{"primitive": "teleport", "args": {}}],
                            "mission_rationale": "bad plan"})
     _stub_llm(monkeypatch, response)
-    plan = Interpreter(allow_llm=True).interpret("orbit the Mun")
-    assert plan.source == "heuristic"
+    with pytest.raises(LLMUnavailableError):
+        Interpreter().interpret("orbit the Mun")
 
 
 def test_architect_synchronous_duna_altitude(monkeypatch):
@@ -198,7 +199,7 @@ def test_architect_synchronous_duna_altitude(monkeypatch):
     })
     _stub_llm(monkeypatch, response)
 
-    plan = Interpreter(allow_llm=True).interpret("put a relay in a synchronous orbit around Duna")
+    plan = Interpreter().interpret("put a relay in a synchronous orbit around Duna")
     assert plan.source == "llm" and plan.target_body == "Duna"
     transfer = next(s for s in plan.steps if s["primitive"] == "transfer")
     assert transfer["args"]["capture_mode"] == "circular"

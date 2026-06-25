@@ -43,11 +43,11 @@ Map the one line to an ordered subset of the EXACT capability set (`astra/interp
 | `hls_land_return` | lander → Mun orbit → hoverslam land → science → ascend to orbit| `fly_hls_predeploy.py` then `fly_hls_sortie.py`  | `artemis_hls_returned_to_mun_orbit` |
 | `crew_return`     | crew vehicle → Mun orbit → trans-Kerbin → reentry + recover    | `tools/fly_orion.py`                             | `recovered`                         |
 
-Keywords → capability (heuristic fallback, `interpreter._interpret_heuristic`): "relay/comsat/
-satellite/signal/comm" → `relay`; "land/lander/hls/surface/touchdown/descent" → `hls_land_return`;
-"crew/astronaut/orion/return/bring/home/recover/round trip" → `crew_return`; "artemis/everything/
-full mission/whole" → all three. Bare "go to the Mun" → at least `relay`. Use the `mission-planning`
-skill for the full NL→target-body/Δv/crew mapping.
+Keywords → capability (a reference mapping; the Claude mission-architect produces the actual plan —
+there is no offline heuristic): "relay/comsat/satellite/signal/comm" → `relay`; "land/lander/hls/
+surface/touchdown/descent" → `hls_land_return`; "crew/astronaut/orion/return/bring/home/recover/round
+trip" → `crew_return`; "artemis/everything/full mission/whole" → all three. Bare "go to the Mun" → at
+least `relay`. Use the `mission-planning` skill for the full NL→target-body/Δv/crew mapping.
 
 ### 2. DECOMPOSE into ordered phases
 

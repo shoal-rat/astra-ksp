@@ -38,8 +38,8 @@ $ PYTHONPATH=src python tools/astra.py "put a relay in synchronous orbit around 
   RESULT: SUCCESS
 ```
 
-(With `--no-llm` the heuristic decomposer reaches the same shape from keywords:
-`launch(radial_boosters=4) -> transfer(target_body=Duna, capture_mode=circular) -> commission_relay`.)
+(The decomposition is always done by the Claude mission-architect — `ANTHROPIC_API_KEY` is required.
+There is no offline/heuristic fallback; without a key, or if the Claude call fails, ASTRA raises.)
 
 ---
 
@@ -96,10 +96,9 @@ unknown or hallucinated primitives are dropped, free-text calculation notes are 
 executable args (the live primitives take no `notes` kwarg), and any arg that is not a real parameter of
 that primitive is repaired away.
 
-If there is no API key, or the network/parse fails, a **deterministic, body-agnostic heuristic
-decomposer** takes over: it parses the target body from any catalogue name in the text (longest-first, so
-`Mun` isn't shadowed by `Minmus`) plus the crew/flag/relay/land/return keywords, and emits a sensible
-primitive sequence — no `body="Mun"` default anywhere. Run it with `--no-llm` to force this path.
+There is **no offline fallback**. `ANTHROPIC_API_KEY` is required: if it is unset, or the Claude
+call/parse fails, `interpret()` raises `LLMUnavailableError` rather than silently degrading to a keyword
+guesser. ASTRA fully leverages Claude as the mission architect — failures are surfaced, never masked.
 
 ### The planning context
 
@@ -266,9 +265,9 @@ export ANTHROPIC_API_KEY=sk-...
 PYTHONPATH=src python tools/astra.py "land a crew on Gilly, plant a flag, and bring them home"
 ```
 
-**Useful flags:** `--dry-run` (decompose and print the primitive plan; don't fly) · `--no-llm` (force the
-heuristic decomposer even if a key is set) · `--max-attempts N` (retries per primitive step, default `2`)
-· `--config PATH`.
+**Useful flags:** `--dry-run` (decompose and print the primitive plan via the LLM; don't fly) ·
+`--max-attempts N` (retries per primitive step, default `2`) · `--config PATH`. (`ANTHROPIC_API_KEY` is
+always required — there is no `--no-llm` / offline mode.)
 
 Set `ASTRA_MODEL` to choose the model (default `claude-opus-4-8`).
 

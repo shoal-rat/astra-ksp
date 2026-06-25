@@ -54,6 +54,25 @@ def default_reserve_frac(twr_body_g: float, is_landing: bool = False) -> float:
     return 0.07               # vacuum transfer/capture: 5% + 2% residual
 
 
+def _is_vacuum_transfer_phase(phase: Phase) -> bool:
+    """A true vacuum transfer/capture leg — the flexible stage that carries the MISSION-LEVEL reserve.
+    It fires only in space (no ascent gravity to fight: twr_body_g <= 5) and is NOT a powered landing
+    (a hoverslam has a high min_twr and is sized to the surface, so it must not absorb the contingency)."""
+    return phase.twr_body_g <= 5.0 and phase.min_twr <= 0.0
+
+
+def _mission_reserve_phase_name(phases: list[Phase]) -> str | None:
+    """Pick the single phase that carries the whole-mission contingency reserve: the FIRST vacuum
+    transfer/capture leg (re-taskable propellant). Falls back to the last phase if none is a clean
+    vacuum leg, so the reserve is always banked SOMEWHERE on a real (non-empty) vehicle."""
+    if not phases:
+        return None
+    for ph in phases:
+        if _is_vacuum_transfer_phase(ph):
+            return ph.name
+    return phases[-1].name
+
+
 @dataclass(slots=True)
 class LandingSite:
     """A parachute touchdown on a body with atmosphere — sized from the LIVE surface density."""
@@ -69,6 +88,14 @@ class ShipRequirements:
     crew: int = 0
     payload_t: float = 0.0
     phases: list[Phase] = field(default_factory=list)   # in FIRE ORDER (launch first)
+    # MISSION-LEVEL FUEL RESERVE — margin "for unforeseen needs" on TOP of the per-stage role reserves.
+    # Each Phase already carries its own role margin (ascent ~12%, vacuum ~7%, landing ~10%); this is an
+    # ADDITIONAL whole-mission contingency the vehicle hauls so it can absorb the unplanned: a sloppier
+    # gravity turn, a steeper-than-nominal capture, a missed node re-plan, a longer hover before touchdown.
+    # It is folded into the VACUUM transfer/capture stage's sizing (the most flexible leg — that propellant
+    # can be re-tasked to whichever burn actually needs it), so the finished vehicle leaves the pad with
+    # this slice of Δv banked. Default 5%. Set 0.0 to size with per-stage reserves only.
+    mission_reserve_frac: float = 0.05
     landing: LandingSite | None = None
     needs_heatshield: bool = False
     needs_docking: bool = False
@@ -530,12 +557,22 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
     # deliver that share below; the core flies on its remaining propellant after they separate.
     launch_phase_name = phases[0].name if phases else None
     core_dv_factor = (1.0 - BOOSTER_DV_SHARE) if req.radial_booster_count > 0 else 1.0
+    # MISSION-LEVEL RESERVE: fold the whole-mission contingency (req.mission_reserve_frac, default 5%) into
+    # ONE phase — the first vacuum transfer/capture leg (the re-taskable stage). It is applied to a single
+    # stage so the contingency is banked exactly once, on top of that stage's own per-role reserve.
+    mission_reserve = max(0.0, req.mission_reserve_frac)
+    mission_reserve_phase = _mission_reserve_phase_name(phases) if mission_reserve > 0 else None
+    if mission_reserve_phase is not None:
+        log.append(f"mission reserve: +{mission_reserve*100:.0f}% contingency folded into the '{mission_reserve_phase}' "
+                   f"vacuum stage (for unforeseen needs, on top of its per-role reserve)")
     for phase in reversed(phases):
         # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
         # burn-to-depletion (a real rocket never plans to land on empty tanks). The first-firing (launch)
         # stage carries only its core share when boosters are present.
         is_launch = phase.name == launch_phase_name
-        size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0)
+        carries_mission_reserve = phase.name == mission_reserve_phase
+        mission_factor = (1.0 + mission_reserve) if carries_mission_reserve else 1.0
+        size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0) * mission_factor
         spec, metrics = _size_stage(size_dv, mass_above, phase, req.max_engine_count, dia_floor,
                                     use_full_catalog=use_full_catalog)
         dia_floor = max(dia_floor, spec.diameter_m)
@@ -545,8 +582,9 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
         # loop ends `mass_above` (pre-this-stage) is exactly the mass riding above the launch stage.
         launch_mass_above = mass_above
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
+        mr_note = f" +{mission_reserve*100:.0f}% mission" if carries_mission_reserve else ""
         log.append(
-            f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve -> size {phase.design_dv():.0f}) "
+            f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve{mr_note} -> size {size_dv:.0f}) "
             f"twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} + {metrics['tanks']} {metrics['tank']} "
             f"= {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
         )
@@ -804,9 +842,22 @@ def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict
         m1_booster = m0_liftoff - (rb_wet - rb_dry)            # boosters burned out, core still full
         booster_dv = astro.rocket_dv(eng.isp_asl_s or eng.isp_vac_s, m0_liftoff, m1_booster)
         total_dv += booster_dv
+    # FUEL RESERVE, made VISIBLE: the bare mission REQUIREMENT is sum(phase.dv_mps); everything the vehicle
+    # carries beyond that — the per-stage role reserves + the whole-mission contingency — is the reserve.
+    # usable_dv = the nominal requirement (what the planned burns consume); reserve_dv = margin in the tanks
+    # for unforeseen needs. reserve_frac is reserve as a fraction of the requirement.
+    required_dv = sum(p.dv_mps for p in req.phases)
+    total_dv_r = round(total_dv, 0)
+    usable_dv = round(min(required_dv, total_dv_r), 0)
+    reserve_dv = round(max(0.0, total_dv_r - usable_dv), 0)
     return {
         "wet_mass_t": round(bus + sum(stage_wet) + rb_wet, 2),
-        "total_delta_v_mps": round(total_dv, 0),
+        "total_delta_v_mps": total_dv_r,
+        "required_delta_v_mps": round(required_dv, 0),
+        "usable_dv_mps": usable_dv,
+        "reserve_dv_mps": reserve_dv,
+        "reserve_frac": round(reserve_dv / required_dv, 3) if required_dv > 0 else 0.0,
+        "mission_reserve_frac": round(max(0.0, req.mission_reserve_frac), 3),
         "launch_twr": round(launch_twr, 2),
         "booster_delta_v_mps": round(booster_dv, 0),
         "parachutes": float(n_chute),

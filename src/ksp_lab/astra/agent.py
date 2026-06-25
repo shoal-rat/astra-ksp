@@ -109,21 +109,36 @@ class AstraAgent:
         # LIVE run: connect FIRST so the LLM mission-architect reasons over the LIVE universe state (vessel
         # orbits + resources/mass via the bridge), not just the static bodies+catalog — the user's "give the
         # LLM sufficient information". DRY-RUN: plan from the static context only (no connection needed).
+        #
+        # A LIVE run FAILS LOUDLY: there is NO quiet degrade. If we cannot open the kRPC/bridge connection,
+        # or cannot build the live planning context, we RAISE rather than planning blind and pretending —
+        # a real flight must reason over the real universe state. (Only a dry-run plans from the static
+        # context, because by definition it is not flying.)
         ctx = None
         planning_ctx = None
         if not self.dry_run:
             ctx = self._connect_context()
             if ctx is None:
-                plan = self.interpreter.interpret(command)
-                res = AstraResult(command=command, plan=plan)
-                res.success = False
-                return res
+                raise RuntimeError(
+                    "ASTRA live run requires a live KSP connection — failed to connect to kRPC/bridge "
+                    "(see the 'connect' status above). No quiet static-context degrade for a real flight; "
+                    "start KSP + the bridge, or use --dry-run to plan offline."
+                )
+            from . import planning_context as _pc
             try:
-                from . import planning_context as _pc
                 planning_ctx = _pc.build_planning_context(ctx.conn, ctx.sc, command, bridge=ctx.bridge)
-            except Exception as _exc:
-                _log(f"live planning context unavailable ({_exc}); planning from the static context")
-                planning_ctx = None
+            except Exception as exc:
+                self._status("connect", f"FAILED to build live planning context ({exc})")
+                try:
+                    if ctx.conn is not None:
+                        ctx.conn.close()
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"ASTRA live run could not build the live planning context ({exc}) — the mission "
+                    "architect must reason over the live universe state, so this is a hard failure, not a "
+                    "static-context degrade."
+                ) from exc
 
         plan = self.interpreter.interpret(command, planning_ctx=planning_ctx)
         self._status("decompose", f"[{plan.source}] {plan.target_body}: {plan.step_summary()}")

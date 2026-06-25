@@ -332,6 +332,79 @@ def test_no_radial_boosters_by_default():
     assert d.estimates["booster_delta_v_mps"] == 0.0
 
 
+# --------------------------------------------------------------------------------------------------
+# FUEL RESERVE — per-stage role reserves + the mission-level contingency, made visible in estimates.
+# --------------------------------------------------------------------------------------------------
+def test_design_estimates_expose_the_fuel_reserve():
+    """Every design must REPORT its fuel reserve: the bare requirement (usable_dv), the margin carried
+    beyond it (reserve_dv), and the reserve fraction — so the reserve is auditable, not hidden in mass."""
+    design = design_ship(_starship_mars_requirements())
+    est = design.estimates
+    for key in ("required_delta_v_mps", "usable_dv_mps", "reserve_dv_mps", "reserve_frac",
+                "mission_reserve_frac", "total_delta_v_mps"):
+        assert key in est, (key, est)
+    required = sum(p.dv_mps for p in _starship_mars_requirements().phases)
+    assert est["required_delta_v_mps"] == round(required, 0)
+    # usable = the requirement; reserve = everything carried beyond it; they add up to the total.
+    assert est["usable_dv_mps"] == round(required, 0)
+    assert est["reserve_dv_mps"] > 0.0, est                       # a real reserve, not zero
+    assert est["usable_dv_mps"] + est["reserve_dv_mps"] == est["total_delta_v_mps"]
+    # The reserve is a meaningful slice (per-stage role reserves alone are ~7-12%).
+    assert est["reserve_frac"] >= 0.05, est
+
+
+def _reserve_probe_requirements(mission_reserve_frac: float) -> ShipRequirements:
+    """A launcher whose VACUUM transfer stage is tank-count-sensitive (an 8 t payload on a ~2000 m/s
+    upper), so the mission-level reserve visibly grows the stage rather than being absorbed by the coarse
+    overshoot of a single big tank. Booster + one true vacuum transfer leg (the reserve lands on it)."""
+    req = ShipRequirements(
+        name="reserve-probe", crew=0, payload_t=8.0,
+        phases=[Phase("booster", 3400.0, twr_body_g=KERBIN_G, min_twr=1.4),
+                Phase("transfer", 2000.0, twr_body_g=0.0, min_twr=0.0)],
+        landing=None, max_engine_count=4)
+    req.mission_reserve_frac = mission_reserve_frac
+    return req
+
+
+def test_mission_reserve_adds_margin_for_unforeseen_needs():
+    """The mission-level contingency (mission_reserve_frac) carries EXTRA Δv on top of the per-stage role
+    reserves — raising it grows the vacuum stage and the carried reserve, the 'fuel reserve for unforeseen
+    needs' the directive asks for. Use a tank-count-sensitive upper so the effect is observable."""
+    without = design_ship(_reserve_probe_requirements(0.0))
+    with_05 = design_ship(_reserve_probe_requirements(0.05))
+    with_10 = design_ship(_reserve_probe_requirements(0.10))
+    assert without.estimates["mission_reserve_frac"] == 0.0
+    assert with_05.estimates["mission_reserve_frac"] == 0.05
+    # More mission reserve -> the vacuum transfer stage is sized larger -> more total Δv reserve carried.
+    assert with_05.estimates["reserve_dv_mps"] > without.estimates["reserve_dv_mps"], (
+        with_05.estimates, without.estimates)
+    assert with_10.estimates["reserve_dv_mps"] > with_05.estimates["reserve_dv_mps"], (
+        with_10.estimates, with_05.estimates)
+    # All three remain launchable (the reserve does not break feasibility).
+    assert without.feasible and with_05.feasible and with_10.feasible
+
+
+def test_each_stage_is_sized_beyond_its_requirement_by_the_reserve():
+    """Per-stage proof of the reserve: each stage's ACHIEVED Δv exceeds its phase requirement by at least
+    that phase's reserve fraction (it was sized for dv*(1+reserve), not bare dv)."""
+    req = _starship_mars_requirements()
+    design = design_ship(req)
+    bus = _bus_mass_of(design, req)
+    stage_wet = [stage_masses(s)[1] for s in design.stages]
+    # Map each design stage back to its phase (no phase split happens for this vehicle: 3 phases -> 3 stages).
+    assert len(design.stages) == len(req.phases)
+    for i, (stage, phase) in enumerate(zip(design.stages, req.phases)):
+        dry, wet, _thrust_asl, _isp_asl, isp_vac = stage_masses(stage)
+        mass_above = bus + sum(stage_wet[i + 1:])
+        achieved = astro.rocket_dv(isp_vac, mass_above + wet, mass_above + dry)
+        # Sized for the requirement PLUS its reserve, so achieved >= requirement*(1+reserve) (minus a hair
+        # of rounding/closed-form slack).
+        floor = phase.dv_mps * (1.0 + phase.reserve_frac) * 0.99
+        assert achieved >= floor, (
+            f"stage {stage.role}: achieved {achieved:.0f} < req+reserve {floor:.0f} "
+            f"(req {phase.dv_mps:.0f}, reserve {phase.reserve_frac:.0%})")
+
+
 def test_separation_sequence_and_staging_metrics():
     """The separation SEQUENCE is established with control logic, and each stage reports its
     post-separation mass, structural coefficient, and single-stage Δv ceiling (the add-a-stage limit)."""

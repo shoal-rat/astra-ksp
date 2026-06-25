@@ -169,12 +169,29 @@ def test_planner_catalog_lists_every_primitive_including_walk_to():
 
 
 # ----------------------------------------------------------------------------------------------------
-# Offline dry-run of a flag mission still decomposes AND runs through the primitives.
+# A flag mission decomposes via the (stubbed) LLM AND runs through the primitives in dry-run.
 # ----------------------------------------------------------------------------------------------------
-def test_offline_flag_mission_decomposes_and_dry_runs():
-    plan = Interpreter(allow_llm=False).interpret(
-        "send a kerbal to Eve, plant a flag on Gilly, bring them home"
-    )
+def test_flag_mission_decomposes_and_dry_runs(monkeypatch):
+    import json
+
+    response = json.dumps({
+        "target_body": "Gilly",
+        "steps": [
+            {"primitive": "launch", "args": {"crew": 1, "heatshield": True, "chutes": True}},
+            {"primitive": "transfer", "args": {"target_body": "Gilly", "capture_mode": "loose"}},
+            {"primitive": "land", "args": {}},
+            {"primitive": "plant_flag", "args": {}},
+            {"primitive": "ascend", "args": {"target_alt_km": 30.0}},
+            {"primitive": "transfer", "args": {"target_body": "Kerbin", "capture_mode": "aerocapture"}},
+            {"primitive": "recover", "args": {}},
+        ],
+        "mission_rationale": "Crewed Gilly flag round trip.",
+    })
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(Interpreter, "_call_llm",
+                        lambda self, system, command: response, raising=True)
+
+    plan = Interpreter().interpret("send a kerbal to Eve, plant a flag on Gilly, bring them home")
     names = [s["primitive"] for s in plan.steps]
     assert names[0] == "launch"
     assert "plant_flag" in names

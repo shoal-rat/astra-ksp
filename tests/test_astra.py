@@ -1,6 +1,9 @@
+import json
 from pathlib import Path
 
-from ksp_lab.astra.interpreter import Interpreter
+import pytest
+
+from ksp_lab.astra.interpreter import Interpreter, LLMUnavailableError
 from ksp_lab.astra.ledger import ExperienceLedger, LedgerEntry
 from ksp_lab.astra.knowledge import KnowledgeBase
 from ksp_lab.astra import primitives
@@ -11,13 +14,83 @@ def _names(plan):
     return [s["primitive"] for s in plan.steps]
 
 
+def _stub_llm(monkeypatch, steps, *, target_body, rationale="stub plan"):
+    """Make interpret() run the LLM path OFFLINE: set a dummy key + replace the network call with a stub
+    that returns a well-formed architect JSON. The real API is NEVER touched."""
+    response = json.dumps({"target_body": target_body, "steps": steps,
+                           "mission_rationale": rationale})
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(Interpreter, "_call_llm",
+                        lambda self, system, command: response, raising=True)
+
+
 # ----------------------------------------------------------------------------------------------------
-# DECOMPOSER: every command must break into a SENSIBLE, BODY-AGNOSTIC primitive sequence (no body="Mun"
-# default; the body is inferred from the text). These mirror the --dry-run path.
+# INTERPRETER HARD-REQUIRES THE LLM — no offline/heuristic fallback at all.
 # ----------------------------------------------------------------------------------------------------
-def test_decompose_mun_relay():
-    plan = Interpreter(allow_llm=False).interpret("put a communications satellite in high Mun orbit")
-    assert plan.source == "heuristic"
+def test_interpret_raises_without_api_key(monkeypatch):
+    # With no ANTHROPIC_API_KEY there is NO offline fallback: interpret() must raise loudly, not return a
+    # heuristic plan.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(LLMUnavailableError) as ei:
+        Interpreter().interpret("put a communications satellite in high Mun orbit")
+    assert "ANTHROPIC_API_KEY" in str(ei.value)
+
+
+def test_interpret_raises_when_llm_call_fails(monkeypatch):
+    # A live key but a failing Claude call must propagate as LLMUnavailableError — never a silent degrade.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def boom(self, system, command):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(Interpreter, "_call_llm", boom, raising=True)
+    with pytest.raises(LLMUnavailableError):
+        Interpreter().interpret("land a probe on Duna")
+
+
+def test_no_allow_llm_or_heuristic_attribute():
+    # The offline knobs are gone: no allow_llm ctor option, no heuristic decomposer.
+    import inspect
+
+    assert "allow_llm" not in inspect.signature(Interpreter.__init__).parameters
+    assert not hasattr(Interpreter, "_interpret_heuristic")
+
+
+def _load_cli_module():
+    """Import tools/astra.py by path (the tools/ dir is not on sys.path, only src/ is)."""
+    import importlib.util
+
+    cli_path = Path(__file__).resolve().parent.parent / "tools" / "astra.py"
+    spec = importlib.util.spec_from_file_location("astra_cli", cli_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_cli_has_no_no_llm_flag():
+    # The CLI must NOT expose --no-llm anymore (no way to force an offline heuristic): argparse rejects the
+    # unknown option with SystemExit. The CLI source must also keep --dry-run (still plans via the LLM).
+    cli = _load_cli_module()
+    with pytest.raises(SystemExit):
+        cli.main(["some mission", "--no-llm"])
+
+    src = (Path(cli.__file__)).read_text(encoding="utf-8")
+    assert "--no-llm" not in src
+    assert "allow_llm" not in src
+    assert "--dry-run" in src
+
+
+# ----------------------------------------------------------------------------------------------------
+# DECOMPOSER (LLM path, stubbed): a command breaks into a SENSIBLE, BODY-AGNOSTIC primitive sequence.
+# ----------------------------------------------------------------------------------------------------
+def test_decompose_mun_relay(monkeypatch):
+    _stub_llm(monkeypatch, target_body="Mun", steps=[
+        {"primitive": "launch", "args": {"target_alt_km": 100.0}},
+        {"primitive": "transfer", "args": {"target_body": "Mun", "capture_mode": "circular"}},
+        {"primitive": "commission_relay", "args": {}},
+    ])
+    plan = Interpreter().interpret("put a communications satellite in high Mun orbit")
+    assert plan.source == "llm"
     assert plan.target_body == "Mun"
     names = _names(plan)
     assert names[0] == "launch"
@@ -25,33 +98,40 @@ def test_decompose_mun_relay():
     assert "commission_relay" in names
     # a bare relay is NOT a crewed round trip
     assert "recover" not in names
-    # the transfer targets Mun, not a hardcoded body
     tr = next(s for s in plan.steps if s["primitive"] == "transfer")
     assert tr["args"]["target_body"] == "Mun"
 
 
-def test_decompose_duna_probe_landing():
-    plan = Interpreter(allow_llm=False).interpret("land a probe on Duna")
+def test_decompose_duna_probe_landing(monkeypatch):
+    _stub_llm(monkeypatch, target_body="Duna", steps=[
+        {"primitive": "launch", "args": {"target_alt_km": 100.0, "crew": 0}},
+        {"primitive": "transfer", "args": {"target_body": "Duna", "capture_mode": "aerocapture"}},
+        {"primitive": "land", "args": {}},
+    ])
+    plan = Interpreter().interpret("land a probe on Duna")
     assert plan.target_body == "Duna"
     names = _names(plan)
     assert names[0] == "launch"
     assert "transfer" in names and "land" in names
     tr = next(s for s in plan.steps if s["primitive"] == "transfer")
     assert tr["args"]["target_body"] == "Duna"
-    # Duna has an atmosphere -> the heuristic should aerocapture, not propulsively capture.
     assert tr["args"]["capture_mode"] == "aerocapture"
-    # a probe is not crewed
     assert plan.steps[0]["args"].get("crew", 0) == 0
 
 
-def test_decompose_eve_gilly_flag_round_trip():
-    plan = Interpreter(allow_llm=False).interpret(
-        "send a kerbal to Eve, plant a flag on Gilly, bring them home"
-    )
-    # The actual landing destination named is Gilly.
+def test_decompose_eve_gilly_flag_round_trip(monkeypatch):
+    _stub_llm(monkeypatch, target_body="Gilly", steps=[
+        {"primitive": "launch", "args": {"crew": 1, "heatshield": True, "chutes": True}},
+        {"primitive": "transfer", "args": {"target_body": "Gilly", "capture_mode": "loose"}},
+        {"primitive": "land", "args": {}},
+        {"primitive": "plant_flag", "args": {}},
+        {"primitive": "ascend", "args": {"target_alt_km": 30.0}},
+        {"primitive": "transfer", "args": {"target_body": "Kerbin", "capture_mode": "aerocapture"}},
+        {"primitive": "recover", "args": {}},
+    ])
+    plan = Interpreter().interpret("send a kerbal to Eve, plant a flag on Gilly, bring them home")
     assert plan.target_body == "Gilly"
     names = _names(plan)
-    # full crewed round-trip sequence, body-agnostic
     assert names[0] == "launch"
     assert plan.steps[0]["args"].get("crew", 0) >= 1
     assert "transfer" in names
@@ -62,21 +142,21 @@ def test_decompose_eve_gilly_flag_round_trip():
     # plant_flag comes after land; recover is last
     assert names.index("plant_flag") > names.index("land")
     assert names[-1] == "recover"
-    # the outbound transfer goes to Gilly, the homebound transfer to Kerbin
     transfers = [s["args"]["target_body"] for s in plan.steps if s["primitive"] == "transfer"]
     assert transfers[0] == "Gilly"
     assert transfers[-1] == "Kerbin"
 
 
-def test_heuristic_is_body_agnostic_no_mun_default():
-    # A command with NO body named must NOT silently default to Mun.
-    plan = Interpreter(allow_llm=False).interpret("launch a satellite to orbit")
-    assert plan.target_body != "Mun"
-    assert plan.target_body == "Kerbin"   # launch-body orbit, no transfer
-    assert "transfer" not in _names(plan)
-    # And a Minmus command is detected as Minmus, not shadowed by 'Mun'.
-    plan2 = Interpreter(allow_llm=False).interpret("land a probe on Minmus")
-    assert plan2.target_body == "Minmus"
+def test_target_body_defaults_when_llm_omits_it(monkeypatch):
+    # If the LLM omits target_body, interpret() infers it from the command text (Minmus, not shadowed by
+    # 'Mun'); a bodiless command defaults to the launch body Kerbin.
+    _stub_llm(monkeypatch, target_body="", steps=[
+        {"primitive": "launch", "args": {"target_alt_km": 100.0}},
+        {"primitive": "transfer", "args": {"target_body": "Minmus", "capture_mode": "loose"}},
+        {"primitive": "land", "args": {}},
+    ])
+    plan = Interpreter().interpret("land a probe on Minmus")
+    assert plan.target_body == "Minmus"
 
 
 # ----------------------------------------------------------------------------------------------------
