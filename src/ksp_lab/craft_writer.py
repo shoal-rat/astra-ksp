@@ -148,8 +148,18 @@ class CraftWriter:
             "longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank",
             "rtg", "basicFin", "R8winglet", "asasmodule1-2", "adapterSize2-Size1", "Size3To2Adapter_v2",
         })
-        if not design.crewed and not design.landing_legs:
-            names.add("fairingSize1")  # probe comsat rides in a payload fairing (harvest the working module)
+        # Payload fairing harvest. An uncrewed no-legs probe comsat rides in one; a CREWED REENTRY CAPSULE
+        # (heat-shield + chutes, no docking port) ALSO rides in one (the blunt exposed pod+heat-shield was
+        # the +0.12 Cd ascent penalty that made the crew vehicle draggy/unstable and burn all its Δv
+        # suborbital). The fairing shrouds the pod+heat-shield+chutes through max-Q, then jettisons in orbit
+        # leaving them intact for the Kerbin-return reentry (see has_fairing in _build_nodes + the deploy
+        # fairing jettison). Mirror the has_fairing predicate so harvest and emission stay in lock-step.
+        _crewed_reentry_capsule = bool(
+            design.crewed and design.heatshield and not design.docking_port
+            and int(round(design.estimates.get("parachutes", 0))) > 0
+        )
+        if (not design.crewed and not design.landing_legs) or _crewed_reentry_capsule:
+            names.add("fairingSize1")
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
@@ -405,10 +415,25 @@ class CraftWriter:
         # PAYLOAD FAIRING: a probe comsat rides INSIDE an ogive shroud — never an exposed antenna on the
         # nose. The fairing base node-attaches BELOW the payload bus; its ModuleProceduralFairing shell
         # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
-        # before the dish + solar deploy. Only for an uncrewed, no-legs probe (the comsat); the crewed
-        # Starship lander keeps its own nose. The base diameter matches the payload body.
-        has_fairing = (not design.crewed and not design.landing_legs
-                       and (part_bodies is None or "fairingSize1" in part_bodies))
+        # before the dish + solar deploy. The base diameter matches the payload body.
+        #
+        # Two payloads ride faired:
+        #  - an UNCREWED, no-legs probe comsat (the relay), and
+        #  - a CREWED REENTRY CAPSULE: a crewed vehicle that returns by heat-shield + chutes (no docking
+        #    port, no propulsive landing legs). The blunt EXPOSED Mk1 pod + forward heat-shield was the
+        #    +0.12 Cd ascent penalty (faired False) that made the crew vehicle draggy and aerodynamically
+        #    unstable — it tumbled the gravity turn and burned all ~10 km/s of Δv suborbital. Shrouding the
+        #    capsule in the same ogive the relay uses brings Cd back to ~0.23. The fairing is jettisoned in
+        #    orbit (deploy_relay/crewed_eve_roundtrip fairing jettison), which removes ONLY the shell and
+        #    leaves the pod + heat-shield + chutes intact for the Kerbin-return reentry. A crewed Starship
+        #    lander (docking_port, propulsive legs, 0 chutes) keeps its OWN nose and is NOT faired here.
+        crewed_reentry_capsule = bool(
+            design.crewed and design.heatshield and not design.docking_port
+            and int(round(design.estimates.get("parachutes", 0))) > 0
+        )
+        has_fairing = (
+            ((not design.crewed and not design.landing_legs) or crewed_reentry_capsule)
+            and (part_bodies is None or "fairingSize1" in part_bodies))
         if has_fairing:
             payload_top = max(n.y + part(n.part_name).height_m / 2.0 for n in nodes if not n.is_surface)
             fb = new_node("fairingSize1", 0)

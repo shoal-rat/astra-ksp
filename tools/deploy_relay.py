@@ -380,13 +380,13 @@ def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
     log(f"  circularized: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ecc={v.orbit.eccentricity:.3f}")
 
 
-def commission(bridge, v) -> None:
-    """Bring the relay online WITHOUT refuelling: JETTISON the payload fairing, then extend the RA-100
-    dish + the solar panels so it has a live CommNet link and recharges its own EC from sunlight (the
-    legitimate alternative to topping off electric charge). Set the vessel type to Relay so it forwards
-    other craft's signals. The fairing protected the bus through max-Q; the dish/solar deploy ONLY once
-    the shroud is gone (a real comsat sequence)."""
-    # Jettison the procedural fairing first — the ogive shroud must split away before anything deploys.
+def jettison_payload_fairings(v) -> int:
+    """Split away EVERY un-jettisoned procedural payload fairing on the vessel, in orbit. Returns the
+    count jettisoned. This removes ONLY the ogive shell — the parts it shrouded (a relay bus, or a CREWED
+    Mk1 pod + forward heat shield + chutes) stay attached and intact. The PAYLOAD DECOUPLER is a separate
+    Decoupler.1 part, untouched here, so jettisoning the fairing never separates the payload. Used both to
+    expose a relay bus before dish/solar deploy AND to uncover the crewed capsule's heat shield + chutes for
+    the Eve aerocapture / Kerbin-return reentry once the vehicle is safely above the atmosphere."""
     jettisoned = 0
     for fr in list(getattr(v.parts, "fairings", []) or []):
         try:
@@ -394,6 +394,17 @@ def commission(bridge, v) -> None:
                 fr.jettison(); jettisoned += 1
         except Exception:
             pass
+    return jettisoned
+
+
+def commission(bridge, v) -> None:
+    """Bring the relay online WITHOUT refuelling: JETTISON the payload fairing, then extend the RA-100
+    dish + the solar panels so it has a live CommNet link and recharges its own EC from sunlight (the
+    legitimate alternative to topping off electric charge). Set the vessel type to Relay so it forwards
+    other craft's signals. The fairing protected the bus through max-Q; the dish/solar deploy ONLY once
+    the shroud is gone (a real comsat sequence)."""
+    # Jettison the procedural fairing first — the ogive shroud must split away before anything deploys.
+    jettisoned = jettison_payload_fairings(v)
     if jettisoned:
         log(f"  jettisoned {jettisoned} payload fairing(s) — bus exposed, clear to deploy")
         time.sleep(2)

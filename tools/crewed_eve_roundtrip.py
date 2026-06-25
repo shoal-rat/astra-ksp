@@ -817,6 +817,19 @@ def main() -> int:
         v = sc.active_vessel
         log(f"MILESTONE: IN LKO {round(v.orbit.periapsis_altitude/1000)}x"
             f"{round(v.orbit.apoapsis_altitude/1000)} km — outbound to Eve")
+        # JETTISON THE ASCENT PAYLOAD FAIRING now, in orbit. The crewed capsule rode up shrouded (the
+        # fairing was the fix for the blunt-capsule ascent drag/instability that burned the vehicle dry
+        # suborbital); above the atmosphere the shroud must split away so the forward heat shield + chutes
+        # are EXPOSED for the Eve aerocapture and the Kerbin-return reentry. Removing the shell leaves the
+        # pod + heat shield + chutes intact (the payload decoupler is a separate part, never fired here).
+        try:
+            _fj = deploy_relay.jettison_payload_fairings(v)
+            if _fj:
+                log(f"  jettisoned {_fj} payload fairing(s) — capsule heat shield + chutes now exposed for reentry")
+                time.sleep(2)
+                v = sc.active_vessel
+        except Exception as _exc:
+            log(f"  fairing jettison skipped ({_exc})")
         # BOARD A KERBAL. The launch is headless (probe-core control source) so the Mk1 pod lifts off
         # EMPTY; seat a real kerbal now, in LKO, BEFORE the interplanetary legs — "send people to Eve"
         # requires a person aboard. Verifies crew_count == 1.

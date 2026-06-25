@@ -184,6 +184,46 @@ def test_crewed_design_renders_a_crewable_mk1_pod():
         assert total_capacity >= 1, f"rendered crew capacity {total_capacity} cannot seat a kerbal"
 
 
+def test_crewed_reentry_capsule_rides_in_a_fairing_keeping_pod_heatshield_chutes():
+    # REGRESSION (live bug): the crewed Eve vehicle flew with an EXPOSED Mk1 pod + forward heat shield at
+    # the nose. With no payload fairing the ascent stack reads as unfaired (Cd +0.12 -> ~0.35 vs the
+    # relay's ~0.23), so the blunt capsule made the gravity turn draggy/unstable and the vehicle burned
+    # all its Δv suborbital. A crewed REENTRY CAPSULE (heat shield + chutes, no docking port) must now ride
+    # INSIDE a payload fairing like the relay — AND still retain the crewable pod + heat shield + chutes so
+    # that, once the fairing is jettisoned in orbit, the Kerbin-return reentry + chute recovery still work.
+    design = _crewed_design()
+    assert design.crewed is True and design.heatshield is True and design.docking_port is False
+
+    # Module-spliced render path (mirrors the live harvested-bodies launch where the fairing penalty bit).
+    # Provide minimal bodies for the fairing + pod so both can_emit and the fairing branch fire.
+    part_bodies = {
+        "fairingSize1": (
+            "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleProceduralFairing\n"
+            "\t\tXSECTION\n\t\t{\n\t\t\th = 0\n\t\t\tr = 0.625\n\t\t}\n\t}"
+        ),
+        "mk1pod.v2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleCommand\n\t}",
+        "HeatShield1": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleAblator\n\t}",
+        "parachuteSingle": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleParachute\n\t}",
+    }
+    for pb in (None, part_bodies):
+        nodes = CraftWriter()._build_nodes(design, part_bodies=pb)
+        names = [n.part_name for n in nodes]
+        # 1) A payload fairing now shrouds the capsule for ascent.
+        assert "fairingSize1" in names, "crewed reentry capsule is missing its ascent payload fairing"
+        # The fairing's ogive shell IS the nose, so there is NO separate nose cone on a faired capsule
+        # (a body part above the fairing would poke out of the shroud).
+        assert "noseCone" not in names, "a faired capsule must not also carry a nose cone"
+        # 2) Pod + heat shield + chutes are STILL present so reentry + recovery survive the in-orbit
+        #    fairing jettison (which removes only the shell, leaving the enclosed parts intact).
+        assert "mk1pod.v2" in names, "crewed capsule lost its crewable Mk1 pod"
+        assert "HeatShield1" in names, "crewed capsule lost its reentry heat shield"
+        assert names.count("parachuteSingle") >= 1, "crewed capsule lost its recovery chutes"
+        # 3) The fairing makes the ascent read as aerodynamically clean — Cd near the relay's ~0.23,
+        #    not the ~0.35 unfaired blunt-capsule value, and the ascent margin gate stays True.
+        assert design.drag_cd <= 0.26, f"faired crewed Cd should be near the relay ~0.23, got {design.drag_cd}"
+        assert design.ascent_stable is True
+
+
 def test_fairing_xsection_shell_is_overridden_to_wrap_this_payload():
     # The harvested fairing module keeps its real KSP serialization, but its XSECTION ogive (sized for the
     # donor craft) is replaced by the computed shell that wraps THIS payload — so a tall bus is fully
