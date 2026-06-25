@@ -239,6 +239,76 @@ def _bus_mass_of(design, req: ShipRequirements) -> float:
     return _bus_mass(req)
 
 
+def _eve_relay_requirements(boosters: int) -> ShipRequirements:
+    """The heavy interplanetary relay: a ~3800 m/s upper for Eve's high synchronous insertion. On a SINGLE
+    core engine (max_engine_count=1 — the relay constraint, since the in-tank radial CLUSTER auto-staged
+    early in live test) this is a ~125 t rocket at liftoff TWR ~1.13 that CANNOT lift (infeasible); strap-
+    on radial boosters are the reliable fix. `boosters` is the requested radial-booster count."""
+    return ShipRequirements(
+        name="AI-Eve-Relay", mission_type="relay_comsat", crew=0, payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
+                Phase("insertion", 3800.0, twr_body_g=KERBIN_G, min_twr=0.5)],
+        landing=None, max_engine_count=1, radial_booster_count=boosters,
+    )
+
+
+def test_radial_boosters_are_sized_and_attached():
+    """Requesting radial boosters must add a CALCULATED RadialBoosterSpec to the design: N symmetric pods,
+    each a real engine + a whole-tank count, on a radial decoupler. None of it guessed."""
+    d = design_ship(_eve_relay_requirements(4))
+    rb = d.radial_boosters
+    assert rb is not None, d.notes
+    assert rb.count == 4
+    assert rb.engine in ("liquidEngine", "liquidEngine2", "engineLargeSkipper",
+                         "liquidEngineMainsail.v2", "Size3AdvancedEngine")  # a sea-level booster engine
+    assert rb.tank_count >= 1
+    assert rb.decoupler == "radialDecoupler2"
+
+
+def test_radial_boosters_make_an_unliftable_core_launchable():
+    """The headline fix: a heavy ~3800 m/s upper that CANNOT lift on a single core engine (TWR < 1.2,
+    infeasible) becomes launchable once strap-on boosters carry the liftoff thrust — combined TWR in the
+    flight window AND the design feasible."""
+    single = design_ship(_eve_relay_requirements(0))
+    boosted = design_ship(_eve_relay_requirements(4))
+    # The single core engine cannot lift this heavy stack: below the 1.2 floor -> infeasible.
+    assert single.estimates["launch_twr"] < 1.2, single.estimates
+    assert single.feasible is False, single.infeasible_reasons
+    # With boosters the COMBINED liftoff TWR clears 1.4 and the design is feasible (launchable).
+    assert boosted.estimates["launch_twr"] >= 1.4, boosted.estimates
+    assert boosted.feasible is True, boosted.infeasible_reasons
+    # The boosters add real ascent Δv on top of the core.
+    assert boosted.estimates["booster_delta_v_mps"] > 0.0, boosted.estimates
+
+
+def test_radial_boosters_carry_a_share_so_the_core_is_lighter_than_brute_force():
+    """ASPARAGUS efficiency: the core is sized for only its SHARE of the launch Δv (the boosters carry the
+    rest), so the core LAUNCH STAGE is smaller than if it had to do the whole job. Compare the boosted
+    core's wet mass to a single core that brute-forces the SAME liftoff TWR via a wider engine cluster."""
+    boosted = design_ship(_eve_relay_requirements(4))
+    # A single-core alternative allowed to cluster engines to reach a similar TWR is heavier in its CORE
+    # launch stage than the asparagus core (which only carries its dv share). Compare launch-stage wet.
+    brute = design_ship(ShipRequirements(
+        name="brute", crew=0, payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
+                Phase("insertion", 3800.0, twr_body_g=KERBIN_G, min_twr=0.5)],
+        landing=None, max_engine_count=4))   # let it brute-force TWR with a big cluster, no boosters
+    boosted_core_wet = stage_masses(boosted.stages[0])[1]
+    brute_core_wet = stage_masses(brute.stages[0])[1]
+    assert boosted_core_wet < brute_core_wet, (boosted_core_wet, brute_core_wet)
+
+
+def test_no_radial_boosters_by_default():
+    """Default behaviour is unchanged: a request without radial_booster_count is a single-core rocket."""
+    d = design_ship(ShipRequirements(
+        name="single-core", crew=0, payload_t=0.3,
+        phases=[Phase("booster", 3500.0, twr_body_g=KERBIN_G, min_twr=1.5),
+                Phase("insertion", 1300.0)],
+        landing=None, max_engine_count=1))
+    assert d.radial_boosters is None
+    assert d.estimates["booster_delta_v_mps"] == 0.0
+
+
 def test_separation_sequence_and_staging_metrics():
     """The separation SEQUENCE is established with control logic, and each stage reports its
     post-separation mass, structural coefficient, and single-stage Δv ceiling (the add-a-stage limit)."""

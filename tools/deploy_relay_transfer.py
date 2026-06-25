@@ -1094,7 +1094,12 @@ def main() -> int:
             insertion_override = 2600.0 if sc.bodies[target_body].orbit.body.name == "Sun" else 0.0
         except Exception:
             pass
-    booster_engines = {"Duna": 2, "Eve": 2}.get(target_body, 1)
+    # Eve lifts on a SINGLE core engine + 4 RADIAL boosters (max_engine_count=1), NOT an in-tank cluster:
+    # design.py's note warns the in-tank radial CLUSTER auto-staged early in live test, so the strap-on
+    # pods (one engine each, on their own radial decoupler, jettisoned explicitly) are the reliable way to
+    # add liftoff thrust. A single-core Eve relay with the 3800 m/s upper is only TWR ~1.13 (INFEASIBLE);
+    # the 4 boosters lift it to TWR ~1.47 (feasible). Duna keeps its proven 2-engine core; Mun stays 1.
+    booster_engines = {"Duna": 2, "Eve": 1}.get(target_body, 1)
     # N strap-on radial boosters per target: Eve's heavy 3800 m/s upper needs 4 to lift; Duna/Mun stay
     # single-core (their lighter uppers lift fine on the proven core).
     radial_boosters = {"Eve": 4}.get(target_body, 0)
