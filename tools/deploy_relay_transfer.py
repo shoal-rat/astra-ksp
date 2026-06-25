@@ -939,15 +939,26 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
         tag = (f"pe {best.get('duna_pe_m', 0)/1000:.0f} km" if best.get("encounter")
                else f"closest {best.get('closest_m', 0)/1e6:.0f} Mm")
         log(f"  ESTABLISH (grid) {attempt}: aim {tag} via ({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f})")
-        # Fly the small correction node with MechJeb's PRECISE NodeExecutor — the hand-rolled
-        # _execute_node_manually executes these tiny normal-heavy nodes wildly off and DESTROYS the
-        # established encounter (a planned pe 10,631 km came out as 183 Mm). AGENTS.md RULE 1: delegate.
+        # Fly the small correction node with MechJeb's PRECISE NodeExecutor (the hand-rolled executor flew
+        # these tiny normal-heavy nodes wildly off, DESTROYING the encounter). MechJeb's AUTOWARP from
+        # solar orbit hung ~40 min, so warp to the node MANUALLY first (validated warp_via_high), then let
+        # MechJeb align + burn, and WAIT for the node to be consumed (the executor runs async after the
+        # bridge call returns; the timeout prevents an infinite hang if it can't align).
+        _nd = v.control.nodes[0] if v.control.nodes else None
+        if _nd is not None and (_nd.ut - sc.ut) > 6.0 * 3600.0:
+            _warp_via_high(sc, _nd.ut, buffer_s=300.0)
+            sc.active_vessel = v; time.sleep(3); v = sc.active_vessel
         try:
             bridge.mj_execute_node(autowarp=True)
-            time.sleep(2)
         except Exception as exc:
-            log(f"  mj-execute-node failed ({exc}); manual fallback")
-            _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
+            log(f"  mj-execute-node error ({exc})")
+        for _w in range(80):                                 # wait up to ~4 min for the burn to finish
+            if not v.control.nodes:
+                break
+            time.sleep(3)
+        if v.control.nodes:
+            log("  node not consumed in time; clearing and proceeding")
+            v.control.remove_nodes()
     # 3) Coast to the target SOI.
     for _ in range(4):
         if v.orbit.body.name == target_name:
