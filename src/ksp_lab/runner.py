@@ -426,7 +426,24 @@ class AutomationRunner:
     def _craft_dir(self) -> Path:
         configured = self.config["paths"].get("ksp_save_ships_vab") or ""
         if configured and not self.offline:
-            return Path(configured).expanduser().resolve()
+            cfg = Path(configured).expanduser().resolve()
+            # AUTO-DETECT the ACTIVE save. The bridge loads a craft from <saves>/<active>/Ships/VAB,
+            # where <active> is whichever save KSP is currently running — i.e. the freshest
+            # persistent.sfs. The configured path can name a STALE save (e.g. "默认" while the game is
+            # on "codex-audit"), which makes /craft/load 404 even though the craft was written. Redirect
+            # the write to the active save's VAB dir so the deploy follows whatever save is loaded.
+            try:
+                saves_root = next((p for p in cfg.parents if p.name == "saves"), None)
+                if saves_root and saves_root.is_dir():
+                    persists = [d / "persistent.sfs" for d in saves_root.iterdir() if d.is_dir()]
+                    persists = [p for p in persists if p.exists()]
+                    if persists:
+                        vab = max(persists, key=lambda p: p.stat().st_mtime).parent / "Ships" / "VAB"
+                        vab.mkdir(parents=True, exist_ok=True)
+                        return vab.resolve()
+            except Exception:
+                pass
+            return cfg
         return (self.run_dir / "generated_crafts").resolve()
 
     def _resolve(self, value: str | Path) -> Path:
