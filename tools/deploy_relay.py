@@ -228,11 +228,19 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     except Exception as exc:
         log(f"  live-API size check skipped: {exc}")
     kv.control.throttle = 1.0
-    booster_eng = d.stages[0].engine
+    # Ignite the LAUNCH-stage engine AND the radial-booster engine at T0. When the core and the strap-on
+    # pods use the SAME engine (relay: Skipper core + Skipper pods) a single name matches all of them;
+    # but a heavier vehicle gets a thrustier CORE (crewed: Mainsail core + Skipper pods), so matching only
+    # the core type lit just 1 of 5 engines and the rocket lifted on ~1/5 thrust and failed. Include the
+    # radial-booster engine type so every liftoff engine fires.
+    ignite_prefixes = [d.stages[0].engine]
+    _rb = getattr(d, "radial_boosters", None)
+    if _rb is not None and getattr(_rb, "count", 0) > 0:
+        ignite_prefixes.append(_rb.engine)
     fired = 0
     for e in kv.parts.engines:
         try:
-            if e.part.name.startswith(booster_eng):   # ".v2" suffix tolerated
+            if any(e.part.name.startswith(p) for p in ignite_prefixes):   # ".v2" suffix tolerated
                 e.active = True; fired += 1
         except Exception:
             pass
