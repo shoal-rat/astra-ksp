@@ -51,18 +51,29 @@ class StageSpec:
 
 @dataclass(slots=True)
 class RadialBoosterSpec:
-    """N symmetric strap-on booster pods clustered radially around the LAUNCH stage's core, each a tank
-    stack + its own engine on a RADIAL decoupler (the asparagus / Soyuz / Falcon-Heavy pattern). They
-    ignite WITH the core at T0, add liftoff thrust + a chunk of the ascent Δv, then jettison together
-    once spent so the core flies on without their dead engine/tank mass. Every count is CALCULATED in
-    design.py from the rocket equation + TWR — never guessed."""
+    """N symmetric strap-on pods clustered radially around the LAUNCH stage's core on RADIAL decouplers
+    (the asparagus / Soyuz / Falcon-Heavy pattern). Two pod kinds, both side-jettisoned when spent:
+
+      * POWERED BOOSTER pod (the default): a tank stack + its OWN engine. It ignites WITH the core at T0,
+        adds liftoff thrust + a chunk of the ascent Δv, then drops with its dead engine/tank mass.
+      * DROP-TANK pod (``engine == ""`` / ``engine_count == 0``): a tank stack with NO engine that
+        CROSSFEEDS its propellant into the core engines, then is jettisoned empty so the core flies on
+        lighter — the classic external/drop-tank stage. Used to extend a marginal core's burn without
+        adding strap-on engines.
+
+    Every count is CALCULATED in design.py from the rocket equation + TWR — never guessed."""
     count: int                       # number of symmetric pods (default 4)
-    engine: str                      # one sea-level engine per pod
+    engine: str                      # one sea-level engine per pod; "" for an engine-less DROP TANK
     tank: str                        # the pod's tank type
     tank_count: int                  # whole tanks per pod
-    engine_count: int = 1            # engines per pod (usually 1)
+    engine_count: int = 1            # engines per pod (1 for a booster, 0 for a drop tank)
     decoupler: str = "radialDecoupler2"  # the radial decoupler each pod hangs on
     diameter_m: float = 1.25         # the pod tank diameter (for the geometry/envelope)
+
+    @property
+    def is_drop_tank(self) -> bool:
+        """A drop-tank pod carries propellant but no engine (crossfed into the core, then dropped)."""
+        return not self.engine or self.engine_count <= 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

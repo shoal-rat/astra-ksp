@@ -292,18 +292,30 @@ def _readable_title(raw_block: str) -> str:
 
 
 def _node_height(body: str) -> float:
-    """node_stack_top.y - node_stack_bottom.y (×rescaleFactor) = the part's stacked height in metres."""
+    """(node_stack_top.y - node_stack_bottom.y) × the part's node-position scaling = stacked height (m).
+
+    KSP scales attach-node positions by ``rescaleFactor`` (default 1.0 here). CRITICALLY, the legacy
+    engine models (Reliant/Swivel/Terrier/...) author their nodes in an UNSCALED model space and set
+    ``scale = 0.1`` — KSP multiplies the node offsets by that ``scale`` too. Ignoring it read the Reliant
+    as a 14 m monster (raw nodes ±7) instead of ~1.42 m; every legacy engine height was therefore wrong,
+    which corrupted stage fineness and the rendered stack length. Multiply by ``scale`` whenever it is set
+    AND differs from 1 (tanks set scale=1/omit it and were already correct), then by ``rescaleFactor``."""
     top = _field(body, "node_stack_top")
     bot = _field(body, "node_stack_bottom")
-    if not top or not bot:
+    if not top and not bot:
         return 0.0
     try:
-        ty = float(top.split(",")[1])
-        by = float(bot.split(",")[1])
+        # A few base-mounted engines (Mammoth, Twin-Boar) define ONLY node_stack_top — their bottom IS
+        # the part origin (y=0), where the bell/base sits. Treat a missing bottom node as y=0 so their
+        # height is the top-node offset, not the 1 m fallback (which read the Mammoth as a 1 m stub).
+        ty = float(top.split(",")[1]) if top else 0.0
+        by = float(bot.split(",")[1]) if bot else 0.0
     except (ValueError, IndexError):
         return 0.0
     rescale = _float(body, "rescaleFactor", 1.0)
-    return abs(ty - by) * (rescale if rescale > 0 else 1.0)
+    scale = _float(body, "scale", 1.0)
+    mult = (rescale if rescale > 0 else 1.0) * (scale if scale > 0 else 1.0)
+    return abs(ty - by) * mult
 
 
 def _bulkhead_info(body: str) -> tuple[float, str]:
@@ -397,7 +409,13 @@ def _classify(category: str, body: str, engine: dict | None, resources: dict) ->
         if engine.get("propellants") == {"MonoPropellant"}:
             return "monoprop_engine"
         return "liquid_engine"
-    if category == "FuelTank":
+    # A non-engine part that CARRIES propellant is a tank — REGARDLESS of whether the cfg files it under
+    # category=FuelTank or category=Propulsion. Stock files the big Kerbodyne Size3 (S3-3600/7200/14400)
+    # and Size4 cylinders under Propulsion, not FuelTank, so keying the tank branch on category alone
+    # silently dropped every 3.75 m+ stack tank into "misc" — the sizer then found ZERO tanks at 3.75 m.
+    # Key on the propellant content instead (the physics), so every propellant cylinder is a tank.
+    _tank_resources = {"LiquidFuel", "Oxidizer", "MonoPropellant", "XenonGas"}
+    if category in ("FuelTank", "Propulsion") and any(r in resources for r in _tank_resources):
         nm = (_field(body, "name") or "").lower()
         if "XenonGas" in resources:
             return "xenon_tank"
@@ -603,12 +621,52 @@ def load_catalog() -> dict[str, StockPart]:
     return {name: _part_from_dict(d) for name, d in data.items()}
 
 
+# Lab-tuned fields the cfg cannot express (calibrated against the live game), keyed by part name. These
+# are the ONLY values curation still contributes for a part that ALSO exists in the materialized catalog:
+# the materialized cfg numbers (mass/thrust/Isp/capacity/diameter/height) win, and we only patch these
+# few aero coefficients on top. drag_area_m2 sizes parachute counts (astro.terminal_velocity); fin_area_m2
+# is the control-surface reference area the static-margin calc places. radialDecoupler2's diameter is the
+# small mounting-plate footprint (the cfg bulkhead reads a draw-only 1.25 m, but the plate a booster pod
+# rides on is ~0.6 m — keep that so the pod sits snug against the core, not 0.6 m off it).
+_TUNED_OVERRIDES: dict[str, dict] = {
+    "parachuteSingle": {"drag_area_m2": 489.0},
+    "R8winglet": {"fin_area_m2": 2.0},
+    "basicFin": {"fin_area_m2": 1.0},
+    "radialDecoupler2": {"diameter_m": 0.6, "height_m": 0.6},
+}
+
+
 def _build_stock_parts() -> dict[str, StockPart]:
-    """The full catalog the lab uses: the materialized JSON OVERLAID with the curated parts (curated
-    always wins, so the hand-validated masses/heights are authoritative). The JSON only ADDS the parts
-    the curated list never covered."""
+    """The full catalog the lab uses, with the MATERIALIZED cfg catalog as the authoritative source —
+    no curated tier shadows it. Every one of the ~423 stock parts stands on equal footing with its real,
+    verified cfg numbers (proven accurate by tools/verify_parts.py).
+
+    Curation now contributes only two narrow things, never a parallel "validated" copy of a part:
+      1. parts the materializer does NOT produce (the dotted-name back-compat aliases the rest of the
+         codebase still imports through ``part()`` — ``fuelTank.long``, ``liquidEngine3.v2``,
+         ``Decoupler.1``, the Mk1 pod / OKTO / service bay, ...). These are ADDED only when their name is
+         absent from the materialized catalog, so they never override an accurate materialized part; and
+      2. a handful of lab-TUNED aero coefficients (``_TUNED_OVERRIDES``) the cfg cannot express, patched
+         ONTO the materialized part (drag/fin area, the radial-decoupler plate footprint).
+
+    The design sizer queries the materialized catalog directly (parts.engines / parts.tanks /
+    parts_of_type), so it now picks from every real stock part on equal footing — the curated short-lists
+    are gone."""
     merged: dict[str, StockPart] = dict(load_catalog())
-    merged.update(CURATED_PARTS)         # curated overrides any same-named materialized part
+    # 1. ADD the curated parts the materializer never produced (back-compat aliases + lab-only parts).
+    #    A curated part whose NAME already exists in the materialized catalog is NOT used to override it —
+    #    the accurate cfg value wins. (If the catalog is missing entirely, fall back to curated so the lab
+    #    still runs offline without a materialized JSON.)
+    if merged:
+        for name, cp in CURATED_PARTS.items():
+            if name not in merged:
+                merged[name] = cp
+    else:
+        merged = dict(CURATED_PARTS)
+    # 2. PATCH the lab-tuned aero coefficients onto the (materialized) part.
+    for name, fields in _TUNED_OVERRIDES.items():
+        if name in merged:
+            merged[name] = replace(merged[name], **fields)
     return merged
 
 

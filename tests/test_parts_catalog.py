@@ -90,15 +90,19 @@ def test_tanks_query_returns_clean_standard_stack_cylinders():
     assert props == sorted(props, reverse=True)
 
 
-def test_back_compat_part_api_resolves_curated_names_with_validated_masses():
-    """The curated, hand-validated parts are still resolvable through part() and their authoritative
-    masses are UNCHANGED — the materialized catalog augments, never overwrites them."""
-    swivel = parts.part("liquidEngine2")          # LV-T45 Swivel
-    assert swivel.title == "LV-T45 Swivel"
+def test_back_compat_part_api_resolves_names_with_accurate_masses():
+    """NO curated tier: every part now carries its real, verified cfg numbers (proven by
+    tools/verify_parts.py). The headline engine/tank stats match known KSP values, and the dotted-name
+    back-compat aliases the rest of the codebase imports through part() still resolve."""
+    swivel = parts.part("liquidEngine2")          # LV-T45 Swivel (materialized cfg values)
+    assert "Swivel" in swivel.title               # real cfg title, not a hand-typed short string
     assert swivel.dry_mass_t == 1.5 and swivel.thrust_kn_vac == 215.0 and swivel.isp_vac_s == 320.0
     flt400 = parts.part("fuelTank")               # FL-T400
     assert flt400.dry_mass_t == 0.25 and flt400.wet_mass_t == 2.25
-    # The other names the rest of the codebase imports through part() still resolve.
+    # Materialized headline parts that USED to be shadowed by curated literals now carry cfg values.
+    assert parts.part("Size3LargeTank").diameter_m == 3.75 and parts.part("Size3LargeTank").liquid_fuel == 6480.0
+    assert parts.part("Size3EngineCluster").thrust_kn_vac == 4000.0  # Mammoth, from the cfg
+    # Back-compat aliases (dotted names + lab-only parts) still resolve through part().
     for name in ("mk1pod.v2", "probeCoreOcto.v2", "parachuteSingle", "Decoupler.1",
                  "engineLargeSkipper", "Rockomax32.BW", "radialDecoupler2", "fairingSize2"):
         assert parts.part(name).name == name
@@ -159,30 +163,49 @@ PART
 # --------------------------------------------------------------------------------------------------
 # PART 1 — the design sizer now draws from the full catalog.
 # --------------------------------------------------------------------------------------------------
-def test_design_pools_are_built_from_the_catalog():
-    """design.py's engine/tank pools are catalog-driven: the full-catalog tiers include stock parts the
-    old five-engine / three-tank hand-lists never carried."""
+def test_design_pools_are_the_whole_catalog_no_curated_tier():
+    """NO curated tier: design.py's engine/tank pools ARE the whole materialized catalog, every part on
+    equal footing. The booster pool carries the big stock heavy-lifters the old five-engine hand-list
+    never had, the tank map carries every stock LFO cylinder per diameter, and the legacy *_FULL aliases
+    now point at the SAME single-tier pool (there is no separate 'full' tier any more)."""
     from ksp_lab import design as D
-    assert len(D.BOOSTER_ENGINES_FULL) > len(D.BOOSTER_ENGINES)
-    assert "Size3EngineCluster" in D.BOOSTER_ENGINES_FULL  # the Mammoth reached the booster pool
-    # The full tank map carries more 2.5 m tanks than the curated list (the Jumbo-64 / X200-8 / v2s).
-    assert len(D.TANKS_BY_DIAMETER_FULL[2.5]) > len(D.TANKS_BY_DIAMETER[2.5])
+    # The pool reaches deep into the stock roster (Mammoth/Twin-Boar/Mainsail/Skipper all present).
+    assert "Size3EngineCluster" in D.BOOSTER_ENGINES          # Mammoth
+    assert any("Size2LFB" in n for n in D.BOOSTER_ENGINES)    # Twin-Boar
+    assert len(D.BOOSTER_ENGINES) >= 10                       # a deep pool, not a 5-engine hand-list
+    # The vacuum pool keeps the high-Isp engines a booster pool excludes (Terrier, Nerv, Poodle).
+    assert "nuclearEngine" in D.VACUUM_ENGINES and "liquidEngine3_v2" in D.VACUUM_ENGINES
+    # Single tier: the *_FULL aliases are the SAME object as the base pool (back-compat, not a 2nd tier).
+    assert D.BOOSTER_ENGINES_FULL is D.BOOSTER_ENGINES
+    assert D.TANKS_BY_DIAMETER_FULL is D.TANKS_BY_DIAMETER
+    # Every standard diameter has a real, multi-tank pool drawn from the catalog (incl. 3.75 m, which the
+    # old hand-list-shadowed catalog returned EMPTY because the Kerbodyne tanks file under Propulsion).
+    assert len(D.TANKS_BY_DIAMETER[1.25]) >= 3
+    assert len(D.TANKS_BY_DIAMETER[2.5]) >= 3
+    assert len(D.TANKS_BY_DIAMETER[3.75]) >= 3
 
 
-def test_full_catalog_lets_a_heavy_core_reach_a_bigger_stock_engine():
-    """With use_full_catalog, a heavy single-engine core that no curated engine can lift reaches into the
-    whole stock roster for a bigger engine (the Mammoth) — the catalog integration is real, not cosmetic.
-    Default (curated-only) behaviour is unchanged."""
+def test_full_catalog_lets_a_heavy_core_reach_a_big_stock_engine():
+    """No curation: a heavy single-engine core reaches straight into the whole stock roster for a big
+    engine (Mammoth/Twin-Boar/Mastodon) and lifts — the catalog integration is real, not cosmetic.
+    ``use_full_catalog`` is now a no-op (the full catalog is always used), so it changes nothing."""
     from ksp_lab.design import Phase, ShipRequirements, design_ship
+    from ksp_lab.parts import part
     req = ShipRequirements(
         name="heavy-core", crew=0, payload_t=30.0,
-        phases=[Phase("booster", 3500.0, twr_body_g=9.81, min_twr=1.5),
+        phases=[Phase("booster", 3500.0, twr_body_g=9.81, min_twr=1.4),
                 Phase("insertion", 1300.0)],
-        landing=None, max_engine_count=1)
-    curated = design_ship(req)                          # default: curated only
-    full = design_ship(req, use_full_catalog=True)
-    assert full.stages[0].engine != curated.stages[0].engine
-    assert full.estimates["launch_twr"] > curated.estimates["launch_twr"]
+        landing=None, max_engine_count=4)        # allow a small cluster so a big engine can close TWR
+    d = design_ship(req)
+    # The core engine is a genuine heavy-lift stock engine pulled from the full roster, sized by physics —
+    # its sea-level thrust dwarfs a small launcher engine, the rocket lifts, and the design is feasible.
+    booster = part(d.stages[0].engine)
+    assert booster.thrust_kn_asl >= 600.0, d.stages[0].engine   # not a little Reliant/Swivel
+    assert d.estimates["launch_twr"] >= 1.4
+    assert d.feasible is True, d.infeasible_reasons
+    # use_full_catalog is a no-op: same design either way.
+    same = design_ship(req, use_full_catalog=True)
+    assert same.stages[0].engine == d.stages[0].engine
 
 
 # --------------------------------------------------------------------------------------------------

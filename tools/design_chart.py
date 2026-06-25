@@ -122,7 +122,7 @@ def _booster_part_names(design) -> set:
     rb = getattr(design, "radial_boosters", None)
     if rb is None or getattr(rb, "count", 0) <= 0:
         return set()
-    return {rb.engine, rb.tank, rb.decoupler}
+    return {n for n in (rb.engine, rb.tank, rb.decoupler) if n}  # drop "" engine for a drop-tank pod
 
 
 def _boosters_are_symmetric(geom: list[dict], booster_names: set, expected_count: int) -> bool:

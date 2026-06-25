@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ksp_lab import astro
 from ksp_lab.design import LandingSite, Phase, ShipRequirements, design_ship
-from ksp_lab.parts import stage_masses
+from ksp_lab.parts import part, stage_masses
 
 # Live-measured surface constants for the propulsive phases (from kRPC).
 KERBIN_G = 9.813
@@ -58,14 +58,30 @@ def test_propulsive_mars_vehicle_is_fully_calculated():
     assert len(design.stages) == 3
 
 
-def test_booster_stage_is_clustered():
-    """The booster needs TWR 1.4 against ~140 t at Kerbin gravity, which a single engine cannot give —
-    so the designer must CLUSTER (engine_count > 1). A count of 1 would mean no TWR calculation ran."""
-    req = _starship_mars_requirements()
+def test_booster_stage_clusters_when_a_single_engine_cannot_meet_twr():
+    """Stacked-engine CLUSTER (Falcon-9 octaweb) must work for ANY catalog engine. With the full catalog
+    the sizer may meet a light booster's TWR with one big engine, so to PROVE clustering we give it a
+    heavy stack and a high TWR floor: a single engine cannot lift it, so the designer CLUSTERS N engines
+    on the mounting plate (engine_count > 1). A count of 1 here would mean no TWR calculation ran. The
+    cluster must also FIT — design.py only clusters as many bells as physically pack under the tank, and
+    the chosen narrower engine clusters cleanly (every bell inside the tank footprint)."""
+    from ksp_lab.craft_writer import CraftWriter
+    from ksp_lab.design import max_cluster_in_tank, engine_bell_radius
+    req = ShipRequirements(
+        name="ClusterBooster", crew=0, payload_t=8.0,
+        phases=[Phase("booster", dv_mps=3400.0, twr_body_g=KERBIN_G, min_twr=1.5, min_diameter_m=2.5)],
+        landing=None, max_engine_count=9)
     design = design_ship(req)
     booster = design.stages[0]
     assert booster.role == "booster"
     assert booster.engine_count > 1, design.notes
+    # The cluster physically fits: the chosen engine's bell footprint packs engine_count bells under the
+    # tank radius (no overhang), exactly the max_cluster_in_tank gate the sizer enforced.
+    fit = max_cluster_in_tank(engine_bell_radius(booster.engine), part(booster.tank).diameter_m / 2.0)
+    assert booster.engine_count <= fit, (booster.engine_count, fit)
+    # And the cluster actually renders: engine_count engine parts emitted in the .craft.
+    craft = CraftWriter().render(design)
+    assert craft.count(f"part = {booster.engine}_") == booster.engine_count
 
 
 def test_every_stage_meets_its_delta_v_requirement():
@@ -155,12 +171,13 @@ def test_propulsive_lander_uses_a_wide_low_cog_tank():
 
 
 def test_feasibility_gate_rejects_underthrust_rocket():
-    """The pipeline must REJECT, not silently ship, a rocket that cannot fly. A heavy payload on a
-    single small booster engine gives liftoff TWR < 1 — design_ship must set feasible=False with a
-    reason. This is the fix for the pad-hang / fall-back failures (the physics was computed but never
-    enforced). A sound 2-stage launcher must stay feasible."""
+    """The pipeline must REJECT, not silently ship, a rocket that cannot fly. Even drawing the single
+    biggest stock engine from the full catalog (the Mammoth), a 60 t payload capped at ONE engine
+    (max_engine_count=1, no clustering) gives liftoff TWR < 1.2 — design_ship must set feasible=False
+    with a reason. This is the fix for the pad-hang / fall-back failures (the physics was computed but
+    never enforced). A sound 2-stage launcher must stay feasible."""
     bad = design_ship(ShipRequirements(
-        name="under-thrust", crew=0, payload_t=30.0,
+        name="under-thrust", crew=0, payload_t=60.0,
         phases=[Phase("booster", dv_mps=3500.0, twr_body_g=KERBIN_G, min_twr=1.5)],
         landing=None, max_engine_count=1,
     ))
@@ -206,11 +223,13 @@ def test_design_has_sound_aerodynamics():
     craft = CraftWriter().render(d)  # minimal mode populates the aero metrics from the assembled shape
     assert 0.0 < d.drag_cd <= 0.30, d.drag_cd                    # streamlined (nose + fairing)
     assert d.frontal_area_m2 > 0.0
-    assert d.ballistic_coeff_kgm2 > 30_000.0, d.ballistic_coeff_kgm2   # slices through the air
-    # Drag-loss is a frontal-area FUDGE for the offline budget only (MechJeb flies the real ascent). The
-    # diameter-laddered sizer now builds a chunkier, lower-fineness 2.5 m stack (more frontal area) so
-    # the fudge reads a bit higher than the old 1.25 m noodle — still a low, sane ascent drag loss.
-    assert d.ascent_drag_loss_mps < 450.0, d.ascent_drag_loss_mps      # low air-resistance loss
+    # With NO curated tier the full-catalog sizer builds a chunkier 2.5 m base (a Skipper on a Jumbo/X200)
+    # rather than the old 1.25 m noodle, so the frontal area is larger and the ballistic coefficient a bit
+    # lower / the drag-loss fudge a bit higher — still a high-beta stack that slices through the air, just
+    # for a real 2.5 m launcher rather than a 1.25 m needle.
+    assert d.ballistic_coeff_kgm2 > 25_000.0, d.ballistic_coeff_kgm2   # slices through the air
+    # Drag-loss is a frontal-area FUDGE for the offline budget only (MechJeb flies the real ascent).
+    assert d.ascent_drag_loss_mps < 550.0, d.ascent_drag_loss_mps      # low air-resistance loss
     assert d.max_q_kpa > 0.0
     assert d.ascent_stable is True
     assert craft.count("part = basicFin") + craft.count("part = R8winglet") <= 8  # a small fin set, not a forest
@@ -240,12 +259,12 @@ def _bus_mass_of(design, req: ShipRequirements) -> float:
 
 
 def _eve_relay_requirements(boosters: int) -> ShipRequirements:
-    """The heavy interplanetary relay: a ~3800 m/s upper for Eve's high synchronous insertion. On a SINGLE
-    core engine (max_engine_count=1 — the relay constraint, since the in-tank radial CLUSTER auto-staged
-    early in live test) this is a ~125 t rocket at liftoff TWR ~1.13 that CANNOT lift (infeasible); strap-
-    on radial boosters are the reliable fix. `boosters` is the requested radial-booster count."""
+    """A heavy interplanetary relay: a ~3800 m/s upper for Eve's high synchronous insertion carrying an
+    8 t payload. Capped at a SINGLE core engine (max_engine_count=1, no clustering), even the biggest
+    stock engine from the full catalog cannot lift this stack (liftoff TWR < 1 -> infeasible); strap-on
+    radial boosters are the reliable fix. `boosters` is the requested radial-booster count."""
     return ShipRequirements(
-        name="AI-Eve-Relay", mission_type="relay_comsat", crew=0, payload_t=0.3,
+        name="AI-Eve-Relay", mission_type="relay_comsat", crew=0, payload_t=8.0,
         phases=[Phase("booster", 4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
                 Phase("insertion", 3800.0, twr_body_g=KERBIN_G, min_twr=0.5)],
         landing=None, max_engine_count=1, radial_booster_count=boosters,
@@ -254,13 +273,17 @@ def _eve_relay_requirements(boosters: int) -> ShipRequirements:
 
 def test_radial_boosters_are_sized_and_attached():
     """Requesting radial boosters must add a CALCULATED RadialBoosterSpec to the design: N symmetric pods,
-    each a real engine + a whole-tank count, on a radial decoupler. None of it guessed."""
+    each a real sea-level engine + a whole-tank count, on a radial decoupler. None of it guessed, and the
+    pod engine is drawn from the full booster catalog (a genuine sea-level engine, not a vacuum one)."""
+    from ksp_lab.design import BOOSTER_ENGINES
     d = design_ship(_eve_relay_requirements(4))
     rb = d.radial_boosters
     assert rb is not None, d.notes
     assert rb.count == 4
-    assert rb.engine in ("liquidEngine", "liquidEngine2", "engineLargeSkipper",
-                         "liquidEngineMainsail.v2", "Size3AdvancedEngine")  # a sea-level booster engine
+    assert rb.engine in BOOSTER_ENGINES                      # a sea-level booster engine from the catalog
+    assert not rb.is_drop_tank and rb.engine_count == 1
+    # The pod engine keeps most of its thrust at sea level (a real booster, not a vacuum engine).
+    assert part(rb.engine).thrust_kn_asl / part(rb.engine).thrust_kn_vac >= 0.6
     assert rb.tank_count >= 1
     assert rb.decoupler == "radialDecoupler2"
 
@@ -289,7 +312,7 @@ def test_radial_boosters_carry_a_share_so_the_core_is_lighter_than_brute_force()
     # A single-core alternative allowed to cluster engines to reach a similar TWR is heavier in its CORE
     # launch stage than the asparagus core (which only carries its dv share). Compare launch-stage wet.
     brute = design_ship(ShipRequirements(
-        name="brute", crew=0, payload_t=0.3,
+        name="brute", crew=0, payload_t=8.0,    # SAME payload as the boosted relay (apples-to-apples)
         phases=[Phase("booster", 4200.0, twr_body_g=KERBIN_G, min_twr=1.3),
                 Phase("insertion", 3800.0, twr_body_g=KERBIN_G, min_twr=0.5)],
         landing=None, max_engine_count=4))   # let it brute-force TWR with a big cluster, no boosters

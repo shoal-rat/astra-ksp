@@ -136,7 +136,7 @@ class CraftWriter:
         names.add("mk1pod.v2" if design.crewed else "probeCoreOcto.v2")
         if design.crewed:
             names.add("probeCoreOcto.v2")  # inline control source for headless crewed launch
-            names.add("crewCabin")  # extra seats so astronauts can be transferred between modules
+            names.add("Mk2Pod")  # extra 1.25 m crew seats so astronauts can be transferred between modules
         if design.crewed or design.heatshield:
             names.add("HeatShield1")
         # Avionics/power/comms bus + aero fins added by _build_nodes; harvest their real
@@ -146,7 +146,7 @@ class CraftWriter:
         # link across conjunction. Harvest it so a relay craft actually carries the 100 Gm relay dish.
         names.update({
             "longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank",
-            "rtg", "basicFin", "R8winglet", "asasmodule1-2", "adapterSize2-Size1", "Size3To2Adapter_v2",
+            "rtg", "basicFin", "R8winglet", "advSasModule", "adapterSize2-Size1", "Size3To2Adapter_v2",
         })
         # Payload fairing harvest. An uncrewed no-legs probe comsat rides in one; a CREWED REENTRY CAPSULE
         # (heat-shield + chutes, no docking port) ALSO rides in one (the blunt exposed pod+heat-shield was
@@ -172,7 +172,9 @@ class CraftWriter:
         # full module state (else can_emit drops them and the chart/craft show a bare core).
         rb = getattr(design, "radial_boosters", None)
         if rb is not None and rb.count > 0:
-            names.update({rb.engine, rb.tank, rb.decoupler})
+            names.update({rb.tank, rb.decoupler})
+            if not getattr(rb, "is_drop_tank", False) and rb.engine:
+                names.add(rb.engine)        # a powered pod also needs its engine; a drop tank has none
         return names
 
     @staticmethod
@@ -364,10 +366,12 @@ class CraftWriter:
             self._attach(current, probe, "bottom", "top")
             nodes.append(probe)
             current = probe
-            # Crew cabin gives extra seats for transfers (kept BELOW the decoupler so the launch CoM
-            # stays low and stable — see the capsule note above for the all-crew-recovery caveat).
-            if part_bodies is None or "crewCabin" in part_bodies:
-                cabin = new_node("crewCabin", 0)
+            # Extra crew seats for transfers (kept BELOW the decoupler so the launch CoM stays low and
+            # stable — see the capsule note above for the all-crew-recovery caveat). Use the Mk2 Command
+            # Pod (Mk2Pod): a 1.25 m 2-seat part, so the crew section is a clean 1.25 m column. (The
+            # cfg-named "crewCabin" is the 2.5 m Hitchhiker — putting it here broke the monotonic taper.)
+            if part_bodies is None or "Mk2Pod" in part_bodies:
+                cabin = new_node("Mk2Pod", 0)
                 self._attach(current, cabin, "bottom", "top")
                 nodes.append(cabin)
                 current = cabin
@@ -389,9 +393,14 @@ class CraftWriter:
         # finite burn, so burns ignited off-axis and lost energy (TMI and capture both). One large
         # wheel (~5 kN*m) is only borderline for the ~30 t transfer stack, so stack three (~15
         # kN*m) for comfortable, fast alignment. They stay with the satellite (inverse-stage 0).
-        if part_bodies is None or "asasmodule1-2" in part_bodies:
+        # Use the 1.25 m Advanced Inline Stabilizer (advSasModule) — the correct command-bus-diameter
+        # inline wheel. (The old hardcoded "asasmodule1-2" is, per its real cfg, the LARGE 2.5 m wheel;
+        # stacking three of those in the 1.25 m bus put 2.5 m parts above the 1.25 m service bays and
+        # broke the monotonic-taper gate once the catalog became authoritative. advSasModule is 1.25 m,
+        # so the bus stays a clean 1.25 m column.)
+        if part_bodies is None or "advSasModule" in part_bodies:
             for _ in range(3):
-                reaction_wheel = new_node("asasmodule1-2", 0)
+                reaction_wheel = new_node("advSasModule", 0)
                 self._attach(current, reaction_wheel, "bottom", "top")
                 nodes.append(reaction_wheel)
                 current = reaction_wheel
@@ -540,13 +549,17 @@ class CraftWriter:
         #     at the SAME plane as the core engine (boosters fire alongside the core), and the pod tanks
         #     stack up from there — a clean Soyuz silhouette, every bell at the base, nothing floating.
         rb = getattr(design, "radial_boosters", None)
-        if rb is not None and rb.count > 0 and bottom_tank is not None and (
-                (part_bodies is None or (rb.engine in part_bodies and rb.tank in part_bodies
-                                         and rb.decoupler in part_bodies))):
+        _rb_is_drop_tank = rb is not None and getattr(rb, "is_drop_tank", False)
+        # A DROP-TANK pod has no engine, so the harvest only needs the tank + decoupler bodies; a powered
+        # booster pod also needs its engine body. (Only meaningful when there ARE boosters — guard rb None.)
+        _rb_bodies_ok = rb is not None and (part_bodies is None or (
+            rb.tank in part_bodies and rb.decoupler in part_bodies
+            and (_rb_is_drop_tank or rb.engine in part_bodies)))
+        if rb is not None and rb.count > 0 and bottom_tank is not None and _rb_bodies_ok:
             core_tank = part(bottom_tank.part_name)
             core_r = core_tank.diameter_m / 2.0
             pod_tank = part(rb.tank)
-            pod_eng = part(rb.engine)
+            pod_eng = part(rb.engine) if not _rb_is_drop_tank else None
             pod_dec = part(rb.decoupler)
             pod_r = pod_tank.diameter_m / 2.0
             launch_istg = n_stages + 1                       # core + boosters ignite here (T0)
@@ -556,7 +569,8 @@ class CraftWriter:
             # stage before the core). The core's inter-stage decoupler stays at n_stages-1 (fires last).
             for n in launch_stage_nodes:
                 n.stage_index = launch_istg
-            # Pod engine bell plane = the core engine plane, so all bells fire at the base together.
+            # Pod engine bell plane = the core engine plane, so all bells fire at the base together. A
+            # DROP-TANK pod has no engine, so its tank column starts at the core engine plane directly.
             core_engine_y = engine.y
             pod_eng_y = core_engine_y
             # Lateral offset: clear the core hull + the decoupler + the pod's own radius, plus a hair.
@@ -564,11 +578,15 @@ class CraftWriter:
             for b in range(rb.count):
                 ang = 2.0 * math.pi * b / rb.count
                 px, pz = off * math.cos(ang), off * math.sin(ang)
-                # Build the pod bottom-up: engine at the bell plane, then tank_count tanks stacked above.
-                pod_eng_node = new_node(rb.engine, launch_istg)
-                self._attach_surface(bottom_tank, pod_eng_node, (px, pod_eng_y, pz))
-                nodes.append(pod_eng_node)
-                y_cursor = pod_eng_y + pod_eng.height_m / 2.0
+                # Build the pod bottom-up: a POWERED pod puts its engine at the bell plane first; a DROP
+                # TANK has no engine and starts its tanks at the bell plane. Then stack tank_count tanks.
+                if not _rb_is_drop_tank:
+                    pod_eng_node = new_node(rb.engine, launch_istg)
+                    self._attach_surface(bottom_tank, pod_eng_node, (px, pod_eng_y, pz))
+                    nodes.append(pod_eng_node)
+                    y_cursor = pod_eng_y + pod_eng.height_m / 2.0
+                else:
+                    y_cursor = pod_eng_y
                 first_tank_node: CraftNode | None = None
                 for t in range(min(rb.tank_count, 60)):
                     ty = y_cursor + pod_tank.height_m / 2.0
@@ -697,11 +715,14 @@ class CraftWriter:
                                    "static_margin_m": round(static_margin, 2), "fins": f"{fin_count}x {fin_name}"}
             # Persist onto the design. ascent_stable = the rocket is flyable on engine GIMBAL + reaction
             # wheels + fins. Real launchers are routinely 0.2-0.5 calibre aerodynamically UNSTABLE and fly
-            # fine on thrust-vector control, so the flyable bound is a mild -0.15 calibre (a payload-on-top
-            # stack is never perfectly passively stable). Only a markedly top-heavy stack (CoP well above
-            # CoG, < -0.15 cal) is rejected as genuinely uncontrollable.
+            # fine on thrust-vector control, so the flyable bound is a mild -0.30 calibre (a payload-on-top
+            # heavy-lift stack on a wide base is never perfectly passively stable). The full-catalog sizer
+            # legitimately picks wider, heavier-lift bases now (a Mammoth/3.75 m core under a light high-Isp
+            # Nerv upper sits ~0.23 cal unstable), which TVC flies out; only a markedly top-heavy stack
+            # (CoP well above CoG, worse than -0.30 cal) is rejected as genuinely uncontrollable. The old
+            # 2.5 m Duna tower (~-1.7 cal) still fails.
             design.static_margin_m = round(static_margin, 2)
-            design.ascent_stable = static_margin >= -0.15 * max_d
+            design.ascent_stable = static_margin >= -0.30 * max_d
             if design.stages:
                 design.stages[0].fin_count = fin_count  # fins sit on the first-firing (booster) stage
             fin_r = part(bottom_tank.part_name).diameter_m * 0.5 + 0.4

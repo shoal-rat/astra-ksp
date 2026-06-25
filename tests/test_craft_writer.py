@@ -159,7 +159,7 @@ def _crewed_design(name: str = "AI-Crew-Test"):
 # part the headless launch's probe core does NOT provide a seat for (the probe core has capacity 0). A
 # crewed craft MUST render at least one of these with a free seat or no kerbal can board (the live bug:
 # kRPC crew_capacity == 0 / /spawn-crew "No crewable part with a free seat found").
-_CREW_CAPACITY = {"mk1pod.v2": 1, "crewCabin": 2}
+_CREW_CAPACITY = {"mk1pod.v2": 1, "Mk2Pod": 2}
 
 
 def test_crewed_design_renders_a_crewable_mk1_pod():
