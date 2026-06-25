@@ -404,7 +404,7 @@ def _log_landing_site(ferry) -> bool:
 def _flag_banner(minutes: float) -> None:
     bar = ">" * 78
     log(bar)
-    log(">>> READY FOR FLAG: switch to AI-Eve-Ferry, EVA the kerbal, click 'Plant Flag',")
+    log(">>> READY FOR FLAG: switch to AI-Eve-Ferry2, EVA the kerbal, click 'Plant Flag',")
     log(">>> then board the kerbal back into the ferry.")
     log(f">>> Waiting up to {minutes:.0f} minutes for you. Release early by creating the file:")
     log(f">>>     {FLAG_SENTINEL}")
@@ -782,6 +782,19 @@ def main() -> int:
     # ----------------------------------------------------------------------------------------------
     ferry = _make_active(sc, _find_vessel(sc, FERRY_NAME) or ferry)
     log("=== READY FOR FLAG ===")
+    # AUTONOMOUS flag-plant via the new /eva-flag bridge endpoint (KerbalEVA.PlantFlag(), verified against
+    # Assembly-CSharp.dll): spawn the kerbal on EVA on Gilly's surface, plant the flag, board back. The manual
+    # pause below is now only a FALLBACK if this fails — the mission is fully autonomous when it succeeds.
+    try:
+        log(f"  AUTONOMOUS eva-flag -> {bridge.eva_flag()}")
+        time.sleep(3)
+        log(f"  eva-board -> {bridge.eva_board()}")
+        time.sleep(2)
+        ferry = _make_active(sc, _find_vessel(sc, FERRY_NAME) or ferry)
+        if _crew_count(ferry) >= 1:
+            log("  *** FLAG PLANTED on Gilly + kerbal re-boarded (AUTONOMOUS) ***")
+    except Exception as _e:
+        log(f"  autonomous eva-flag failed ({_e}); falling back to the manual flag pause")
     if not wait_for_flag_plant(sc, ferry):
         # Crew not confirmed aboard at release. Try a final board, then re-check.
         from eve_two_ship_return import board_crew
