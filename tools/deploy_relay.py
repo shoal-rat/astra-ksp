@@ -127,13 +127,18 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE). The bus rides the
     # RA-100 relay inside a real PROCEDURAL FAIRING (ogive shell, jettisoned in orbit before deploy) + fins.
     from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
+    # A HEAVY interplanetary upper (large override -> a ~30 t insertion stage) must CIRCULARISE before it
+    # falls back from apoapsis, so it needs real thrust — a slow Terrier (60 kN) leaves it suborbital
+    # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
+    # comsat upper still circularises fine on the Terrier (no floor).
+    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3000.0 else (0.0, 0.0)
     req = ShipRequirements(
         name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
         # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
         # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
         phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
                       reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
-                Phase("insertion", insertion_dv, twr_body_g=0.0, min_twr=0.0,
+                Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
         landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False,
         max_engine_count=booster_max_engines,
