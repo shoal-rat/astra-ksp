@@ -16,7 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import astro
-from .models import RocketDesign, StageSpec
+from .models import RadialBoosterSpec, RocketDesign, StageSpec
 from .parts import part, payload_bus_mass
 
 
@@ -79,6 +79,13 @@ class ShipRequirements:
     # reliably (a clustered booster auto-staged early in live test), so callers can force a single
     # large engine per stage (max_engine_count=1) until that is fixed, trading some TWR headroom.
     max_engine_count: int = 8
+    # RADIAL BOOSTERS: number of symmetric strap-on booster pods to add to the LAUNCH stage (0 = a
+    # single-core rocket). Each pod is its own tank+engine on a radial decoupler that fires at T0 and
+    # jettisons when spent — the asparagus / Soyuz / Falcon-Heavy pattern. Use this when the launch
+    # stage is too heavy to lift on the core alone (a heavy interplanetary upper makes a ~200 t rocket
+    # that hangs at low TWR on one core). The pods are SIZED from physics (rocket equation + combined
+    # TWR), never guessed; they carry a portion of the ascent Δv so the core flies on lighter after drop.
+    radial_booster_count: int = 0
 
 
 # --------------------------------------------------------------------------------------------------
@@ -300,6 +307,105 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
     return spec, chosen
 
 
+# --------------------------------------------------------------------------------------------------
+# RADIAL (strap-on) BOOSTERS — the asparagus / Soyuz / Falcon-Heavy ascent.
+#
+# When the launch stage is too heavy to lift on its core alone (a heavy interplanetary upper makes a
+# ~200 t rocket that either has too-low liftoff TWR or hangs at circularization), bolt N symmetric tank+
+# engine pods to the SIDE of the core on radial decouplers. They ignite WITH the core at T0, so the
+# combined liftoff thrust = core + N*pod; they burn their own propellant in parallel (adding a chunk of
+# the ascent Δv); then they jettison together when spent, so the core flies on WITHOUT their dead mass.
+#
+# Sizing is closed-form physics, never guessed:
+#   * pod engine: one sea-level engine per pod, chosen as the lightest booster-pool engine that — across
+#     N pods plus the core — clears the combined liftoff TWR floor at the full wet stack.
+#   * pod tanks: the whole-tank count whose N-pod propellant delivers ~`dv_share` of the launch-phase Δv
+#     at liftoff (rocket equation over the full liftoff mass — a conservative parallel-burn estimate; the
+#     real parallel burn does at least this well because the core also thrusts).
+#   * the radial decoupler mass is folded into each pod's dead mass.
+# Returns (RadialBoosterSpec, metrics) or (None, {}) if no booster engine can close the TWR.
+# --------------------------------------------------------------------------------------------------
+BOOSTER_DV_SHARE = 0.45            # fraction of the launch-phase Δv the strap-ons carry before drop
+
+
+def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float, count: int,
+                          max_engine_count: int = 8, dv_share: float = BOOSTER_DV_SHARE,
+                          target_twr: float = 0.0) -> tuple[RadialBoosterSpec | None, dict]:
+    """Size `count` symmetric strap-on pods so (core + boosters) liftoff TWR >= the floor AND the pods
+    carry ~`dv_share` of the launch-phase Δv. All counts from the rocket equation + TWR; see the block
+    comment above for the model. `core_metrics` is the launch stage's own `_size_one` dict."""
+    if count <= 0:
+        return None, {}
+    core_wet = core_metrics["wet_t"]
+    core_dia = core_metrics.get("diameter_m", 1.25)
+    core = part(core_metrics["engine"])
+    core_thrust_n = (core.thrust_kn_asl * core_metrics["engine_count"]) * 1000.0
+    g = phase.twr_body_g or astro.G0
+    twr_floor = target_twr or phase.min_twr or 1.4
+    dv_target = phase.design_dv() * max(0.0, dv_share)
+    dec = part("radialDecoupler2")
+    # Try each sea-level engine (light -> heavy); for each, pair it with the widest tank no wider than the
+    # engine's own diameter (a booster pod is a clean single stack), solve the tank count for dv_target,
+    # then check the combined liftoff TWR. Keep the lightest feasible build.
+    best: dict | None = None
+    for eng_name in BOOSTER_ENGINES:
+        eng = part(eng_name)
+        thrust_one = (eng.thrust_kn_asl if eng.thrust_kn_asl > 0 else eng.thrust_kn_vac) * 1000.0
+        if thrust_one <= 0:
+            continue
+        # Pod tank: largest stock tank at the engine's own diameter (the pod is as wide as its engine).
+        tank_name = _unit_tank_for_engine(eng_name)
+        tank = part(tank_name)
+        # Pod dead mass (engine + decoupler) flies with the pod; the pod's tanks are its propellant store.
+        # Solve the whole-tank count so N pods deliver dv_target at liftoff against the FULL wet stack
+        # (mass_above + core + all N pods). This is a conservative parallel-burn estimate.
+        # Iterate: tank count depends on total pod mass which depends on tank count -> fixed point.
+        tanks = 1
+        for _ in range(12):
+            pod_dry = eng.dry_mass_t * 1 + tank.dry_mass_t * tanks + dec.dry_mass_t
+            pod_wet = eng.wet_mass_t * 1 + tank.wet_mass_t * tanks + dec.wet_mass_t
+            m0 = mass_above_t + core_wet + count * pod_wet
+            # Δv from burning ONLY the boosters' propellant (core+upper ride as dead mass for this bound):
+            m1 = m0 - count * (pod_wet - pod_dry)
+            ve = eng.isp_asl_s * astro.G0 if eng.isp_asl_s > 0 else eng.isp_vac_s * astro.G0
+            R = math.exp(dv_target / ve) if ve > 0 else 1e9
+            # closed-form whole-tank count so the N-pod propellant reaches dv_target: solve m0/m1 = R.
+            # m0 = A + count*tank_wet*T, m1 = A + count*tank_dry*T  (A = mass_above+core+count*(eng+dec) wet/dry)
+            A0 = mass_above_t + core_wet + count * (eng.wet_mass_t + dec.wet_mass_t)
+            A1 = mass_above_t + core_wet + count * (eng.dry_mass_t + dec.dry_mass_t)
+            denom = count * (tank.wet_mass_t - R * tank.dry_mass_t)
+            need = math.ceil((R * A1 - A0) / denom) if denom > 0 else tanks
+            need = max(1, min(40, need))
+            if need == tanks:
+                break
+            tanks = need
+        pod_dry = eng.dry_mass_t + tank.dry_mass_t * tanks + dec.dry_mass_t
+        pod_wet = eng.wet_mass_t + tank.wet_mass_t * tanks + dec.wet_mass_t
+        m0 = mass_above_t + core_wet + count * pod_wet
+        combined_thrust_n = core_thrust_n + count * thrust_one
+        combined_twr = astro.twr(combined_thrust_n, m0, g)
+        if combined_twr < twr_floor - 1e-6:
+            continue                                    # this engine can't lift the stack even strapped on
+        # Δv the boosters actually deliver (rocket equation, booster propellant vs the full liftoff mass).
+        m1 = m0 - count * (pod_wet - pod_dry)
+        booster_dv = astro.rocket_dv(eng.isp_asl_s or eng.isp_vac_s, m0, m1)
+        cand = {
+            "engine": eng_name, "engine_count": 1, "tank": tank_name, "tanks": tanks,
+            "count": count, "diameter_m": tank.diameter_m, "pod_wet_t": round(pod_wet, 2),
+            "pod_dry_t": round(pod_dry, 2), "combined_twr": round(combined_twr, 2),
+            "booster_dv": round(booster_dv, 0), "liftoff_mass_t": round(m0, 2),
+            "total_wet_t": round(count * pod_wet, 2),
+        }
+        if best is None or cand["total_wet_t"] < best["total_wet_t"]:
+            best = cand
+    if best is None:
+        return None, {}
+    spec = RadialBoosterSpec(count=count, engine=best["engine"], tank=best["tank"],
+                             tank_count=best["tanks"], engine_count=1,
+                             decoupler="radialDecoupler2", diameter_m=best["diameter_m"])
+    return spec, best
+
+
 def design_ship(req: ShipRequirements) -> RocketDesign:
     """Build a RocketDesign whose every part count is calculated from `req`.
 
@@ -325,13 +431,27 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     # the ones above it. Track the widest diameter seen so far as a FLOOR for the next (lower) stage —
     # this guarantees a monotonic non-increasing-upward taper (the base is always the widest).
     dia_floor = 1.25                                # the payload bus rides on a 1.25 m core
+    launch_mass_above = bus                          # mass above the LAUNCH (first-firing) stage, for boosters
+    # ASPARAGUS Δv SPLIT: when strap-on boosters are requested, the CORE launch stage only has to deliver
+    # the REMAINDER of the launch-phase Δv — the boosters carry `BOOSTER_DV_SHARE` of it in parallel, then
+    # drop. Sizing the core for (1 - share) of the launch Δv is what makes the asparagus rocket lighter
+    # than a single core (the user's "the core then covers the rest"). The boosters are sized to actually
+    # deliver that share below; the core flies on its remaining propellant after they separate.
+    launch_phase_name = phases[0].name if phases else None
+    core_dv_factor = (1.0 - BOOSTER_DV_SHARE) if req.radial_booster_count > 0 else 1.0
     for phase in reversed(phases):
         # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
-        # burn-to-depletion (a real rocket never plans to land on empty tanks).
-        spec, metrics = _size_stage(phase.design_dv(), mass_above, phase, req.max_engine_count, dia_floor)
+        # burn-to-depletion (a real rocket never plans to land on empty tanks). The first-firing (launch)
+        # stage carries only its core share when boosters are present.
+        is_launch = phase.name == launch_phase_name
+        size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0)
+        spec, metrics = _size_stage(size_dv, mass_above, phase, req.max_engine_count, dia_floor)
         dia_floor = max(dia_floor, spec.diameter_m)
         stages_rev.append(spec)
         metrics_rev.append(metrics)
+        # The launch phase fires first -> it is the LAST one sized in this reversed loop, so when the
+        # loop ends `mass_above` (pre-this-stage) is exactly the mass riding above the launch stage.
+        launch_mass_above = mass_above
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
         log.append(
             f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve -> size {phase.design_dv():.0f}) "
@@ -339,6 +459,27 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
             f"= {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
         )
     stages = list(reversed(stages_rev))  # back to fire order (launch first)
+
+    # RADIAL BOOSTERS: if requested, size N symmetric strap-on pods on the launch (first-firing) stage so
+    # the combined liftoff TWR clears the floor and the pods carry a chunk of the ascent Δv (see
+    # _size_radial_boosters). The launch stage was sized last in the loop above, so its metrics are
+    # metrics_rev[-1] and the mass above it is launch_mass_above.
+    radial_boosters: RadialBoosterSpec | None = None
+    booster_metrics: dict = {}
+    if req.radial_booster_count > 0 and phases:
+        launch_phase = phases[0]
+        radial_boosters, booster_metrics = _size_radial_boosters(
+            launch_phase, metrics_rev[-1], launch_mass_above, req.radial_booster_count, req.max_engine_count)
+        if radial_boosters is not None:
+            log.append(
+                f"radial boosters: {radial_boosters.count}x [{radial_boosters.engine_count}x {radial_boosters.engine} "
+                f"+ {radial_boosters.tank_count} {radial_boosters.tank}] on {radial_boosters.decoupler} "
+                f"-> combined liftoff TWR {booster_metrics['combined_twr']}, +{booster_metrics['booster_dv']:.0f} m/s "
+                f"ascent Δv, liftoff mass {booster_metrics['liftoff_mass_t']}t (jettison when spent)"
+            )
+        else:
+            log.append(f"radial boosters: requested {req.radial_booster_count} but no booster engine could "
+                       f"close the combined liftoff TWR — single core")
 
     n_chute = parachute_count(req, bus + (part("Decoupler.1").wet_mass_t * 0))  # bus-dominated landing mass
     if req.landing is not None:
@@ -360,6 +501,7 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
         tags=["calculated", "requirements-driven"],
         notes="DESIGN LOG (every count from physics):\n  " + "\n  ".join(log),
         source="design.design_ship",
+        radial_boosters=radial_boosters,
     )
     plan = staging_plan(design, req)
     design.notes += "\n\nSTAGING PLAN (NO refuel — each stage flies on its own propellant):\n  " + "\n  ".join(
@@ -516,11 +658,30 @@ def separation_sequence(design: RocketDesign, req: ShipRequirements) -> list[str
     return ev
 
 
+def radial_booster_masses(rb: "RadialBoosterSpec | None") -> tuple[float, float, float]:
+    """Aggregate (dry_t, wet_t, asl_thrust_kN) of ALL `count` strap-on pods together, each pod =
+    engine_count engines + tank_count tanks + 1 radial decoupler. Returns (0,0,0) when there are none."""
+    if rb is None or rb.count <= 0:
+        return 0.0, 0.0, 0.0
+    eng = part(rb.engine)
+    tank = part(rb.tank)
+    dec = part(rb.decoupler)
+    pod_dry = eng.dry_mass_t * rb.engine_count + tank.dry_mass_t * rb.tank_count + dec.dry_mass_t
+    pod_wet = eng.wet_mass_t * rb.engine_count + tank.wet_mass_t * rb.tank_count + dec.wet_mass_t
+    pod_thrust_asl = eng.thrust_kn_asl * rb.engine_count
+    return rb.count * pod_dry, rb.count * pod_wet, rb.count * pod_thrust_asl
+
+
 def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict[str, float]:
-    """Total wet mass, per-stage and total Δv (rocket equation), launch TWR, chute count — calculated."""
+    """Total wet mass, per-stage and total Δv (rocket equation), launch TWR, chute count — calculated.
+
+    With RADIAL BOOSTERS the launch TWR uses the COMBINED (core + N pods) liftoff thrust at the full wet
+    stack (pods + core + everything above), and the total Δv adds the boosters' parallel-burn contribution
+    — so a heavy upper that hangs on a single core reads as launchable once the strap-ons are sized in."""
     from .parts import stage_masses
     bus = _bus_mass(req)
     stage_wet = [stage_masses(s)[1] for s in design.stages]
+    rb_dry, rb_wet, rb_thrust_asl = radial_booster_masses(design.radial_boosters)
     total_dv = 0.0
     launch_twr = 0.0
     for i, stage in enumerate(design.stages):
@@ -529,11 +690,25 @@ def _estimate(design: RocketDesign, req: ShipRequirements, n_chute: int) -> dict
         m0, m1 = mass_above + wet, mass_above + dry
         total_dv += astro.rocket_dv(isp_vac, m0, m1)
         if i == 0:
-            launch_twr = astro.twr(thrust_asl * 1000.0, m0, req.phases[0].twr_body_g or 9.81)
+            g = req.phases[0].twr_body_g or 9.81
+            # Combined liftoff: core + booster thrust against the full wet stack INCLUDING the pods.
+            m0_liftoff = m0 + rb_wet
+            launch_twr = astro.twr((thrust_asl * 1000.0) + (rb_thrust_asl * 1000.0), m0_liftoff, g)
+    # Add the strap-ons' own ascent Δv (rocket equation: their propellant vs the full liftoff stack — a
+    # conservative parallel-burn estimate, since the core also thrusts during the parallel burn).
+    booster_dv = 0.0
+    if design.radial_boosters is not None and rb_wet > 0:
+        rb = design.radial_boosters
+        eng = part(rb.engine)
+        m0_liftoff = bus + sum(stage_wet) + rb_wet
+        m1_booster = m0_liftoff - (rb_wet - rb_dry)            # boosters burned out, core still full
+        booster_dv = astro.rocket_dv(eng.isp_asl_s or eng.isp_vac_s, m0_liftoff, m1_booster)
+        total_dv += booster_dv
     return {
-        "wet_mass_t": round(bus + sum(stage_wet), 2),
+        "wet_mass_t": round(bus + sum(stage_wet) + rb_wet, 2),
         "total_delta_v_mps": round(total_dv, 0),
         "launch_twr": round(launch_twr, 2),
+        "booster_delta_v_mps": round(booster_dv, 0),
         "parachutes": float(n_chute),
         "stage_count": float(len(design.stages)),
     }
