@@ -14,17 +14,24 @@ ejection + the grid-search corrections, with margin.
 COMPOSED FROM PROVEN CODE (per the design workflow — reuse, don't reinvent):
   - deploy_relay.launch_to_lko(...)            : the hardened Kerbin ascent (asparagus radial boosters,
                                                  explicit staging, force-separation) to a 100 km parking orbit.
-  - deploy_relay_transfer.transfer_to_body(...) : BODY-AGNOSTIC precise-Lambert ejection + MechJeb/grid
-                                                 course-correction + Oberth capture. Used VERBATIM for the
-                                                 Kerbin->Eve outbound leg (captures into a bound Eve orbit).
-  - deploy_relay_transfer._warp_via_high / _execute_node_manually / _wait_until_sun_orbit /
-    _search_duna_correction_grid / _frange / _predicted_periapsis_at : the warp + node + correction
-                                                 machinery, reused for the RETURN leg.
+  - deploy_relay_transfer's precise-Lambert ejection + MechJeb interplanetary node + grid-search
+    encounter machinery (_warp_via_high / _execute_node_manually / _wait_until_sun_orbit /
+    _search_duna_correction_grid / _frange / _predicted_periapsis_at) : reused by BOTH the outbound
+    Eve capture and the RETURN leg. (We do NOT call transfer_to_body itself — it circularizes + Hohmanns
+    DOWN to the target altitude, the costly burn that ran the vehicle dry; see capture_at_eve_loose.)
+  - mj_to_mun._retro_capture(...) : the proven single retrograde-burn capture into a bound ellipse,
+    reused for the CHEAP loose Eve capture.
   - transfer_planner.find_transfer_window(Eve, Kerbin) : the precise return-window date.
 
 GENUINELY NEW HERE (the parts no existing tool covered):
   - design_crew_vehicle()  : the crewed ORBITAL round-trip ship (Mk1 pod + heatshield + Kerbin chutes,
                              vacuum stage budgeted for the whole interplanetary job).
+  - board_crew()           : seat a real kerbal in the Mk1 pod after the headless launch (the pod lifts
+                             off EMPTY on the probe-core control source) via the bridge /spawn-crew
+                             endpoint, and VERIFY crew_count == 1 — so people actually fly to Eve.
+  - capture_at_eve_loose() : Kerbin->Eve capture into a LOOSE bound ellipse (low periapsis, apoapsis
+                             ~0.30 SOI) for ~146 m/s, instead of a circularize + Hohmann-down to a low
+                             orbit. The cheap capture the vacuum budget assumed.
   - return_to_kerbin()     : eject from Eve toward KERBIN, then on arrival AEROBRAKE (target a ~35 km
                              Kerbin periapsis so the atmosphere captures the craft) instead of a
                              propulsive circularization — the return-leg variant of transfer_to_body.
@@ -55,6 +62,8 @@ from deploy_relay_transfer import (
     _warp_via_high,
     log,
 )
+
+from mj_to_mun import _retro_capture
 
 from ksp_lab import astro
 from ksp_lab.bodies import EVE, KERBIN, SUN
@@ -191,6 +200,149 @@ def design_crew_vehicle(name: str, render: bool = True):
         except Exception as exc:
             log(f"  chart render note: {exc}")
     return d, rep
+
+
+# ==================================================================================================
+# 1b) OUTBOUND CAPTURE — Kerbin->Eve, into a LOOSE bound ELLIPSE (cheap), never a low-circular orbit.
+#
+# WHY NOT transfer_to_body(): that helper circularizes at the encounter periapsis and then HOHMANNS
+# DOWN to the requested low altitude (~104 km) — an enormous Δv the budget never paid for, which is
+# what ran the crew vehicle DRY (it dropped from the natural ~7,600 km encounter to a 104 km low orbit
+# at e=0.63). The budget assumed a CHEAP elliptical capture (~146 m/s): drop the arrival hyperbola to
+# a bound ellipse with a LOW periapsis (~104 km, for an Oberth-cheap RETURN ejection) and a HIGH
+# apoapsis (~0.30 SOI). So we reuse transfer_to_body's PROVEN ejection + grid-search-establish, then
+# capture with the PROVEN _retro_capture into that loose ellipse — no circularize, no Hohmann-down.
+# ==================================================================================================
+def _eve_capture_apoapsis_ceiling_m() -> float:
+    """Apoapsis ALTITUDE (above Eve's surface) of the loose capture ellipse — the SAME 0.30*SOI ceiling
+    the vacuum budget's eve_capture term assumed, so the realized capture matches the sized Δv."""
+    return 0.30 * EVE.soi_m
+
+
+def capture_at_eve_loose(conn, sc, bridge, v) -> bool:
+    """Kerbin parking orbit -> a LOOSE bound Eve orbit. Ejection + grid-search encounter establishment
+    are transfer_to_body's proven machinery (reused verbatim, aiming the encounter periapsis LOW so the
+    return ejection is Oberth-cheap); the capture is a single retrograde burn at periapsis that drops the
+    hyperbola to a bound ellipse (apoapsis ~0.30 SOI), NOT a circularization + Hohmann-down. Returns True
+    once bound at Eve with a low, safe periapsis."""
+    from ksp_lab import transfer_planner as _tp
+    target_name = "Eve"
+    target = sc.bodies[target_name]
+    try:
+        sc.target_body = target
+    except Exception as exc:
+        log(f"  could not set target ({exc})")
+
+    # Aim the encounter periapsis at Eve's LOW orbit altitude (~104 km) — low periapsis = Oberth-cheap
+    # capture AND Oberth-cheap return ejection. The loose apoapsis (0.30 SOI) is set by the capture burn.
+    want_pe = EVE.low_orbit_radius_m() - EVE.radius_m
+    pe_floor = EVE.atmosphere_top_m + 5_000.0                 # capture periapsis must clear Eve's 90 km air
+    ap_ceiling_m = _eve_capture_apoapsis_ceiling_m()
+
+    # 1) EJECT (precise Lambert cross-check, then MechJeb interplanetary node) — same as transfer_to_body.
+    win = {"ut_dep": sc.ut, "tof": 0.40 * KERBIN_YEAR_S, "vinf_mag": 0.0}
+    try:
+        _plan = _tp.plan_transfer(sc, v, v.orbit.body.name, target_name)
+        win = _plan["window"]
+        log(f"  Lambert cross-check: |vinf| {win['vinf_mag']:.0f} m/s, tof {win['tof']/KERBIN_YEAR_S:.2f} yr")
+    except Exception as exc:
+        log(f"  Lambert cross-check skipped ({exc})")
+    rr = bridge.mj_plan(target=target_name, operation="interplanetary")
+    if not (rr.get("planned") and v.control.nodes):
+        log(f"  EVE EJECT FAILED: MechJeb interplanetary transfer produced no node ({rr})"); return False
+    log(f"  EJECT -> Eve (MechJeb interplanetary): {rr.get('dv', 0):.0f} m/s at UT {round(rr.get('ut', 0))}")
+    _nd0 = v.control.nodes[0] if v.control.nodes else None
+    if _nd0 is not None and (_nd0.ut - sc.ut) > 6 * 3600.0 and v.orbit.periapsis_altitude < 2_000_000.0:
+        log(f"  ejection node {(_nd0.ut - sc.ut)/(6*3600):.0f} Kerbin-days out in a low orbit -> "
+            f"advancing the clock via a high vessel ...")
+        _warp_via_high(sc, _nd0.ut)
+        sc.active_vessel = v
+        time.sleep(2)
+        v = sc.active_vessel
+    _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
+    if not _wait_until_sun_orbit(sc, v):
+        log(f"  did not escape Kerbin SOI on the outbound (still {v.orbit.body.name})"); return False
+
+    # 2) ESTABLISH the Eve encounter with the PROVEN grid search, aiming the periapsis LOW (~104 km).
+    try:
+        sc.target_body = target
+    except Exception:
+        pass
+    atmo_top = EVE.atmosphere_top_m + 5_000.0
+    for attempt in range(1, 4):
+        if v.orbit.body.name == target_name or (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
+            break
+        mid_ut = sc.ut + 0.25 * win["tof"]
+        if mid_ut > sc.ut + 120.0 and v.orbit.body.name != target_name:
+            sc.warp_to(mid_ut)
+            time.sleep(2)
+        node_ut = sc.ut + 6.0 * 3600.0
+        coarse = _search_duna_correction_grid(
+            sc, v, node_ut, pg_width=600.0, pg_step=50.0, rad_vals=(0.0,),
+            nrm_vals=(-300.0, -100.0, 0.0, 100.0, 300.0),
+            target_name=target_name, want_pe_m=want_pe, atmo_top_m=atmo_top)
+        if coarse is None:
+            log(f"  Eve grid {attempt}: no candidate; retrying")
+            continue
+        best = _search_duna_correction_grid(
+            sc, v, node_ut, seed_prograde=coarse["prograde"], pg_width=80.0, pg_step=15.0, rad_vals=(0.0,),
+            nrm_vals=tuple(_frange(coarse["normal"] - 80.0, coarse["normal"] + 80.0, 20.0)),
+            target_name=target_name, want_pe_m=want_pe, atmo_top_m=atmo_top) or coarse
+        v.control.remove_nodes()
+        v.control.add_node(best["ut"], prograde=best["prograde"], radial=best["radial"], normal=best["normal"])
+        tag = (f"pe {best.get('duna_pe_m', 0)/1000:.0f} km" if best.get("encounter")
+               else f"closest {best.get('closest_m', 0)/1e6:.0f} Mm")
+        log(f"  EVE ESTABLISH (grid) {attempt}: aim {tag} via "
+            f"({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f})")
+        _nd = v.control.nodes[0] if v.control.nodes else None
+        if _nd is not None and (_nd.ut - sc.ut) > 6.0 * 3600.0:
+            _warp_via_high(sc, _nd.ut, buffer_s=300.0)
+            sc.active_vessel = v
+            time.sleep(3)
+            v = sc.active_vessel
+        try:
+            bridge.mj_execute_node(autowarp=True)
+        except Exception as exc:
+            log(f"  mj-execute-node error ({exc})")
+        for _w in range(80):
+            if not v.control.nodes:
+                break
+            time.sleep(3)
+        if v.control.nodes:
+            log("  Eve node not consumed in time; clearing and proceeding")
+            v.control.remove_nodes()
+
+    # 3) Coast to Eve's SOI.
+    for _ in range(4):
+        if v.orbit.body.name == target_name:
+            break
+        dt = v.orbit.time_to_soi_change
+        if dt and 0 < dt < 1e9:
+            log(f"  coasting {dt/(6*3600):.0f} Kerbin-days to the Eve SOI ...")
+            sc.warp_to(sc.ut + dt + 30.0)
+            time.sleep(3)
+        else:
+            break
+    if v.orbit.body.name != target_name:
+        log(f"  EVE CAPTURE ABORT: never entered the Eve SOI (still {v.orbit.body.name})"); return False
+
+    # 4) Warp to periapsis, then LOOSE-capture there: a single retrograde burn that drops the hyperbola
+    #    to a bound ellipse (apoapsis ~0.30 SOI) while PRESERVING the low periapsis. NO circularize, NO
+    #    Hohmann-down — that is the whole BUG-2 fix: keep the capture cheap (~146 m/s budgeted).
+    ttp = v.orbit.time_to_periapsis
+    if ttp and 0 < ttp < 1e7:
+        log(f"  in Eve SOI; pe {v.orbit.periapsis_altitude/1000:.0f} km; warping {ttp/(6*3600):.0f} d to periapsis ...")
+        sc.warp_to(sc.ut + ttp - 20.0)
+        time.sleep(2)
+    enc_pe = v.orbit.periapsis_altitude
+    ap_target_m = max(ap_ceiling_m, enc_pe * 1.3)
+    log(f"  LOOSE-capturing to a bound Eve ellipse: periapsis ~{enc_pe/1000:.0f} km, "
+        f"apoapsis ceiling {ap_target_m/1000:.0f} km (~0.30 SOI) — no circularize, no Hohmann-down")
+    _retro_capture(conn, sc, v, log, ap_target_m=ap_target_m, pe_floor_m=pe_floor, max_s=400.0)
+    o = v.orbit
+    log(f"  EVE CAPTURE: {o.periapsis_altitude/1000:.0f}x{o.apoapsis_altitude/1000:.0f} km "
+        f"(e={o.eccentricity:.2f})")
+    return o.body.name == target_name and 0 < o.apoapsis_altitude and o.periapsis_altitude > EVE.atmosphere_top_m
 
 
 # ==================================================================================================
@@ -505,6 +657,44 @@ def _crew_count(v) -> int:
             return 0
 
 
+def board_crew(sc, bridge, v, retries: int = 3, settle_s: float = 2.0) -> bool:
+    """Put a REAL kerbal in the Mk1 pod after the HEADLESS launch. The generated crew vehicle flies on
+    an inline probe core (a guaranteed headless control source through the vessel-switching warps), so
+    the Mk1 pod lifts off EMPTY (kRPC reports crew_count == 0). This calls the bridge's /spawn-crew
+    endpoint, which seats an available roster kerbal (or recruits one) into the first crewable part with
+    a free seat — the Mk1 pod — so a person actually rides to Eve. Verifies crew_count == 1 afterward.
+
+    Must run in flight with the crew vehicle active (it is, right after launch_to_lko). Returns True once
+    at least one kerbal is confirmed aboard; logs and returns False if the seat could not be filled.
+    ``settle_s`` is the post-call settle delay (real flight 2 s; 0 in tests)."""
+    name = v.name
+    if _crew_count(v) >= 1:
+        log(f"  crew already aboard {name} (crew_count {_crew_count(v)})")
+        return True
+    for attempt in range(1, retries + 1):
+        try:
+            rr = bridge.spawn_crew(vessel=name)
+            log(f"  /spawn-crew: {rr.get('message', rr)}")
+        except Exception as exc:
+            log(f"  /spawn-crew attempt {attempt}/{retries} error ({exc})")
+            time.sleep(settle_s)
+            continue
+        time.sleep(settle_s)
+        try:
+            v = sc.active_vessel
+        except Exception:
+            pass
+        if _crew_count(v) >= 1:
+            log(f"  CREW ABOARD {name}: crew_count {_crew_count(v)} — a kerbal is riding to Eve")
+            return True
+        log(f"  spawn-crew attempt {attempt}/{retries} did not seat a kerbal yet (crew_count "
+            f"{_crew_count(v)}); retrying ...")
+        time.sleep(settle_s)
+    log(f"  WARNING: could not confirm a kerbal aboard {name} after {retries} attempts "
+        f"(crew_count {_crew_count(v)}) — NEEDS LIVE CHECK")
+    return False
+
+
 # ==================================================================================================
 # 4) FLIGHT SEQUENCE — mirrors deploy_relay_transfer.main, for the crewed round trip.
 # ==================================================================================================
@@ -546,7 +736,7 @@ def main() -> int:
     from ksp_lab.bridge_client import BridgeClient
     from ksp_lab.runner import AutomationRunner
 
-    drt.cfg = yaml.safe_load(open(cfg_path, encoding="utf-8"))   # transfer_to_body reads drt.cfg["krpc"]
+    drt.cfg = yaml.safe_load(open(cfg_path, encoding="utf-8"))   # reused drt machinery reads drt.cfg["krpc"]
     cfg = drt.cfg
     bridge = BridgeClient(**cfg["bridge"])
     runner = AutomationRunner(cfg_path, offline=False)
@@ -572,6 +762,12 @@ def main() -> int:
         except Exception:
             pass
         log(f"RESUME: found {name} in phase '{phase}' — continuing from there")
+        # A resumed vehicle from a pre-boarding run may still be empty (the headless launch leaves the
+        # Mk1 pod empty until board_crew runs). If so, seat a kerbal now before continuing the mission.
+        if _crew_count(v) < 1:
+            log("RESUME: pod is empty — boarding a kerbal before continuing ...")
+            if not board_crew(sc, bridge, v):
+                log("RESUME crew boarding FAILED — refusing to fly an empty 'crewed' mission"); return 2
 
     # 0) WAIT for the Kerbin->Eve window ON THE GROUND (zero fuel) so the upper ejects directly into the
     #    transfer — the proven interplanetary pattern (no in-flight raise/lower warp). Only when prelaunch.
@@ -610,17 +806,23 @@ def main() -> int:
         v = sc.active_vessel
         log(f"MILESTONE: IN LKO {round(v.orbit.periapsis_altitude/1000)}x"
             f"{round(v.orbit.apoapsis_altitude/1000)} km — outbound to Eve")
+        # BOARD A KERBAL. The launch is headless (probe-core control source) so the Mk1 pod lifts off
+        # EMPTY; seat a real kerbal now, in LKO, BEFORE the interplanetary legs — "send people to Eve"
+        # requires a person aboard. Verifies crew_count == 1.
+        log("MILESTONE: boarding a kerbal into the Mk1 pod (headless launch left it empty) ...")
+        if not board_crew(sc, bridge, v):
+            log("CREW BOARDING FAILED — refusing to fly an EMPTY 'crewed' mission to Eve"); return 2
         phase = "in_lko"
 
-    # b) OUTBOUND: Kerbin -> Eve, CAPTURE into a bound Eve orbit. REUSE transfer_to_body VERBATIM. We aim
-    #    the capture at a MODEST altitude (not Eve-synchronous): cheaper, leaving fuel for the return. The
-    #    target altitude is the elliptical-capture periapsis the budget assumed (~Eve low orbit, ~104 km);
-    #    transfer_to_body circularizes near the encounter periapsis then Hohmanns to this target — for a
-    #    low target that's the cheap capture we want.
+    # b) OUTBOUND: Kerbin -> Eve, CAPTURE into a LOOSE bound ELLIPSE (cheap). We do NOT call
+    #    transfer_to_body here: it circularizes at the encounter periapsis and then Hohmanns DOWN to the
+    #    requested low altitude — far more Δv than budgeted (it ran the crew vehicle dry at e=0.63). The
+    #    budget paid for a ~146 m/s elliptical capture (low periapsis for an Oberth-cheap return ejection,
+    #    apoapsis ~0.30 SOI), which capture_at_eve_loose flies via the proven _retro_capture.
     if phase in ("in_lko", "in_transit"):
-        eve_target_alt_km = round((EVE.low_orbit_radius_m() - EVE.radius_m) / 1000.0)   # ~104 km
-        log(f"MILESTONE: transferring to Eve (capture target ~{eve_target_alt_km} km circular) ...")
-        if not drt.transfer_to_body(c, sc, bridge, v, "Eve", float(eve_target_alt_km)):
+        log(f"MILESTONE: transferring to Eve (LOOSE elliptical capture, apoapsis ~0.30 SOI / "
+            f"{round(_eve_capture_apoapsis_ceiling_m()/1000)} km, low periapsis) ...")
+        if not capture_at_eve_loose(c, sc, bridge, v):
             log("Eve transfer/capture FAILED"); return 2
         v = sc.active_vessel
         log(f"MILESTONE: CAPTURED AT EVE {round(v.orbit.periapsis_altitude/1000)}x"
