@@ -121,10 +121,10 @@ def main() -> int:
     if ttp and 0 < ttp < 1e7:
         drt.log(f"  in {target_name} SOI; pe {v.orbit.periapsis_altitude/1000:.0f} km; warping to periapsis ...")
         sc.warp_to(sc.ut + ttp - 20.0); time.sleep(2)
-    drt._circularize_at(c, sc, v, "capture periapsis")
+    drt._circularize_at(c, sc, bridge, v, "capture periapsis")
     drt.log(f"  captured {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km; "
             f"Hohmann to {target_alt_km:.0f} km synchronous ...")
-    drt._hohmann_to_radius(c, sc, v, r_target)
+    drt._hohmann_to_radius(c, sc, bridge, v, r_target)
     o = v.orbit
     drt.log(f"  SYNCHRONOUS at {target_name}: {o.periapsis_altitude/1000:.0f}x{o.apoapsis_altitude/1000:.0f} km "
             f"(target {target_alt_km:.0f}, e={o.eccentricity:.3f})")

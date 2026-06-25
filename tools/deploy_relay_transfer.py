@@ -804,20 +804,44 @@ def _encounter_periapsis(node, target_name: str):
     return None
 
 
-def _circularize_at(conn, sc, v, r_apsis_label: str):
-    """Circularize at the current point: node prograde = v_circ - v_now. r_apsis_label only labels the log."""
+def _execute_precise(conn, sc, bridge, v):
+    """Fly the active maneuver node PRECISELY with MechJeb's NodeExecutor, which burns the FULL Δv — the
+    hand-rolled executor cut burns short (a capture only reached e=0.99). MechJeb autowarp hangs from
+    solar orbit, so warp to the node MANUALLY first, then let MechJeb align + burn, and wait for the node
+    to be consumed (timeout-guarded; manual fallback if it stalls)."""
+    nd = v.control.nodes[0] if v.control.nodes else None
+    if nd is None:
+        return
+    if (nd.ut - sc.ut) > 6.0 * 3600.0:
+        _warp_via_high(sc, nd.ut, buffer_s=300.0)
+        sc.active_vessel = v
+        time.sleep(3)
+    try:
+        bridge.mj_execute_node(autowarp=True)
+    except Exception:
+        pass
+    for _ in range(100):                                # wait up to ~5 min for the burn to finish
+        if not v.control.nodes:
+            break
+        time.sleep(3)
+    if v.control.nodes:
+        _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
+        v.control.remove_nodes()
+
+
+def _circularize_at(conn, sc, bridge, v, r_apsis_label: str):
+    """Circularize at the current point (node prograde = v_circ - v_now), flown PRECISELY by MechJeb."""
     o = v.orbit
     mu = o.body.gravitational_parameter
     r = o.radius
     v.control.remove_nodes()
     v.control.add_node(sc.ut + 5.0, prograde=math.sqrt(mu / r) - o.speed, normal=0.0, radial=0.0)
-    _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
+    _execute_precise(conn, sc, bridge, v)
     return v.orbit.eccentricity
 
 
-def _hohmann_to_radius(conn, sc, v, r_target: float):
-    """From a ~circular orbit, Hohmann-transfer to a circular orbit of radius r_target: burn at the
-    current point to set the far apsis to r_target, coast there, circularize. Body-agnostic; no refuel."""
+def _hohmann_to_radius(conn, sc, bridge, v, r_target: float):
+    """From a ~circular orbit, Hohmann-transfer to a circular orbit of radius r_target, flown precisely."""
     o = v.orbit
     mu = o.body.gravitational_parameter
     r0 = o.radius
@@ -827,12 +851,12 @@ def _hohmann_to_radius(conn, sc, v, r_target: float):
     v_trans0 = math.sqrt(mu * (2.0 / r0 - 1.0 / a_t))
     v.control.remove_nodes()
     v.control.add_node(sc.ut + 5.0, prograde=v_trans0 - o.speed, normal=0.0, radial=0.0)
-    _execute_node_manually(conn, sc, v, max_burn_s=300.0, max_throttle=1.0)
+    _execute_precise(conn, sc, bridge, v)
     o = v.orbit
     t = o.time_to_apoapsis if r_target > r0 else o.time_to_periapsis
     if t and 0 < t < 1e7:
         sc.warp_to(sc.ut + t - 20.0); time.sleep(2)
-    _circularize_at(conn, sc, v, "target radius")
+    _circularize_at(conn, sc, bridge, v, "target radius")
 
 
 def _warp_via_high(sc, target_ut: float, buffer_s: float = 2.0 * 3600.0):
@@ -976,10 +1000,10 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     if ttp and 0 < ttp < 1e7:
         log(f"  in {target_name} SOI; pe {v.orbit.periapsis_altitude/1000:.0f} km; warping {ttp/(6*3600):.0f} d to periapsis ...")
         sc.warp_to(sc.ut + ttp - 20.0); time.sleep(2)
-    _circularize_at(conn, sc, v, "capture periapsis")
+    _circularize_at(conn, sc, bridge, v, "capture periapsis")
     log(f"  captured {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km; "
         f"Hohmann to {target_alt_km:.0f} km synchronous ...")
-    _hohmann_to_radius(conn, sc, v, r_target)
+    _hohmann_to_radius(conn, sc, bridge, v, r_target)
     o = v.orbit
     log(f"  SYNCHRONOUS at {target_name}: {o.periapsis_altitude/1000:.0f}x{o.apoapsis_altitude/1000:.0f} km "
         f"(target {target_alt_km:.0f}, e={o.eccentricity:.3f})")
