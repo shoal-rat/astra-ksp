@@ -1,84 +1,102 @@
-<svg viewBox="0 0 900 760" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg viewBox="0 0 980 720" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
-    <marker id="cyc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
-    </marker>
+    <marker id="flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/></marker>
     <marker id="retry" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
-    </marker>
-    <radialGradient id="bg" cx="50%" cy="50%" r="72%"><stop offset="0%" stop-color="#0e1626"/><stop offset="100%" stop-color="#070b14"/></radialGradient>
-    <linearGradient id="hubg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6d28d9"/><stop offset="100%" stop-color="#4c1d95"/></linearGradient>
+      <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/></marker>
+    <marker id="fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/></marker>
+    <radialGradient id="bg" cx="50%" cy="40%" r="78%"><stop offset="0%" stop-color="#0e1626"/><stop offset="100%" stop-color="#070b14"/></radialGradient>
+    <linearGradient id="gLaunch" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0d9488"/><stop offset="100%" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="gCruise" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0e7490"/><stop offset="100%" stop-color="#155e75"/></linearGradient>
+    <linearGradient id="gBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#5b21b6"/></linearGradient>
+    <linearGradient id="gHome" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#d97706"/><stop offset="100%" stop-color="#b45309"/></linearGradient>
   </defs>
-  <rect x="0" y="0" width="900" height="760" rx="16" fill="url(#bg)"/>
+  <rect x="0" y="0" width="980" height="720" rx="16" fill="url(#bg)"/>
   <style>
-    .node  { rx: 14; stroke-width: 2; }
-    .ntitle{ font-size: 16px; font-weight: 700; fill: #ffffff; }
-    .nsub  { font-size: 12px; fill: #ede9fe; }
-    .neqn  { font-size: 12px; fill: #d9f99d; font-style: italic; }
-    .ring  { stroke: #7c3aed; stroke-width: 2.4; fill: none; }
-    .hub   { font-size: 16px; font-weight: 700; fill: #ffffff; }
-    .hub2  { font-size: 12px; fill: #e2e8f0; }
-    .rlab  { font-size: 12px; fill: #b45309; font-weight: 700; }
+    .h    { font-size: 19px; font-weight: 800; fill: #f8fafc; }
+    .sub  { font-size: 12.5px; fill: #cbd5e1; }
+    .lay  { font-size: 11.5px; font-weight: 800; fill: #7c8aa0; letter-spacing: .1em; }
+    .pt   { font-size: 14.5px; font-weight: 800; fill: #ffffff; }
+    .pw   { font-size: 10.5px; fill: #e2e8f0; }
+    .pwr  { font-size: 10.5px; fill: #ccfbf1; font-style: italic; }
+    .opt  { font-size: 10px; fill: #94a3b8; font-weight: 700; }
+    .lab  { font-size: 11px; fill: #b45309; font-weight: 700; }
+    .flab { font-size: 11px; fill: #ef4444; font-weight: 700; }
+    .tag  { font-size: 9.5px; font-weight: 800; fill: #052e2b; }
   </style>
 
-  <!-- center hub -->
-  <circle cx="450" cy="380" r="96" fill="url(#hubg)" stroke="#a78bfa" stroke-width="2.4"/>
-  <text x="450" y="360" text-anchor="middle" class="hub">Calculated loop</text>
-  <text x="450" y="383" text-anchor="middle" class="hub2">one mission step,</text>
-  <text x="450" y="400" text-anchor="middle" class="hub2">every number solved</text>
-  <text x="450" y="417" text-anchor="middle" class="hub2">from physics (Claude Code)</text>
+  <text x="40" y="40" class="h">A decomposed mission, in flight order</text>
+  <text x="40" y="63" class="sub">Body-agnostic primitives, sequenced by the architect. The same chain serves a relay, a lander, or a crewed round trip &#8212;</text>
+  <text x="40" y="81" class="sub">only the args (target body, altitude, capture mode, crew) change. Steps not needed for a goal are simply omitted.</text>
 
-  <!-- 6 steps clockwise from top -->
+  <!-- ON THE GROUND -->
+  <text x="40" y="120" class="lay">ON THE GROUND</text>
+  <rect x="40" y="132" width="270" height="120" rx="13" fill="url(#gLaunch)" stroke="#115e59"/>
+  <rect x="56" y="146" width="74" height="16" rx="8" fill="#a3e635"/><text x="62" y="158" class="tag">PNG GATE</text>
+  <text x="56" y="184" class="pt">launch</text>
+  <text x="56" y="204" class="pw">design + ascend to a parking orbit</text>
+  <text x="56" y="220" class="pw">of the launch body (Kerbin)</text>
+  <text x="56" y="238" class="pwr">three-view PNG &#8594; looks_like_a_rocket</text>
 
-  <!-- 1 Divide (top) -->
-  <rect x="335" y="22" width="230" height="76" class="node" fill="#6d28d9" stroke="#4c1d95"/>
-  <text x="450" y="50" text-anchor="middle" class="ntitle">1 · Divide</text>
-  <text x="450" y="70" text-anchor="middle" class="nsub">one-line goal &#8594; ordered steps</text>
-  <text x="450" y="88" text-anchor="middle" class="nsub">launch · transfer · land · refuel · return</text>
+  <!-- IN CRUISE -->
+  <text x="355" y="120" class="lay">INTERPLANETARY / MOON LEG</text>
+  <rect x="355" y="132" width="270" height="120" rx="13" fill="url(#gCruise)" stroke="#155e75"/>
+  <text x="371" y="160" class="pt">transfer</text>
+  <text x="371" y="182" class="pw">wait for the window on the ground,</text>
+  <text x="371" y="198" class="pw">warp ~1000x to ut_dep, eject + capture</text>
+  <text x="371" y="218" class="pwr">circular &#183; loose &#183; aerocapture</text>
+  <text x="371" y="240" class="opt">+ set_orbit to shape the arrival ring</text>
 
-  <!-- 2 Design ship (top right) -->
-  <rect x="630" y="150" width="252" height="92" class="node" fill="#0f766e" stroke="#115e59"/>
-  <text x="756" y="178" text-anchor="middle" class="ntitle">2 · Design ship  (CALCULATED)</text>
-  <text x="756" y="198" text-anchor="middle" class="neqn">&#916;v &#8594; tank count (rocket eqn)</text>
-  <text x="756" y="214" text-anchor="middle" class="neqn">TWR &#8594; engine clusters</text>
-  <text x="756" y="230" text-anchor="middle" class="neqn">atmosphere &#961; &#8594; chutes / propulsive</text>
+  <!-- AT THE BODY -->
+  <text x="670" y="120" class="lay">AT THE TARGET BODY</text>
+  <rect x="670" y="132" width="270" height="120" rx="13" fill="url(#gBody)" stroke="#4c1d95"/>
+  <text x="686" y="160" class="pt">land &#183; plant_flag &#183; walk_to</text>
+  <text x="686" y="184" class="pw">descend on the live gravity/atmosphere,</text>
+  <text x="686" y="200" class="pw">EVA a kerbal, plant the stock flag,</text>
+  <text x="686" y="216" class="pw">walk a calculated great-circle move</text>
+  <text x="686" y="238" class="opt">or: commission_relay &#183; rendezvous + dock</text>
 
-  <!-- 3 Plan maneuver (lower right) -->
-  <rect x="630" y="520" width="252" height="92" class="node" fill="#0f766e" stroke="#115e59"/>
-  <text x="756" y="548" text-anchor="middle" class="ntitle">3 · Plan maneuver  (CALCULATED)</text>
-  <text x="756" y="568" text-anchor="middle" class="neqn">vis-viva &#183; Oberth</text>
-  <text x="756" y="584" text-anchor="middle" class="neqn">rocket eqn &#183; hoverslam law</text>
-  <text x="756" y="600" text-anchor="middle" class="neqn">node = (dv_prograde, dv_normal, ut)</text>
+  <!-- COMING HOME -->
+  <text x="355" y="330" class="lay">COMING HOME</text>
+  <rect x="355" y="342" width="585" height="116" rx="13" fill="url(#gHome)" stroke="#92400e"/>
+  <text x="371" y="370" class="pt">ascend  &#8594;  transfer (home)  &#8594;  recover</text>
+  <text x="371" y="394" class="pw">climb back to orbit of the body, take the return window to Kerbin,</text>
+  <text x="371" y="412" class="pw">aerocapture / chutes down, and recover the vessel &amp; crew on the home body.</text>
+  <text x="371" y="436" class="pwr">a one-way relay stops after capture; a round trip flies all three.</text>
 
-  <!-- 4 Fly (bottom) -->
-  <rect x="335" y="662" width="230" height="76" class="node" fill="#b45309" stroke="#92400e"/>
-  <text x="450" y="690" text-anchor="middle" class="ntitle">4 · Fly</text>
-  <text x="450" y="710" text-anchor="middle" class="nsub">delegate to MechJeb / kRPC</text>
-  <text x="450" y="728" text-anchor="middle" class="nsub">finite-burn lead · warp&#8594;ut · hoverslam</text>
+  <!-- EXECUTOR FOOTER -->
+  <text x="40" y="512" class="lay">THE EXECUTOR AROUND EVERY STEP  (agent.py)</text>
+  <rect x="40" y="524" width="900" height="150" rx="13" fill="#0c1322" stroke="#1e293b"/>
 
-  <!-- 5 Verify (lower left) -->
-  <rect x="18" y="520" width="252" height="92" class="node" fill="#6d28d9" stroke="#4c1d95"/>
-  <text x="144" y="548" text-anchor="middle" class="ntitle">5 · Verify</text>
-  <text x="144" y="568" text-anchor="middle" class="nsub">measure(vessel) live state</text>
-  <text x="144" y="584" text-anchor="middle" class="nsub">orbit / altitude / velocity hit target?</text>
-  <text x="144" y="600" text-anchor="middle" class="nsub">within tolerance &#8594; pass</text>
+  <rect x="64" y="548" width="270" height="104" rx="11" fill="#13233b" stroke="#1e3a5f"/>
+  <text x="80" y="574" class="pt" font-size="13.5px">connect once</text>
+  <text x="80" y="596" class="pw">open kRPC + bridge a single time;</text>
+  <text x="80" y="612" class="pw">thread one live context (vessel,</text>
+  <text x="80" y="628" class="pw">target, current body) through</text>
+  <text x="80" y="644" class="pw">every primitive in order.</text>
 
-  <!-- 6 Record (top left) -->
-  <rect x="18" y="150" width="252" height="92" class="node" fill="#5b21b6" stroke="#4c1d95"/>
-  <text x="144" y="178" text-anchor="middle" class="ntitle">6 · Record</text>
-  <text x="144" y="198" text-anchor="middle" class="nsub">log the calculated values</text>
-  <text x="144" y="214" text-anchor="middle" class="nsub">+ the achieved result</text>
-  <text x="144" y="230" text-anchor="middle" class="nsub">advance to next step</text>
+  <rect x="356" y="548" width="270" height="104" rx="11" fill="#2a1c08" stroke="#5c3d10"/>
+  <text x="372" y="574" class="pt" font-size="13.5px">bounded retry</text>
+  <text x="372" y="596" class="pw">each step runs up to --max-attempts;</text>
+  <text x="372" y="612" class="pw">a known/variance marker is retried,</text>
+  <text x="372" y="628" class="pw">an unknown failure is not (it will not</text>
+  <text x="372" y="644" class="pw">fix itself by repeating).</text>
 
-  <!-- cycle arrows (clockwise) -->
-  <path d="M567,72  C645,92  690,118 705,148"  class="ring" marker-end="url(#cyc)"/>   <!-- 1 -> 2 -->
-  <path d="M756,242 C756,330 756,430 756,516"  class="ring" marker-end="url(#cyc)"/>   <!-- 2 -> 3 -->
-  <path d="M700,612 C680,640 630,660 567,672"  class="ring" marker-end="url(#cyc)"/>   <!-- 3 -> 4 -->
-  <path d="M333,672 C270,660 220,640 200,612"  class="ring" marker-end="url(#cyc)"/>   <!-- 4 -> 5 -->
-  <path d="M144,516 C144,430 144,330 144,244"  class="ring" marker-end="url(#cyc)"/>   <!-- 5 -> 6 -->
-  <path d="M200,148 C220,118 270,92  333,72"   class="ring" marker-end="url(#cyc)"/>   <!-- 6 -> 1 -->
+  <rect x="648" y="548" width="270" height="104" rx="11" fill="#2a0d0d" stroke="#5c1a1a"/>
+  <text x="664" y="574" class="pt" font-size="13.5px">fail fast + diagnose</text>
+  <text x="664" y="596" class="pw">a failed primitive surfaces its</text>
+  <text x="664" y="612" class="pw">mission_phase / RESULT:FAIL marker,</text>
+  <text x="664" y="628" class="pw">gets a knowledge-base diagnosis,</text>
+  <text x="664" y="644" class="pw">and ABORTS the mission &#8212; never hangs.</text>
 
-  <!-- retry arrow: Verify fails -> back to Plan (re-solve the step) -->
-  <path d="M270,560 C400,520 520,540 626,556" class="ring" stroke="#b45309" stroke-dasharray="7 5" marker-end="url(#retry)"/>
-  <text x="450" y="525" text-anchor="middle" class="rlab">on miss: re-solve &#8594; retry</text>
+  <!-- flight-order arrows -->
+  <path d="M310,192 L355,192" stroke="#0d9488" stroke-width="2.4" fill="none" marker-end="url(#flow)"/>
+  <path d="M625,192 L670,192" stroke="#0d9488" stroke-width="2.4" fill="none" marker-end="url(#flow)"/>
+  <path d="M805,252 C805,300 690,310 648,344" stroke="#0d9488" stroke-width="2.4" fill="none" marker-end="url(#flow)"/>
+  <text x="700" y="300" class="opt" fill="#5eead4">(round trip)</text>
+
+  <!-- retry + fail markers around the body step -->
+  <path d="M905,180 C950,210 950,150 912,150" stroke="#b45309" stroke-width="2.2" fill="none" stroke-dasharray="6 4" marker-end="url(#retry)"/>
+  <text x="828" y="118" class="lab">retry on variance</text>
 </svg>
