@@ -81,39 +81,87 @@ class ShipRequirements:
     max_engine_count: int = 8
 
 
-# Engines are selected by ROLE, not one flat ladder (a vacuum Terrier as a booster gives TWR<1 and the
-# rocket won't lift; a low-Isp Mainsail as an upper stage wastes Δv). A stage that fires in the
-# ATMOSPHERE (phase.twr_body_g > 5 -> Kerbin/Eve liftoff) draws from the BOOSTER pool (sized on
-# SEA-LEVEL thrust); a vacuum/upper/landing stage draws from the VACUUM pool (high Isp, modest thrust).
-# Each pool is ordered small -> large so the designer still picks the LIGHTEST that meets TWR + Δv.
-BOOSTER_ENGINES = [
-    "liquidEngine",
-    "liquidEngine2",
-    "engineLargeSkipper",
-    "liquidEngineMainsail.v2",
-    "Size3AdvancedEngine",
-]  # Reliant/Swivel/Skipper/Mainsail/Rhino
-VACUUM_ENGINES = [
-    "liquidEngine3.v2",
-    "engineLargeSkipper",
-    "liquidEngineMainsail.v2",
-    "Size3AdvancedEngine",
-]  # Terrier (Isp 345) then thrustier/wider options
+# --------------------------------------------------------------------------------------------------
+# Diameter-laddered, cluster-fit-aware stage sizing.
+#
+# A real rocket keeps a consistent (non-increasing-upward) diameter and never hangs engines outside
+# the tank. The old sizer minimised wet mass with a fixed 1-tank-per-engine map, which always picked
+# the finest-granularity 1.25 m tank and stacked a dozen of them into a needle, then clustered engines
+# in a ring WIDER than the tank. The new sizer instead chooses, per stage, the NARROWEST standard
+# diameter that (a) is >= the diameter of every stage above it (monotonic taper, base widest),
+# (b) holds the stage's propellant without exceeding a per-stage fineness budget (no needles), and
+# (c) can mount enough engines WITHIN the tank radius to meet the TWR. An engine wider than its tank,
+# or a cluster that overflows the tank, is rejected outright — never drawn hanging in mid-air.
+# --------------------------------------------------------------------------------------------------
+DIAMETERS = (1.25, 2.5, 3.75)                  # standard stack diameters, narrow -> wide
+
+# Candidate tanks per diameter (largest first). The sizer counts whole units of one chosen tank; the
+# smaller same-diameter tanks let a light stage trim down instead of wasting a huge tank.
+TANKS_BY_DIAMETER = {
+    1.25: ["fuelTank.long", "fuelTank", "fuelTankSmall"],
+    2.5: ["Rockomax32.BW", "Rockomax16.BW"],
+    3.75: ["Size3LargeTank", "Size3MediumTank", "Size3SmallTank"],
+}
+# Role engine pools (small -> large). A stage that fires in the ATMOSPHERE (twr_body_g > 5 -> Kerbin/
+# Eve liftoff) draws the BOOSTER pool (sea-level thrust); a vacuum/upper/landing stage draws the
+# VACUUM pool (high Isp). The sizer only pairs an engine with a tank at least as wide as the engine.
+BOOSTER_ENGINES = ["liquidEngine", "liquidEngine2", "engineLargeSkipper",
+                   "liquidEngineMainsail.v2", "Size3AdvancedEngine"]  # Reliant/Swivel/Skipper/Mainsail/Rhino
+VACUUM_ENGINES = ["liquidEngine3.v2", "engineLargeSkipper",
+                  "liquidEngineMainsail.v2", "Size3AdvancedEngine"]   # Terrier then thrustier/wider
+
+# A stage taller than this many calibers (stack height / diameter) is a "needle" — widen it. Real
+# stages run ~3-6 calibers. The whole-vehicle L/D is gated separately (design-chart geometry gate).
+PER_STAGE_FINENESS = 6.0
 
 
 def engine_pool(phase: "Phase") -> list[str]:
-    """The role-correct engine candidates for a phase: BOOSTER (sea-level thrust) for an in-atmosphere
-    liftoff stage, VACUUM (high Isp) for a stage that only fires in space."""
+    """The role-correct engine candidates: BOOSTER (sea-level thrust) for an in-atmosphere liftoff
+    stage, VACUUM (high Isp) for a stage that only fires in space."""
     return BOOSTER_ENGINES if phase.twr_body_g > 5.0 else VACUUM_ENGINES
-# Each engine class pairs with a tank scale so tank counts stay sane; still verified by the rocket eqn.
-TANK_FOR_ENGINE = {
-    "liquidEngine3.v2": "fuelTank.long",
-    "liquidEngine2": "fuelTank.long",
-    "liquidEngine": "Rockomax16.BW",
-    "engineLargeSkipper": "Rockomax16.BW",
-    "liquidEngineMainsail.v2": "Rockomax32.BW",
-    "Size3AdvancedEngine": "Size3LargeTank",
-}
+
+
+def _unit_tank_for_engine(eng_name: str) -> str:
+    """The largest stock tank matching an engine's own diameter — used for the single-stage Δv ceiling."""
+    dia = part(eng_name).diameter_m
+    return TANKS_BY_DIAMETER.get(dia, TANKS_BY_DIAMETER[1.25])[0]
+
+
+# An engine BELL is far narrower than its stack-mounting node (a 2.5 m Mainsail's bell is ~1.5 m), so
+# real rockets pack several bells onto a mounting PLATE at the base (Saturn-V F-1 cluster, Falcon-9
+# octaweb). We model the bell radius as a fraction of the mounting diameter and let a cluster spread
+# onto a plate up to PLATE_FACTOR x the tank radius — wide enough for heavy-lift thrust, bounded so it
+# still reads as one engine section (never the old ring hung far off the side).
+ENGINE_BELL_FRAC = 0.36
+PLATE_FACTOR = 1.5
+
+
+def engine_bell_radius(eng_name: str) -> float:
+    return part(eng_name).diameter_m * ENGINE_BELL_FRAC
+
+
+def cluster_ring_radius(n_ring: int, r_bell: float) -> float:
+    """Tightest radius for ``n_ring`` engine bells ringed around a central bell with no overlaps:
+    each ring bell must clear the central one (>= 2*r_bell) and its neighbours (>= r_bell/sin(pi/n))."""
+    if n_ring <= 0:
+        return 0.0
+    adjacent = r_bell / math.sin(math.pi / n_ring) if n_ring >= 2 else 0.0
+    return max(2.0 * r_bell, adjacent)
+
+
+def max_cluster_in_tank(r_bell: float, r_tank: float) -> int:
+    """How many engine bells of radius ``r_bell`` fit as one central + a symmetric ring on a mounting
+    plate of radius ``PLATE_FACTOR*r_tank``. Returns 0 if even a single bell is wider than the tank."""
+    if r_bell > r_tank + 1e-9:
+        return 0
+    plate_r = r_tank * PLATE_FACTOR
+    best = 1
+    for n_ring in range(1, 13):
+        if cluster_ring_radius(n_ring, r_bell) + r_bell <= plate_r + 1e-9:
+            best = 1 + n_ring
+        else:
+            break
+    return best
 
 
 def _bus_mass(req: ShipRequirements) -> float:
@@ -157,15 +205,25 @@ def _tank_count_for_dv(dv: float, mass_above_t: float, eng_dry_wet: tuple[float,
     denom = tank_wet_t - R * tank_dry_t
     if denom <= 0:
         return 9999
-    return max(1, math.ceil(M * (R - 1.0) / denom))
+    # Cap at the 9999 sentinel: when the mass-above is so large that the closed form asks for an
+    # astronomical count (a diverging cascade, e.g. a mis-specified moon-as-planet ejection Δv), the
+    # stage is hopelessly infeasible — the `ok` gate rejects anything >= 9000, and the cap keeps the
+    # number finite so the renderer never tries to build 1e28 tank nodes and hang.
+    return min(9999, max(1, math.ceil(M * (R - 1.0) / denom)))
 
 
-def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8) -> dict:
-    """Solve (engine_count, tank_count) for one engine type: closed-form tank count for `dv`, plus a
-    clustering fixed-point so thrust meets min_twr at the resulting ignition mass — capped at
-    max_engine_count (beyond which it accepts the lower TWR rather than cluster further)."""
+def _size_one(eng_name: str, tank_name: str, dv: float, mass_above_t: float, phase: Phase,
+              max_engine_count: int = 8) -> dict | None:
+    """Solve (engine_count, tank_count) for one engine+tank pairing: closed-form tank count for `dv`,
+    plus a clustering fixed-point so thrust meets min_twr at the ignition mass — capped both at
+    `max_engine_count` AND at how many engines geometrically FIT under the tank (so a cluster never
+    overflows the hull). Returns None when the engine is wider than the tank."""
     eng = part(eng_name)
-    tank = part(TANK_FOR_ENGINE[eng_name])
+    tank = part(tank_name)
+    fit_cap = max_cluster_in_tank(engine_bell_radius(eng_name), tank.diameter_m / 2.0)
+    if fit_cap < 1:
+        return None                                # engine bell wider than the tank -> not a candidate
+    cap = min(max_engine_count, fit_cap)
     thrust_one = (eng.thrust_kn_asl if phase.twr_body_g > 5.0 and eng.thrust_kn_asl > 0 else eng.thrust_kn_vac) * 1000.0
     n_eng, tanks = 1, 1
     for _ in range(8):
@@ -173,7 +231,7 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_e
                                    tank.dry_mass_t, tank.wet_mass_t, eng.isp_vac_s)
         m0 = mass_above_t + eng.wet_mass_t * n_eng + tank.wet_mass_t * tanks
         if phase.min_twr > 0 and phase.twr_body_g > 0 and thrust_one > 0:
-            need = min(max_engine_count, math.ceil(phase.min_twr * m0 * 1000.0 * phase.twr_body_g / thrust_one))
+            need = min(cap, math.ceil(phase.min_twr * m0 * 1000.0 * phase.twr_body_g / thrust_one))
             if need > n_eng:
                 n_eng = need
                 continue
@@ -183,37 +241,59 @@ def _size_one(eng_name: str, dv: float, mass_above_t: float, phase: Phase, max_e
     m0 = mass_above_t + wet
     achieved_twr = astro.twr(thrust_one * n_eng, m0, phase.twr_body_g) if phase.twr_body_g > 0 else math.inf
     actual_dv = astro.rocket_dv(eng.isp_vac_s, m0, mass_above_t + dry)
-    # Honour a minimum tank diameter (a powered lander wants a WIDE 2.5 m tank for a low CoG + wide base,
-    # not a tall 1.25 m needle that tips over). A too-narrow tank is rejected as a candidate.
-    diameter_ok = phase.min_diameter_m <= 0 or tank.diameter_m >= phase.min_diameter_m - 1e-6
+    stage_h = tank.height_m * tanks + eng.height_m
+    fineness = stage_h / tank.diameter_m if tank.diameter_m > 0 else 1e9
+    twr_ok = phase.min_twr <= 0 or achieved_twr >= phase.min_twr
     return {
-        "engine": eng_name, "engine_count": n_eng, "tank": TANK_FOR_ENGINE[eng_name], "tanks": tanks,
-        "diameter_m": tank.diameter_m,
+        "engine": eng_name, "engine_count": n_eng, "tank": tank_name, "tanks": tanks,
+        "diameter_m": tank.diameter_m, "fit_cap": fit_cap,
         "twr": round(achieved_twr, 2), "stage_dv": round(actual_dv, 0), "m0_t": round(m0, 2),
-        "wet_t": round(wet, 2), "parts": n_eng + tanks,
-        "diameter_ok": diameter_ok,
-        "ok": tanks < 9000 and actual_dv >= dv * 0.995 and diameter_ok
-              and (phase.min_twr <= 0 or achieved_twr >= phase.min_twr),
+        "wet_t": round(wet, 2), "parts": n_eng + tanks, "fineness": round(fineness, 2),
+        "twr_ok": twr_ok,
+        "ok": tanks < 9000 and actual_dv >= dv * 0.995 and twr_ok,
     }
 
 
-def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8) -> tuple[StageSpec, dict]:
-    """Search the engine catalogue (each with calculated clustering + closed-form tank count) and pick
-    the LIGHTEST valid stage — minimising wet mass minimises the cascade onto the stages below it. Pure
-    calculated selection; no hand-picked engine. Clusters are capped at max_engine_count."""
-    candidates = [_size_one(e, dv, mass_above_t, phase, max_engine_count) for e in engine_pool(phase)]
-    valid = [m for m in candidates if m["ok"] and m["engine_count"] <= max_engine_count]
-    if valid:
-        chosen = min(valid, key=lambda m: m["wet_t"])
-    else:
-        # No engine meets min_twr within the cluster cap; pick the most launchable (highest TWR) that
-        # still delivers the required Δv, else the highest TWR available.
-        capped = [m for m in candidates if m["engine_count"] <= max_engine_count]
-        diameter_capped = [m for m in capped if m.get("diameter_ok", True)]
-        if diameter_capped:
-            capped = diameter_capped
-        dv_ok = [m for m in capped if m["stage_dv"] >= dv * 0.995]
-        chosen = max(dv_ok or capped or candidates, key=lambda m: m["twr"])
+def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: int = 8,
+                dia_floor: float = 0.0) -> tuple[StageSpec, dict]:
+    """Pick the stage. Search every (tank, engine) pairing at each standard diameter >= the floor (the
+    widest stage above, so taper stays monotonic), each with a closed-form tank count + cluster-fit,
+    and choose the NARROWEST diameter whose lightest feasible build is NOT a needle
+    (fineness <= PER_STAGE_FINENESS). The fineness budget kills the 1.25 m noodle; cluster-fit kills
+    the engine overhang; the floor guarantees the base is the widest."""
+    floor = max(dia_floor, phase.min_diameter_m)
+    diam_list = [d for d in DIAMETERS if d >= floor - 1e-6] or [DIAMETERS[-1]]
+    per_dia: dict[float, dict] = {}
+    any_cand: list[dict] = []
+    for dia in diam_list:
+        cands = []
+        for tank_name in TANKS_BY_DIAMETER[dia]:
+            for eng_name in engine_pool(phase):
+                if part(eng_name).diameter_m > dia + 1e-6:
+                    continue                       # engine wider than this tank
+                m = _size_one(eng_name, tank_name, dv, mass_above_t, phase, max_engine_count)
+                if m is not None:
+                    cands.append(m)
+        any_cand.extend(cands)
+        feas = [m for m in cands if m["ok"]]
+        if feas:
+            per_dia[dia] = min(feas, key=lambda m: m["wet_t"])
+    chosen = None
+    for dia in diam_list:                          # narrowest diameter with a non-needle feasible build
+        m = per_dia.get(dia)
+        if m and m["fineness"] <= PER_STAGE_FINENESS:
+            chosen = m
+            break
+    if chosen is None and per_dia:                 # all feasible builds are needles -> widest (least slender)
+        chosen = per_dia[max(per_dia)]
+    if chosen is None:                             # nothing feasible at any diameter -> least-bad (gate fails it)
+        pool = any_cand or [{
+            "engine": engine_pool(phase)[-1], "engine_count": 1,
+            "tank": TANKS_BY_DIAMETER[diam_list[-1]][0], "tanks": 9999, "diameter_m": diam_list[-1],
+            "fit_cap": 1, "twr": 0.0, "stage_dv": 0.0, "m0_t": 0.0, "wet_t": 9e9, "parts": 0,
+            "fineness": 9e9, "twr_ok": False, "ok": False}]
+        dv_ok = [m for m in pool if m["stage_dv"] >= dv * 0.995]
+        chosen = max(dv_ok or pool, key=lambda m: m["twr"])
     spec = StageSpec(phase.name, chosen["engine"], chosen["tank"], chosen["tanks"],
                      decoupler_above=True, engine_count=chosen["engine_count"],
                      diameter_m=chosen.get("diameter_m", 1.25))
@@ -241,11 +321,15 @@ def design_ship(req: ShipRequirements) -> RocketDesign:
     log: list[str] = [f"bus(command+crew+heatshield+payload)={bus:.2f}t"]
     if len(phases) != len(req.phases):
         log.append(f"add-a-stage: split {len(req.phases)} requested phases into {len(phases)} stages (Δv ceiling)")
-    # Process phases last-firing first so each lower stage carries the wet mass of the ones above it.
+    # Process phases last-firing first (top stage first) so each lower stage carries the wet mass of
+    # the ones above it. Track the widest diameter seen so far as a FLOOR for the next (lower) stage —
+    # this guarantees a monotonic non-increasing-upward taper (the base is always the widest).
+    dia_floor = 1.25                                # the payload bus rides on a 1.25 m core
     for phase in reversed(phases):
         # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
         # burn-to-depletion (a real rocket never plans to land on empty tanks).
-        spec, metrics = _size_stage(phase.design_dv(), mass_above, phase, req.max_engine_count)
+        spec, metrics = _size_stage(phase.design_dv(), mass_above, phase, req.max_engine_count, dia_floor)
+        dia_floor = max(dia_floor, spec.diameter_m)
         stages_rev.append(spec)
         metrics_rev.append(metrics)
         mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
@@ -384,7 +468,7 @@ def _single_stage_ceiling(phase: Phase) -> float:
     paired tank. A phase needing more than this cannot close on one stage at ANY tank count."""
     best = 0.0
     for e in engine_pool(phase):
-        tk = part(TANK_FOR_ENGINE[e])
+        tk = part(_unit_tank_for_engine(e))
         eng = part(e)
         if tk.dry_mass_t > 0 and tk.wet_mass_t > tk.dry_mass_t:
             best = max(best, eng.isp_vac_s * astro.G0 * math.log(tk.wet_mass_t / tk.dry_mass_t))

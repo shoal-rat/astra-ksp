@@ -51,11 +51,13 @@ def assembly_geometry(design) -> list[dict]:
         p = part(n.part_name)
         x, y, z = n.pos_xyz if n.pos_xyz is not None else (0.0, n.y, 0.0)
         role = _role(n.part_name, n.fairing_xsections)
-        # Engines/fins/legs have a smaller visible planform than their stack mating diameter. Keep the
-        # stack diameter for body math, but draw surface accessories with their visual footprint.
+        # Draw engines at their BELL width (~0.72x the mounting node), the size that actually packs into a
+        # base cluster — so the chart shows the real engine section and `_radial_span` measures the true
+        # bell footprint (an over-wide cluster still shows; the old 0.60 shrink hid it inconsistently).
+        # Fins/legs are genuinely thin plates/struts; their radial POSITION is honest so a floating leg shows.
         draw_dia = p.diameter_m
-        if n.is_surface and role == "engine":
-            draw_dia *= 0.60
+        if role == "engine":
+            draw_dia = p.diameter_m * 0.72
         elif role in {"fin", "leg"}:
             draw_dia = 0.35
         out.append({
@@ -72,6 +74,14 @@ def assembly_geometry(design) -> list[dict]:
             "bot": float(y) - p.height_m / 2.0,
             "fairing_xsections": n.fairing_xsections,
         })
+    # A payload fairing's ogive shell extrudes UPWARD from its base over every part above it (the
+    # payload bus). Record that shell extent on the fairing dict so the chart can draw the real shroud
+    # ENCLOSING the payload — not the tiny 0.42 m base part, which made the payload look exposed.
+    for f in out:
+        if f["role"] == "fairing" and not f["surface"]:
+            enclosed = [g for g in out if not g["surface"] and g["role"] != "fairing" and g["y"] > f["y"]]
+            f["shell_top"] = max((g["top"] for g in enclosed), default=f["top"])
+            f["encloses"] = max((g["dia"] for g in enclosed), default=f["dia"])
     return out
 
 
@@ -108,7 +118,12 @@ def looks_like_a_rocket(design) -> dict:
     fineness = length / max_dia if max_dia > 0 else float("inf")
 
     ordered = sorted(body, key=lambda b: -b["y"])
-    dias = [b["dia"] for b in ordered]
+    # Taper is a HULL property: judge it on the load-bearing tanks/adapters/command/nose only. Engines
+    # and inter-stage decouplers are NARROWER than the tank they tuck under (a 1.25 m Terrier beneath a
+    # 2.5 m stage, a 1.25 m TD-12 between two stages), so including them reads as a false narrowing. The
+    # real hull profile (tanks + conical adapters) is what must be non-increasing upward.
+    hull = [b for b in ordered if b["name"] != "Decoupler.1" and b["role"] != "engine"]
+    dias = [b["dia"] for b in hull]
     taper_ok = all(dias[i] <= dias[i + 1] + 1e-6 for i in range(len(dias) - 1))
     top_part = ordered[0]
     bottom_part = min(body, key=lambda b: b["y"])
@@ -122,14 +137,20 @@ def looks_like_a_rocket(design) -> dict:
 
     radial_span = _radial_span(geom, include_landing_gear=False)
     full_span = _radial_span(geom, include_landing_gear=True)
-    radial_ok = radial_span <= max(max_dia * 1.85, max_dia + 2.5)
+    # Ascent envelope: with engines now clustered INSIDE the tank, the only legitimate protrusions are
+    # fins (~0.4 m past the hull). Anything wider than ~1.6x the body diameter is an overhang and FAILS
+    # (the old 1.85x + 2.5 m envelope passed a 6.4 m cluster on a 3.75 m tank).
+    radial_ok = radial_span <= max(max_dia * 1.6, max_dia + 1.2)
     drag_loss = float(getattr(design, "ascent_drag_loss_mps", 0.0) or 0.0)
     landed_ok = (not bool(getattr(design, "landing_legs", False))) or bool(getattr(design, "landed_stable", True))
 
     checks = {
-        "slender body (6 <= L/D <= 28)": 6.0 <= fineness <= 28.0,
+        # Real launchers run L/D ~8 (Saturn V ~11) to ~19 (Falcon 9 = 18.9). Cap at 19: accepts a
+        # legitimately tall slender stack (a single-launch propulsive interplanetary round-trip) while
+        # rejecting the old 22-24:1 noodles. A better mission profile (chutes/aerobrake) shortens landers.
+        "slender body (4 <= L/D <= 19)": 4.0 <= fineness <= 19.0,
         "monotonic taper (widest toward base)": taper_ok,
-        "streamlined nose or capsule top": top_part["name"] in NOSE_PARTS or any(b["role"] == "fairing" for b in body),
+        "payload housed (fairing or capsule top)": top_part["name"] in NOSE_PARTS or any(b["role"] == "fairing" for b in body),
         "engine at the base": bottom_part["role"] == "engine",
         "controlled ascent margin": active_control_stable,
         "radial protrusions within ascent envelope": radial_ok,
@@ -180,14 +201,22 @@ def _draw_side_part(g: dict, cx: float, yy, scale: float, front: bool = False) -
     stroke = "#475569"
 
     if role == "fairing":
-        half = w / 2.0
+        # Draw the real ogive SHROUD: a cylinder as wide as the payload it encloses, from the fairing
+        # base up over the bus to a rounded nose above it. Semi-transparent so the enclosed payload shows
+        # faintly INSIDE — proving it is housed, not riding exposed on the nose.
+        shell_dia = max(g["dia"], g.get("encloses", g["dia"]))
+        half = shell_dia * scale / 2.0
         base_y = yy(g["bot"])
-        tip_y = yy(g["top"]) - 12.0
+        shoulder_m = g.get("shell_top", g["top"])
+        shoulder_y = yy(shoulder_m)
+        tip_y = shoulder_y - max(18.0, half * 1.3)
         return (
             f'<path d="M {local_cx-half:.1f} {base_y:.1f} '
-            f'Q {local_cx-half:.1f} {tip_y+20:.1f} {local_cx:.1f} {tip_y:.1f} '
-            f'Q {local_cx+half:.1f} {tip_y+20:.1f} {local_cx+half:.1f} {base_y:.1f} Z" '
-            f'fill="{fill}" stroke="#d97706" stroke-width="1.4" opacity="0.94"/>'
+            f'L {local_cx-half:.1f} {shoulder_y:.1f} '
+            f'Q {local_cx-half:.1f} {tip_y+14:.1f} {local_cx:.1f} {tip_y:.1f} '
+            f'Q {local_cx+half:.1f} {tip_y+14:.1f} {local_cx+half:.1f} {shoulder_y:.1f} '
+            f'L {local_cx+half:.1f} {base_y:.1f} Z" '
+            f'fill="{fill}" stroke="#d97706" stroke-width="1.4" opacity="0.55"/>'
         )
     if role == "nose" and g["name"] == "noseCone":
         half = w / 2.0

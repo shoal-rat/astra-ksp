@@ -377,9 +377,18 @@ class CraftWriter:
         # Designs list stages in ignition order, so render them from upper stage down.
         rendered_stages = list(reversed(design.stages))
         bottom_tank: CraftNode | None = None
-        lander_tank: CraftNode | None = None  # tank of the top stage that STAYS (the lander)
+        lander_tank: CraftNode | None = None  # tank of the stage that lands (footpads reference its hull)
         lander_engine: CraftNode | None = None  # engine of the lander stage (footpads must clear its bell)
         prev_dia: float | None = None          # diameter of the stage ABOVE (for the adapter step check)
+        # The lander = the stage firing DURING the landing burn (role contains "land"). By touchdown the
+        # stages below it have all dropped, so its engine bell is the LOWEST kept part and the legs go
+        # just under it — not on the top stage (the old render_index==1 bug floated legs mid-stack). For
+        # a one-way craft with no explicit landing phase the top stage (render_index 1) is the lander.
+        # render_index counts from the TOP (1 = last-firing); a landing phase at fire-order j renders at
+        # len(stages) - j.
+        n_stages = len(design.stages)
+        _land_fire_idx = next((i for i, s in enumerate(design.stages) if "land" in s.role.lower()), None)
+        lander_render_index = (n_stages - _land_fire_idx) if _land_fire_idx is not None else 1
         # PAYLOAD FAIRING: a probe comsat rides INSIDE an ogive shroud — never an exposed antenna on the
         # nose. The fairing base node-attaches BELOW the payload bus; its ModuleProceduralFairing shell
         # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
@@ -441,26 +450,32 @@ class CraftWriter:
                 self._attach(current, adapter, "bottom", "top")
                 nodes.append(adapter)
                 current = adapter
-            for _ in range(stage.tank_count):
+            # Defensive cap: a feasible stage is fineness-bounded to a handful of tanks; an INFEASIBLE
+            # stage (rejected by the gate) can carry the 9999 sentinel, which would build 9999 nodes and
+            # stall the renderer. Cap the drawn stack so an infeasible design still charts (visibly absurd)
+            # instead of hanging — the feasibility gate is what actually blocks the launch.
+            for _ in range(min(stage.tank_count, 120)):
                 tank = new_node(stage.tank, render_index)
                 self._attach(current, tank, "bottom", "top")
                 nodes.append(tank)
                 current = tank
                 bottom_tank = tank  # last tank built = bottom of the first-ignition (launch) stage
-                if render_index == 1:
-                    lander_tank = tank  # top propulsive stage = the part that stays = the lander
+                if render_index == lander_render_index:
+                    lander_tank = tank  # the stage that lands = where the footpads reference the hull
             engine = new_node(stage.engine, render_index)
             self._attach(current, engine, "bottom", "top")
             nodes.append(engine)
-            if render_index == 1:
-                lander_engine = engine  # bottom of the kept stack — legs' footpads go below this bell
-            # CALCULATED engine cluster: design.py sizes engine_count for the phase's TWR. The central
-            # engine is node-attached on the stack axis; the rest clip into a ring around it on the
-            # bottom tank, all pointing down (identity rotation) and crossfeeding from the tank — the
-            # Starship / Super-Heavy way to make thrust without a single impossibly-large engine.
+            if render_index == lander_render_index:
+                lander_engine = engine  # bottom of the kept lander stack — legs' footpads go below this bell
+            # CALCULATED engine cluster: design.py sizes engine_count for the phase's TWR AND guarantees
+            # (via max_cluster_in_tank) that the cluster physically fits under the tank. The central
+            # engine is node-attached on the stack axis; the rest sit on a ring of radius
+            # r_tank - r_engine so every bell stays INSIDE the tank footprint (never the old fixed
+            # 0.5 + 0.12*n that hung engines off the side). All point down and crossfeed from the tank.
             n_extra = max(0, stage.engine_count - 1)
             if n_extra > 0:
-                ring_r = 0.5 + 0.12 * n_extra
+                from .design import cluster_ring_radius, engine_bell_radius
+                ring_r = cluster_ring_radius(n_extra, engine_bell_radius(stage.engine))
                 for k in range(n_extra):
                     ang = 2.0 * math.pi * k / n_extra
                     sat = new_node(stage.engine, render_index)
@@ -574,12 +589,13 @@ class CraftWriter:
             static_margin = com_y - cop_final
             self.last_stability = {"com_y": round(com_y, 2), "cop_y": round(cop_final, 2),
                                    "static_margin_m": round(static_margin, 2), "fins": f"{fin_count}x {fin_name}"}
-            # Persist onto the design. ascent_stable = the CoP is NOT meaningfully above the CoG (margin
-            # >= ~-0.05 calibre): a near-neutral or positive margin is flyable with the engine gimbal +
-            # reaction wheels (how real gimballed rockets fly). A markedly NEGATIVE margin (CoP well above
-            # CoG — top-heavy) is genuinely unstable and the caller should reject it.
+            # Persist onto the design. ascent_stable = the rocket is flyable on engine GIMBAL + reaction
+            # wheels + fins. Real launchers are routinely 0.2-0.5 calibre aerodynamically UNSTABLE and fly
+            # fine on thrust-vector control, so the flyable bound is a mild -0.15 calibre (a payload-on-top
+            # stack is never perfectly passively stable). Only a markedly top-heavy stack (CoP well above
+            # CoG, < -0.15 cal) is rejected as genuinely uncontrollable.
             design.static_margin_m = round(static_margin, 2)
-            design.ascent_stable = static_margin >= -0.05 * max_d
+            design.ascent_stable = static_margin >= -0.15 * max_d
             if design.stages:
                 design.stages[0].fin_count = fin_count  # fins sit on the first-firing (booster) stage
             fin_r = part(bottom_tank.part_name).diameter_m * 0.5 + 0.4
@@ -601,7 +617,7 @@ class CraftWriter:
             eng_h = part(lander_engine.part_name).height_m if lander_engine is not None else 1.0
             anchor = lander_engine if lander_engine is not None else lander_tank
             foot_y = anchor.y - eng_h * 0.5 - 0.2            # footpad plane just below the engine bell
-            kept = [n for n in nodes if not n.is_surface and getattr(n, "stage_index", 0) in (0, 1)]
+            kept = [n for n in nodes if not n.is_surface and getattr(n, "stage_index", 0) <= lander_render_index]
             mk = sum(part(n.part_name).wet_mass_t for n in kept) or 1.0
             cog_y = sum(part(n.part_name).wet_mass_t * n.y for n in kept) / mk
             h_cog = max(0.5, cog_y - foot_y)                 # CoG height above the footpad plane
