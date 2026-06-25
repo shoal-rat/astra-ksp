@@ -866,25 +866,32 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     _execute_node_manually(conn, sc, v, max_burn_s=400.0, max_throttle=1.0)
     if not _wait_until_sun_orbit(sc, v):
         log(f"  did not escape the departure SOI (still {v.orbit.body.name})"); return False
-    # 2) MID-COURSE CORRECTION delegated to MechJeb. Set the target, warp partway toward arrival, plan a
-    # course correction, execute. Iterate twice — a later correction (closer to arrival) is small + precise.
+    # 2) ONE CHEAP EARLY correction, and ONLY if the interplanetary transfer left NO encounter. Hard
+    # lesson from the first two relays (both stranded DRY): MechJeb's course correction to a low periapsis
+    # NEAR the SOI is enormously expensive — it grew 338 -> 622 -> 1502 m/s and burned the relay out.
+    # MechJeb's interplanetary transfer already yields a BOUND encounter, so don't fine-tune to a specific
+    # periapsis: capture at whatever periapsis it gives (step 4) and Hohmann to sync. Correct once, early
+    # (far from the SOI = cheap), only to MANUFACTURE an encounter if there isn't one, and skip it if the
+    # planner asks for an absurd burn.
     try:
         sc.target_body = target
     except Exception as exc:
         log(f"  could not set target ({exc})")
-    for i, frac in enumerate((0.5, 0.85), start=1):
-        warp_to = win["ut_dep"] + frac * win["tof"]
-        if v.orbit.body.name != target_name and warp_to > sc.ut + 120.0:
-            sc.warp_to(warp_to); time.sleep(2)
-        if v.orbit.body.name == target_name:
-            break
+    warp_to = win["ut_dep"] + 0.5 * win["tof"]                 # halfway out: the cheap-correction zone
+    if v.orbit.body.name != target_name and warp_to > sc.ut + 120.0:
+        sc.warp_to(warp_to); time.sleep(2)
+    if v.orbit.body.name != target_name and not (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
         try:
             r = bridge.mj_plan(target=target_name, operation="correction")
-            if r.get("planned") and v.control.nodes:
-                log(f"  CORRECTION {i} (MechJeb course-correct): {r.get('dv', 0):.0f} m/s")
+            dv = r.get("dv", 0.0) if r.get("planned") else 0.0
+            if r.get("planned") and v.control.nodes and dv < 400.0:
+                log(f"  CORRECTION (MechJeb, early/cheap): {dv:.0f} m/s")
                 _execute_node_manually(conn, sc, v, max_burn_s=150.0, max_throttle=0.8)
+            else:
+                log(f"  skipping a {dv:.0f} m/s correction (too expensive near SOI — capturing at the natural encounter)")
+                v.control.remove_nodes()
         except Exception as exc:
-            log(f"  MechJeb correction {i} unavailable ({exc})")
+            log(f"  MechJeb correction unavailable ({exc})")
     # 3) Coast to the target SOI.
     for _ in range(4):
         if v.orbit.body.name == target_name:
