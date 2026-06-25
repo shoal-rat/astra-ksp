@@ -139,17 +139,10 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # falls back from apoapsis, so it needs real thrust — a slow Terrier (60 kN) leaves it suborbital
     # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
     # comsat upper still circularises fine on the Terrier (no floor).
-    if crew > 0:
-        # CREWED vehicle: the upper must circularise a HEAVY payload (pod + heat shield + chutes), and a
-        # Reliant (realized TWR ~1.1) failed to circularise the 237 t crewed vehicle TWICE (it burned the
-        # whole 20-min timeout without reaching parking orbit). Force a min_twr that picks a SKIPPER
-        # (TWR ~2.75) so circularisation is fast + robust; the vehicle gets heavier (~320 t) but the
-        # asparagus boosters still lift it (feasible) and it actually makes orbit.
-        _ins_g, _ins_twr = 9.81, 1.3
-    elif insertion_dv >= 3500.0:
-        _ins_g, _ins_twr = 9.81, 0.5
-    else:
-        _ins_g, _ins_twr = 0.0, 0.0
+    # NOTE: a thrustier crewed upper (Skipper via min_twr 1.3) was tried and DID NOT fix the crewed-launch
+    # failure — the blocker is ASCENT AERODYNAMICS (the blunt exposed heat-shield/pod tumbles), not upper
+    # thrust. Left at the proven relay floor; the real fix is a payload fairing over the crewed pod for ascent.
+    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
     # CREWED vs uncrewed command/recovery. A crewed launch (crew>0) MUST write a craft with a crewable
     # Mk1 pod + forward heat shield + chutes so a kerbal can board and survive re-entry; an uncrewed relay
     # rides a headless probe core in a fairing. mission_type reflects which so downstream code can tell.
