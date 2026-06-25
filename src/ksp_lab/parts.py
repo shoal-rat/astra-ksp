@@ -52,6 +52,11 @@ STOCK_PARTS: dict[str, StockPart] = {
     "rcsTankRadialLong": StockPart("rcsTankRadialLong", "FL-R25 RCS Fuel Tank", 0.1, 0.4, 330, 0.9),
     "HeatShield1": StockPart("HeatShield1", "Heat Shield 1.25m", 0.3, 0.3, 300, 0.2),
     "Decoupler.1": StockPart("Decoupler.1", "TD-12 Decoupler", 0.05, 0.05, 400, 0.1),
+    # RADIAL decoupler: srfAttaches a strap-on booster pod to the side of the core and blows it off
+    # when the booster is spent (the asparagus/radial-booster jettison). Stock TT-70 (radialDecoupler2):
+    # 0.05 t, 700 funds, ~0.6 m mounting plate. Mass/cost from the stock 1.12 RadialDecoupler2.cfg;
+    # diameter is the small mounting plate (the booster rides on it, the plate does not set the hull).
+    "radialDecoupler2": StockPart("radialDecoupler2", "TT-70 Radial Decoupler", 0.05, 0.05, 700, 0.6, diameter_m=0.6),
     "ServiceBay.125.v2": StockPart("ServiceBay.125.v2", "Service Bay 1.25m", 0.1, 0.1, 500, 0.6),
     "fuelTankSmallFlat": StockPart(
         "fuelTankSmallFlat", "FL-T100 Fuel Tank", 0.0625, 0.5625, 150, 0.625, liquid_fuel=45, oxidizer=55

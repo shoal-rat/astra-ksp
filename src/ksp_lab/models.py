@@ -50,6 +50,29 @@ class StageSpec:
 
 
 @dataclass(slots=True)
+class RadialBoosterSpec:
+    """N symmetric strap-on booster pods clustered radially around the LAUNCH stage's core, each a tank
+    stack + its own engine on a RADIAL decoupler (the asparagus / Soyuz / Falcon-Heavy pattern). They
+    ignite WITH the core at T0, add liftoff thrust + a chunk of the ascent Δv, then jettison together
+    once spent so the core flies on without their dead engine/tank mass. Every count is CALCULATED in
+    design.py from the rocket equation + TWR — never guessed."""
+    count: int                       # number of symmetric pods (default 4)
+    engine: str                      # one sea-level engine per pod
+    tank: str                        # the pod's tank type
+    tank_count: int                  # whole tanks per pod
+    engine_count: int = 1            # engines per pod (usually 1)
+    decoupler: str = "radialDecoupler2"  # the radial decoupler each pod hangs on
+    diameter_m: float = 1.25         # the pod tank diameter (for the geometry/envelope)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RadialBoosterSpec":
+        return cls(**data)
+
+
+@dataclass(slots=True)
 class RocketDesign:
     name: str
     mission_type: str
@@ -86,16 +109,23 @@ class RocketDesign:
     # unstable ascent, etc.); callers MUST check this before writing the .craft and launching.
     feasible: bool = True
     infeasible_reasons: list[str] = field(default_factory=list)
+    # RADIAL BOOSTERS: optional strap-on pods on the launch stage (None = single-core rocket). Set by
+    # design.py when the launch stage is too heavy to lift on the core alone; rendered by craft_writer
+    # as N symmetric tank+engine stacks on radial decouplers that fire at T0 and jettison when spent.
+    radial_boosters: "RadialBoosterSpec | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["stages"] = [stage.to_dict() for stage in self.stages]
+        data["radial_boosters"] = self.radial_boosters.to_dict() if self.radial_boosters else None
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RocketDesign":
         payload = dict(data)
         payload["stages"] = [StageSpec.from_dict(s) for s in payload.get("stages", [])]
+        rb = payload.get("radial_boosters")
+        payload["radial_boosters"] = RadialBoosterSpec.from_dict(rb) if rb else None
         return cls(**payload)
 
 
