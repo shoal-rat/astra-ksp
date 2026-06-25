@@ -17,13 +17,23 @@ mission profile), you MUST do all three of these BEFORE it is allowed to launch.
    diameter / mass / part-count back from kRPC and confirm they match the calculated values. If a part's
    real size/mass is unknown, query it — do not assume.
 
-2. **Generate a design chart and confirm it LOOKS LIKE A ROCKET.** Run
+2. **Generate a design chart, RENDER IT TO PNG, and confirm it LOOKS LIKE A ROCKET.** Run
    `python tools/design_chart.py` (or call `design_chart.looks_like_a_rocket(design)` +
-   `render_svg(design)`). This writes `docs/design_chart_<name>.svg` (a side-view you can eyeball) and
-   **hard-gates the proportions**: slender (6 ≤ fineness ≤ 28), monotonic taper (widest at the base),
-   a pointed nose (fairing ogive or cone on top), engine at the base, statically stable (CoP ≤ CoG).
-   If `looks_like_a_rocket(design)["looks_like_a_rocket"]` is `False`, the design is **REJECTED** — fix
-   the shape (it is a pancake, a noodle, top-heavy, or blunt), do not launch it.
+   `render_svg(design)`). This writes `docs/design_chart_<name>.svg` (a three-view) and **hard-gates the
+   proportions**: slender (4 ≤ L/D ≤ 19 — real launchers, Saturn-V ~11 to Falcon-9 ~19), monotonic taper
+   (widest at the base, never increasing upward), payload HOUSED (fairing ogive enclosing the bus, or a
+   capsule on top — never riding exposed), engine cluster at the base WITHIN a 1.5x mounting plate (never
+   hung off the side), legs at the LANDING stage's base, statically flyable. If
+   `looks_like_a_rocket(design)["looks_like_a_rocket"]` is `False`, the design is **REJECTED** — fix the
+   shape (noodle, pancake, wasp-waist, exposed payload, overhanging cluster, floating legs), do not fly it.
+
+   **Then ACTUALLY LOOK at it: render the SVG to PNG and read the image.**
+   `python tools/render_chart_png.py docs/design_chart_<name>.svg` (headless Chrome) → open the PNG.
+   The SVG XML hides geometry defects; a raster makes them obvious. Lesson learned the hard way: a chart
+   can read all-PASS while the PNG plainly shows engines clipping the tank, the payload hanging off the
+   nose, or legs floating in mid-air. The gate is necessary but NOT sufficient — eyeball the PNG before
+   you trust "LOOKS LIKE A ROCKET". This is the same discipline as verifying any change by observing it,
+   not by reading the code.
 
 3. **Calculate everything from that data.** All of Δv (Tsiolkovsky), TWR, staging / post-separation
    masses, structural coefficient ε and the single-stage Δv ceiling, aerodynamics (Cd, β, ascent drag
@@ -55,5 +65,6 @@ mission profile), you MUST do all three of these BEFORE it is allowed to launch.
 
 `astro.py` (orbital mechanics + aero + mission), `design.py` (sizing, feasibility, staging),
 `parts.py` / `bodies.py` (real catalogues), `craft_writer.py` (assembly + procedural fairing),
-`tools/design_chart.py` (the RULE-1 chart + live verify), `tools/deploy_relay.py` (the calculated
-comsat launcher), `docs/CONSTELLATION_DESIGN.md` (the network the comsats build).
+`tools/design_chart.py` (the RULE-1 three-view chart + geometry gate + live verify),
+`tools/render_chart_png.py` (rasterize a chart to PNG so defects are caught by eye), `tools/deploy_relay.py`
+(the calculated comsat launcher), `docs/CONSTELLATION_DESIGN.md` (the network the comsats build).

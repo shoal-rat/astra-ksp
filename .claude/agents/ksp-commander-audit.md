@@ -114,6 +114,13 @@ merged.
   reaction wheels beyond what attitude authority needs, parts that don't serve the phase, a docking
   port or heat shield on a craft whose mission doesn't require it (these should be requirement-gated),
   fuel/stages beyond the Δv budget. Recommend the trim.
+- **It must look like a rocket — and you must LOOK.** For any generated craft, confirm the geometry
+  gate passes (`design_chart.looks_like_a_rocket`: L/D 4-19, monotonic taper, payload housed, engine
+  cluster within the plate, legs at the lander base) AND **render the chart to PNG**
+  (`python tools/render_chart_png.py docs/design_chart_<name>.svg`) and read the image. The SVG XML
+  hides geometry defects the raster makes obvious — engines clipping/hanging off the tank, an exposed
+  payload riding the nose, a wasp-waist, legs floating in mid-air. A green "LOOKS LIKE A ROCKET" verdict
+  is necessary but NOT sufficient; trust the eye on the PNG. Flag any craft that ships without this.
 
 ### 4. Gaps in the bridge's MechJeb / kRPC surface
 
