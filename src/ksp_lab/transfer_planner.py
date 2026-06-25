@@ -123,7 +123,13 @@ def lambert_izzo(mu, r1, r2, tof, M=0, prograde=True, low_path=True):
     cn = vnorm(c)
     s = 0.5 * (r1n + r2n + cn)
     i_r1, i_r2 = vunit(r1), vunit(r2)
-    i_h = vunit(vcross(i_r1, i_r2))
+    h_vec = vcross(i_r1, i_r2)
+    # Degeneracy guard: when r1 and r2 are (anti)parallel — the exact 180-deg in-plane transfer — the
+    # orbit plane is undefined (cross product -> 0) and vunit would amplify noise into a garbage velocity
+    # that the cost function silently treats as valid. Reject it so the window search skips the sample.
+    if vnorm(h_vec) < 1e-8:
+        raise ValueError("Lambert geometry degenerate (r1, r2 collinear / 180-deg transfer)")
+    i_h = vunit(h_vec)
     ll = math.sqrt(max(0.0, 1.0 - min(1.0, cn / s)))
     if i_h[2] < 0.0:
         ll = -ll
@@ -306,7 +312,8 @@ def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
     ref = planet.non_rotating_reference_frame
     mu = planet.gravitational_parameter
     o = vessel.orbit
-    r_park = o.semi_major_axis                              # ~circular parking radius
+    a_park = o.semi_major_axis
+    r_ref = o.periapsis                                     # the burn happens at/near periapsis (Oberth)
     # parking-orbit normal from current state
     r_ship = o.position_at(sc.ut, ref)
     eps = 3.0
@@ -319,14 +326,14 @@ def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
     vinf_oop = vdot(vinf_vec, h_hat)                        # signed out-of-plane component
     vinf_ip = vsub(vinf_vec, vscale(h_hat, vinf_oop))
     vinf_ip_hat = vunit(vinf_ip)
-    e_hyp = 1.0 + r_park * vinf_mag * vinf_mag / mu
+    e_hyp = 1.0 + r_ref * vinf_mag * vinf_mag / mu
     # The outgoing asymptote (v_inf direction) sits at TRUE ANOMALY nu_inf = arccos(-1/e) AHEAD of the
     # periapsis (in the direction of motion). So the burn periapsis is v_inf rotated BACKWARD by nu_inf.
     # (Using arccos(+1/e) here was a 72-deg aim error -> 600x-SOI miss.)
     nu_inf = math.acos(max(-1.0, min(1.0, -1.0 / e_hyp)))
     r_peri_hat = vunit(rotate_about_axis(vinf_ip_hat, h_hat, -nu_inf))
     # UT of the next time the ship sits at r_peri_hat (uniform-rotation model, exact for circular)
-    T_park = 2.0 * math.pi * math.sqrt(r_park ** 3 / mu)
+    T_park = 2.0 * math.pi * math.sqrt(a_park ** 3 / mu)
     r_ship_hat = vunit(r_ship)
     ang = math.atan2(vdot(vcross(r_ship_hat, r_peri_hat), h_hat), vdot(r_ship_hat, r_peri_hat))
     if ang < 0:
@@ -334,23 +341,44 @@ def plan_ejection_node(sc, vessel, vinf_vec, ut_min):
     ut = sc.ut + ang / (2.0 * math.pi) * T_park
     while ut < ut_min:
         ut += T_park
-    dv = ejection_dv(vinf_mag, r_park, mu)
+    # PRECISE Δv from the REAL local state at the burn point — not the circular-SMA idealization. kRPC
+    # gives the exact orbital radius and speed there, so an imperfectly-circular parking orbit (any e) is
+    # handled correctly: dv = v_hyperbola(r_burn) - v_parking(r_burn). For a circular orbit r_burn == SMA
+    # and v_park == sqrt(mu/r), recovering the old value.
+    try:
+        r_burn = o.radius_at(ut)
+        v_park = o.orbital_speed_at(ut - sc.ut)
+    except Exception:                                      # offline / no live orbit: fall back to periapsis vis-viva
+        r_burn = r_ref
+        v_park = math.sqrt(max(0.0, mu * (2.0 / r_ref - 1.0 / a_park)))
+    v_hyp = math.sqrt(vinf_mag * vinf_mag + 2.0 * mu / r_burn)
+    dv = v_hyp - v_park
     return {"ut": ut, "prograde": dv, "normal": vinf_oop, "radial": 0.0,
-            "dv": math.sqrt(dv * dv + vinf_oop * vinf_oop), "nu_inf_deg": math.degrees(nu_inf)}
+            "dv": math.sqrt(dv * dv + vinf_oop * vinf_oop), "nu_inf_deg": math.degrees(nu_inf),
+            "r_burn": r_burn, "v_park": v_park, "e_hyp": e_hyp}
 
 
-def plan_transfer(sc, vessel, dep_name, tgt_name, ut_now=None):
+def plan_transfer(sc, vessel, dep_name, tgt_name, ut_now=None, max_iter=6):
     """End-to-end: find the precise window then the ejection node for ``vessel`` (in a
     parking orbit of ``dep_name``) toward ``tgt_name``. Returns {window, ejection}.
-    Iterates the two-clock fix once (re-solve v_inf at the node UT)."""
+
+    Two-clock convergence: the departure planet moves between the heliocentric window UT and the
+    in-orbit ejection-node UT, so re-solve the window anchored just before the node and re-plan,
+    looping until the window UT stops shifting by more than one parking-orbit period. A single pass
+    (the old behaviour) left a residual for fast synodic geometries; this converges fully."""
     if ut_now is None:
         ut_now = sc.ut
     w = find_transfer_window(sc, dep_name, tgt_name, ut_now)
     node = plan_ejection_node(sc, vessel, w["vinf_dep"], w["ut_dep"])
-    # one refinement pass: the planet moves between ut_dep and the node UT
-    w2 = find_transfer_window(sc, dep_name, tgt_name, node["ut"] - 0.01 * w["synodic"])
-    node = plan_ejection_node(sc, vessel, w2["vinf_dep"], w2["ut_dep"])
-    return {"window": w2, "ejection": node}
+    o = vessel.orbit
+    t_park = 2.0 * math.pi * math.sqrt(o.semi_major_axis ** 3 / o.body.gravitational_parameter)
+    for _ in range(max_iter):
+        prev_ut = w["ut_dep"]
+        w = find_transfer_window(sc, dep_name, tgt_name, node["ut"] - 0.01 * w["synodic"])
+        node = plan_ejection_node(sc, vessel, w["vinf_dep"], w["ut_dep"])
+        if abs(w["ut_dep"] - prev_ut) < t_park:
+            break
+    return {"window": w, "ejection": node}
 
 
 if __name__ == "__main__":          # self-test against the live game (cross-check)
