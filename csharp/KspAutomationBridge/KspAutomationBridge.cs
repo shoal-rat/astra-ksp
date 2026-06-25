@@ -471,6 +471,14 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => TransferCrewCommand(fields), 30000);
             }
 
+            // ---- EVA + plant flag: put a seated kerbal on EVA on a LANDED vessel and plant the stock
+            // flag headlessly. Touches the KSP API (FlightEVA + KerbalEVA) -> MUST run on the main thread.
+            if (request.Method == "POST" && request.Path == "/eva-flag")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => EvaPlantFlagCommand(fields), 30000);
+            }
+
             // ---- Crew spawn: seat a kerbal from the roster into an empty crewable part (a headless
             // launch leaves crewed pods empty). Lets the agent put REAL people aboard before a dock.
             if (request.Method == "POST" && request.Path == "/spawn-crew")
@@ -1081,6 +1089,196 @@ namespace KspAutomationBridge
                              " on " + target.vesselName },
                 { "crew", pcm.name },
             });
+        }
+
+        // POST /eva-flag {"crew"?: name} -> on the ACTIVE vessel (must be landed/splashed), put the
+        // named (or first found) seated kerbal on EVA and plant the stock flag headlessly. MUST run on
+        // the main thread (FlightEVA + KerbalEVA touch the live scene). The kerbal stays on EVA after
+        // planting; the human / automation can board them back (the mission's flag-pause handles that).
+        private CommandResult EvaPlantFlagCommand(Dictionary<string, string> fields)
+        {
+            if (!HighLogic.LoadedSceneIsFlight || FlightGlobals.ActiveVessel == null)
+            {
+                return CommandResult.Fail("EVA flag requires an active vessel in flight.");
+            }
+
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (!v.LandedOrSplashed)
+            {
+                return CommandResult.Fail("Active vessel must be landed/splashed to plant a flag.");
+            }
+
+            // Find the first crewable part that actually holds a kerbal (optionally matched by name).
+            string crewName = GetOptional(fields, "crew", "").Trim();
+            Part evaPart = null;
+            ProtoCrewMember pcm = null;
+            if (v.parts != null)
+            {
+                foreach (Part part in v.parts)
+                {
+                    if (part == null || part.protoModuleCrew == null || part.protoModuleCrew.Count == 0)
+                    {
+                        continue;
+                    }
+                    foreach (ProtoCrewMember candidate in part.protoModuleCrew)
+                    {
+                        if (candidate == null)
+                        {
+                            continue;
+                        }
+                        if (crewName.Length == 0 ||
+                            string.Equals(candidate.name, crewName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            evaPart = part;
+                            pcm = candidate;
+                            break;
+                        }
+                    }
+                    if (pcm != null)
+                    {
+                        break;
+                    }
+                }
+            }
+            if (pcm == null || evaPart == null)
+            {
+                return CommandResult.Fail(crewName.Length > 0
+                    ? "Crew member not found in a crewed part: " + crewName
+                    : "No seated crew member found on the active vessel to send on EVA.", 404);
+            }
+
+            // Put the kerbal on EVA. spawnEVA returns the KerbalEVA module (NOT a Vessel) in this build;
+            // the 4-arg overload takes the airlock transform + a tryAllHatches fallback flag.
+            KerbalEVA evaController;
+            try
+            {
+                if (FlightEVA.fetch == null)
+                {
+                    return CommandResult.Fail("FlightEVA.fetch is null; cannot spawn EVA.");
+                }
+                evaController = FlightEVA.fetch.spawnEVA(pcm, evaPart, evaPart.airlock, true);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.ToString();
+                return CommandResult.Fail("spawnEVA threw: " + ex.Message);
+            }
+            if (evaController == null)
+            {
+                return CommandResult.Fail("spawnEVA returned null (no free hatch / airlock blocked?).");
+            }
+
+            Vessel evaVessel = evaController.vessel;
+            string kerbalName = pcm.name;
+
+            // Plant the flag. Preferred path: KerbalEVA.PlantFlag() is a public method in this build and
+            // is the exact stock action. Fallback (robust across builds): search the part's BaseEvents for
+            // the event whose name/guiName contains "flag" (case-insensitive) and Invoke() it. We try the
+            // direct method first, then the Events search, and report which one fired so it can be verified
+            // live. NOTE: only an in-game test confirms the flag actually appears — the stock plant is a
+            // KFSM-driven animated action, so even a clean Invoke here may need the scene to settle a frame.
+            string flagMethod = "";
+            string flagDetail = "";
+            bool planted = false;
+
+            // 1) Direct public PlantFlag().
+            try
+            {
+                evaController.PlantFlag();
+                planted = true;
+                flagMethod = "KerbalEVA.PlantFlag()";
+            }
+            catch (Exception ex)
+            {
+                flagDetail = "PlantFlag() threw: " + ex.Message;
+            }
+
+            // 2) Fallback: iterate the EVA module's BaseEvents for a "flag" event and invoke it.
+            if (!planted)
+            {
+                try
+                {
+                    BaseEventList events = evaController.Events;
+                    if (events != null)
+                    {
+                        foreach (BaseEvent ev in events)
+                        {
+                            if (ev == null)
+                            {
+                                continue;
+                            }
+                            string evName = ev.name ?? "";
+                            string evGui = ev.guiName ?? "";
+                            if (evName.IndexOf("flag", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                evGui.IndexOf("flag", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                ev.Invoke();
+                                planted = true;
+                                flagMethod = "Events.Invoke";
+                                flagDetail = "name='" + evName + "' guiName='" + evGui + "'";
+                                break;
+                            }
+                        }
+                        if (!planted)
+                        {
+                            // Surface what events WERE available so a live check can pick the right one.
+                            StringBuilder avail = new StringBuilder();
+                            foreach (BaseEvent ev in events)
+                            {
+                                if (ev == null) { continue; }
+                                if (avail.Length > 0) { avail.Append("; "); }
+                                avail.Append((ev.name ?? "") + "/" + (ev.guiName ?? ""));
+                            }
+                            flagDetail += " | no flag event found. available events: " + avail;
+                        }
+                    }
+                    else
+                    {
+                        flagDetail += " | KerbalEVA.Events was null.";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    flagDetail += " | Events search threw: " + ex.Message;
+                }
+            }
+
+            // Landed location for the report (biome + lat/lon of the EVA kerbal).
+            string biome = "";
+            double lat = 0.0;
+            double lon = 0.0;
+            try
+            {
+                if (evaVessel != null && evaVessel.mainBody != null)
+                {
+                    lat = evaVessel.latitude;
+                    lon = evaVessel.longitude;
+                    biome = ScienceUtil.GetExperimentBiome(evaVessel.mainBody, lat, lon) ?? "";
+                }
+            }
+            catch (Exception)
+            {
+                // Biome lookup is best-effort; never fail the command on it.
+            }
+
+            AppendStatus("flag", (planted ? "Planted flag via " + flagMethod + " by " : "EVA OK but flag NOT confirmed for ") + kerbalName);
+
+            Dictionary<string, object> data = new Dictionary<string, object>
+            {
+                { "message", planted
+                    ? kerbalName + " went EVA and the flag-plant action fired (" + flagMethod + "). VERIFY the flag in-game."
+                    : kerbalName + " went EVA but no flag-plant action could be invoked. See flagDetail." },
+                { "crew", kerbalName },
+                { "planted", planted },
+                { "flagMethod", flagMethod },
+                { "flagDetail", flagDetail },
+                { "evaVessel", evaVessel != null ? evaVessel.vesselName : "" },
+                { "body", evaVessel != null && evaVessel.mainBody != null ? evaVessel.mainBody.bodyName : "" },
+                { "biome", biome },
+                { "latitude", lat },
+                { "longitude", lon }
+            };
+            return planted ? CommandResult.Ok(data) : CommandResult.Fail(kerbalName + " EVA succeeded but flag-plant could not be invoked. " + flagDetail);
         }
 
         // POST /transfer-crew  -> move a kerbal between crewed parts (after docking, both craft are

@@ -154,6 +154,15 @@ class BridgeClient:
         payload = {"vessel": vessel} if vessel else {}
         return self._request("POST", "/spawn-crew", json=payload)
 
+    def eva_flag(self, crew: str = "") -> dict:
+        """Put a seated kerbal on EVA on the LANDED/SPLASHED active vessel and plant the stock flag
+        headlessly. ``crew`` (optional) names the kerbal by exact name; empty = the first seated crew
+        member found. The bridge tries ``KerbalEVA.PlantFlag()`` first, then falls back to invoking the
+        part's "flag" BaseEvent, and reports which path fired (``flagMethod``/``flagDetail``) plus the
+        landed body/biome/lat/lon. The flag actually appearing must still be verified in-game."""
+        payload = {"crew": crew} if crew else {}
+        return self._request("POST", "/eva-flag", json=payload)
+
     def _request(self, method: str, path: str, **kwargs) -> dict:
         url = self.base_url.rstrip("/") + path
         if "json" in kwargs:
