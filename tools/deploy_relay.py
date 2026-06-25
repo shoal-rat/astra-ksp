@@ -40,19 +40,70 @@ def _depth_from_root(part) -> int:
     return d
 
 
+def _part_is_below(part, ancestor) -> bool:
+    """True if ``ancestor`` lies on ``part``'s parent-chain (i.e. ``part`` is on the FAR side of ``ancestor``
+    from the root — it would be JETTISONED when ``ancestor`` is decoupled). Walks UP via ``.parent`` (one
+    fetch per step, like ``_depth_from_root``) and uses kRPC's own ``==`` (Python ``id()``/``is`` are
+    UNRELIABLE on kRPC proxies — each ``.part``/``.parent`` access returns a fresh object, which is the bug
+    that made the first version of this cross the decoupler and mis-fire the payload separator)."""
+    p = part
+    guard = 0
+    while p is not None and guard < 1000:
+        try:
+            par = p.parent
+        except Exception:
+            return False
+        if par is None:
+            return False
+        try:
+            if par == ancestor:
+                return True
+        except Exception:
+            return False
+        p = par
+        guard += 1
+    return False
+
+
+def _root_side_keeps_engine(vessel, dec) -> bool:
+    """True if firing ``dec`` leaves the ACTIVE (root/pod) side still holding an engine — i.e. ``dec`` drops a
+    SPENT stage and keeps propulsion. False means firing it strands the engineless PAYLOAD as the active
+    vessel (the crewed bug: the heat-shield decoupler kept the capsule and jettisoned the whole upper stage).
+    An engine is on the kept side exactly when it is NOT below ``dec`` (its parent-chain doesn't pass through
+    ``dec``). If EVERY engine is below ``dec``, firing it leaves no propulsion -> protect it."""
+    try:
+        dec_part = dec.part
+        engines = list(vessel.parts.engines)
+    except Exception:
+        return True                       # can't tell -> treat as inter-stage (old behaviour)
+    for e in engines:
+        try:
+            if not _part_is_below(e.part, dec_part):
+                return True               # this engine stays on the kept side -> safe inter-stage decoupler
+        except Exception:
+            pass
+    return False
+
+
 def _inter_stage_decouplers(vessel) -> list:
     """The decouplers ascent staging may fire, DEEPEST-first (the booster decoupler before any upper one),
-    EXCLUDING the payload decoupler. The payload decoupler is the SHALLOWEST decoupler (it separates the
-    comsat from the final stage) — never fired during ascent, so the payload is never jettisoned when the
-    upper stage later runs dry. Returns [] when there is only a payload decoupler (or none)."""
+    EXCLUDING any decoupler that would strand the engineless payload. An inter-stage decoupler drops a SPENT
+    stage while the active (root/pod) side KEEPS an engine (``_root_side_keeps_engine``); a PAYLOAD decoupler
+    leaves the payload with no propulsion and must never fire during ascent. The crewed vehicle has TWO such
+    payload decouplers (heat-shield boundary + upper boundary), which the old shallowest-only heuristic
+    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire."""
     try:
         decs = list(vessel.parts.decouplers)
     except Exception:
         return []
     if len(decs) <= 1:
         return []
-    payload = min(decs, key=lambda dd: _depth_from_root(dd.part))   # shallowest = the payload decoupler
-    inter = [dd for dd in decs if dd is not payload]
+    inter = [dd for dd in decs if _root_side_keeps_engine(vessel, dd)]
+    if not inter:
+        # Defensive fallback (no decoupler keeps an engine on the root side — shouldn't happen): protect only
+        # the shallowest, the prior behaviour, so a conventional stack can still stage.
+        payload = min(decs, key=lambda dd: _depth_from_root(dd.part))
+        inter = [dd for dd in decs if dd is not payload]
     inter.sort(key=lambda dd: -_depth_from_root(dd.part))           # deepest (lowest booster) fires first
     return inter
 
@@ -91,13 +142,20 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
 
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
                   insertion_dv_override: float = 0.0, booster_max_engines: int = 1,
-                  radial_booster_count: int = 0) -> bool:
+                  radial_booster_count: int = 0, *, crew: int = 0,
+                  needs_heatshield: bool = False, landing=None) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
     the eventual TARGET orbit so it has the propellant to raise + circularise there.
     insertion_dv_override > 0 sizes the upper for an explicit Δv budget instead (used by the interplanetary
     transfers, whose upper must afford the warp raise+lower + ejection + correction + Oberth capture ~3,800 m/s,
-    NOT just a Kerbin-orbit insertion — the default min-tank upper left the Duna capture ~250 m/s short)."""
+    NOT just a Kerbin-orbit insertion — the default min-tank upper left the Duna capture ~250 m/s short).
+
+    CREWED launch (crew>0): the WRITTEN craft must carry a crewable Mk1 command pod, a forward heat shield
+    (needs_heatshield) and chutes (landing) so a kerbal can board and ride. Without threading these, this
+    function re-derived a crew=0 PROBE design — so the .craft topped out on a probeCoreOcto with NO crewable
+    seat (kRPC crew_capacity==0) and /spawn-crew had nowhere to seat a kerbal. The asparagus booster/upper
+    sizing + staging + flight logic below are unchanged; only the command/recovery requirements differ."""
     import krpc
     import math
     from ksp_lab.bodies import KERBIN
@@ -132,16 +190,23 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # falls back from apoapsis, so it needs real thrust — a slow Terrier (60 kN) leaves it suborbital
     # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
     # comsat upper still circularises fine on the Terrier (no floor).
+    # NOTE: a thrustier crewed upper (Skipper via min_twr 1.3) was tried and DID NOT fix the crewed-launch
+    # failure — the blocker is ASCENT AERODYNAMICS (the blunt exposed heat-shield/pod tumbles), not upper
+    # thrust. Left at the proven relay floor; the real fix is a payload fairing over the crewed pod for ascent.
     _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    # CREWED vs uncrewed command/recovery. A crewed launch (crew>0) MUST write a craft with a crewable
+    # Mk1 pod + forward heat shield + chutes so a kerbal can board and survive re-entry; an uncrewed relay
+    # rides a headless probe core in a fairing. mission_type reflects which so downstream code can tell.
+    _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
     req = ShipRequirements(
-        name=name, mission_type="relay_comsat", crew=0, payload_t=0.3,
+        name=name, mission_type=_mission_type, crew=crew, payload_t=0.3,
         # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
         # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
         phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
                       reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
                 Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
                       reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
-        landing=None, needs_legs=False, needs_heatshield=False, needs_docking=False,
+        landing=landing, needs_legs=False, needs_heatshield=needs_heatshield, needs_docking=False,
         max_engine_count=booster_max_engines,
         # RADIAL BOOSTERS: a heavy interplanetary upper (Eve's ~3800 m/s sync insertion) makes a ~200 t
         # rocket that hangs at low TWR on a single core. radial_booster_count>0 straps N tank+engine pods
@@ -217,11 +282,19 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     except Exception as exc:
         log(f"  live-API size check skipped: {exc}")
     kv.control.throttle = 1.0
-    booster_eng = d.stages[0].engine
+    # Ignite the LAUNCH-stage engine AND the radial-booster engine at T0. When the core and the strap-on
+    # pods use the SAME engine (relay: Skipper core + Skipper pods) a single name matches all of them;
+    # but a heavier vehicle gets a thrustier CORE (crewed: Mainsail core + Skipper pods), so matching only
+    # the core type lit just 1 of 5 engines and the rocket lifted on ~1/5 thrust and failed. Include the
+    # radial-booster engine type so every liftoff engine fires.
+    ignite_prefixes = [d.stages[0].engine]
+    _rb = getattr(d, "radial_boosters", None)
+    if _rb is not None and getattr(_rb, "count", 0) > 0:
+        ignite_prefixes.append(_rb.engine)
     fired = 0
     for e in kv.parts.engines:
         try:
-            if e.part.name.startswith(booster_eng):   # ".v2" suffix tolerated
+            if any(e.part.name.startswith(p) for p in ignite_prefixes):   # ".v2" suffix tolerated
                 e.active = True; fired += 1
         except Exception:
             pass
@@ -358,13 +431,13 @@ def raise_and_circularize(sc, bridge, target_alt_m: float) -> None:
     log(f"  circularized: {v.orbit.periapsis_altitude/1000:.0f}x{v.orbit.apoapsis_altitude/1000:.0f} km ecc={v.orbit.eccentricity:.3f}")
 
 
-def commission(bridge, v) -> None:
-    """Bring the relay online WITHOUT refuelling: JETTISON the payload fairing, then extend the RA-100
-    dish + the solar panels so it has a live CommNet link and recharges its own EC from sunlight (the
-    legitimate alternative to topping off electric charge). Set the vessel type to Relay so it forwards
-    other craft's signals. The fairing protected the bus through max-Q; the dish/solar deploy ONLY once
-    the shroud is gone (a real comsat sequence)."""
-    # Jettison the procedural fairing first — the ogive shroud must split away before anything deploys.
+def jettison_payload_fairings(v) -> int:
+    """Split away EVERY un-jettisoned procedural payload fairing on the vessel, in orbit. Returns the
+    count jettisoned. This removes ONLY the ogive shell — the parts it shrouded (a relay bus, or a CREWED
+    Mk1 pod + forward heat shield + chutes) stay attached and intact. The PAYLOAD DECOUPLER is a separate
+    Decoupler.1 part, untouched here, so jettisoning the fairing never separates the payload. Used both to
+    expose a relay bus before dish/solar deploy AND to uncover the crewed capsule's heat shield + chutes for
+    the Eve aerocapture / Kerbin-return reentry once the vehicle is safely above the atmosphere."""
     jettisoned = 0
     for fr in list(getattr(v.parts, "fairings", []) or []):
         try:
@@ -372,6 +445,17 @@ def commission(bridge, v) -> None:
                 fr.jettison(); jettisoned += 1
         except Exception:
             pass
+    return jettisoned
+
+
+def commission(bridge, v) -> None:
+    """Bring the relay online WITHOUT refuelling: JETTISON the payload fairing, then extend the RA-100
+    dish + the solar panels so it has a live CommNet link and recharges its own EC from sunlight (the
+    legitimate alternative to topping off electric charge). Set the vessel type to Relay so it forwards
+    other craft's signals. The fairing protected the bus through max-Q; the dish/solar deploy ONLY once
+    the shroud is gone (a real comsat sequence)."""
+    # Jettison the procedural fairing first — the ogive shroud must split away before anything deploys.
+    jettisoned = jettison_payload_fairings(v)
     if jettisoned:
         log(f"  jettisoned {jettisoned} payload fairing(s) — bus exposed, clear to deploy")
         time.sleep(2)

@@ -132,11 +132,26 @@ every part count**:
 - **Parachutes** by terminal velocity in the target body's **live** atmospheric density —
   `parachute_count` calls `astro.parachutes_for_touchdown`, returning **0 for a propulsive lander**.
 
+- **Asparagus / radial strap-on boosters** for the launches a single core cannot lift.
+  `ShipRequirements.radial_booster_count` asks the designer for N symmetric strap-on pods;
+  `design._size_radial_boosters` sizes each pod from the **same rocket equation + TWR** as the core —
+  it picks the lightest sea-level engine and the whole-tank count that makes the N pods carry
+  `BOOSTER_DV_SHARE` (≈45%) of the launch-phase Δv against the full liftoff mass, then verifies the
+  combined (core + boosters) liftoff TWR clears the floor. The core is sized for only the *remaining*
+  Δv, so the asparagus stack is **lighter than a single core** for the same job. Each pod hangs on a
+  stock **TT-70 radial decoupler** (`radialDecoupler2`, in `parts.py`); `craft_writer.py` renders the
+  pods as their own vertical stacks clustered around the core's base — bells in the core engine's plane
+  — and stages them so **core + boosters ignite together at T0, the boosters drop first, then the
+  core/upper separates** (the Soyuz/Falcon-Heavy sequence). This is the feature that made heavy
+  interplanetary launches feasible: the Eve synchronous relay lifts as a ≈197 t rocket on **4 boosters
+  that drop cleanly**, where the equivalent single-core 205 t vehicle hung at circularization.
+
 `design_ship` returns a `RocketDesign` with an `estimates` block and a traceable `design_log`. Before
 anything flies, `tools/design_chart.py` renders a **three-view** and hard-gates the proportions
-(`looks_like_a_rocket`: L/D 4–19, monotonic taper, housed payload, engine at the base, flyable), and
-`tools/render_chart_png.py` rasterizes that chart to **PNG via headless Chrome** so clipping or floating
-parts are caught by the eye — the gate is necessary but not sufficient, so you *look*.
+(`looks_like_a_rocket`: L/D 4–19, monotonic taper, housed payload, engine at the base, flyable, and
+now symmetric strap-on boosters accepted), and `tools/render_chart_png.py` rasterizes that chart to
+**PNG via headless Chrome** so clipping or floating parts are caught by the eye — the gate is necessary
+but not sufficient, so you *look*.
 
 ### `plan.py` — calculated planners (live state in, a maneuver out)
 
@@ -222,6 +237,17 @@ do the natural-language interpretation (`ASTRA_MODEL` selects the model, default
 > curve. The number is no longer a guess; it's `parachutes_for_touchdown`. (Full write-up in the
 > notebook §7.)
 
+> **The kRPC-proxy lesson (the crewed-launch debugging arc).** Getting the first kerbal to Eve orbit took
+> a long debugging chain — the headless pod, the asparagus liftoff that wouldn't ignite the strap-on
+> engines, and finally a staging bug where ascent fired the **payload** decoupler and jettisoned the whole
+> upper stage (crew #8 died identically to crew #7). The diagnostic was `tools/_ascent_telemetry.py`, a
+> read-only logger that prints altitude, apoapsis, pitch, engine count, and part count every few seconds
+> so the post-separation failure mode is *visible*. The root cause: the decoupler guard compared kRPC part
+> proxies with Python **`id()`** — but kRPC hands back a *fresh* proxy object on every `.part`/`.parent`
+> access, so `id()` never matched and the parent-chain walk crossed the decoupler. The fix walks up each
+> engine's parent-chain using kRPC's own **`==`**. The lesson, stated once: **never compare kRPC proxy
+> objects with `id()` or `is` — use `==`** (kRPC overloads it to compare the underlying game part).
+
 ---
 
 ## The Mars (Duna) and Venus (Eve) goals
@@ -237,17 +263,29 @@ pipeline — one window calculation deploys to any target body.
 - **Propulsive landing on Duna** — `execute.propulsive_landing` on the hoverslam law (zero parachutes), then
   **propulsive ascent and return** to Kerbin.
 
-**Eve — 3 synchronous relays, then a crewed landing and return:**
+**Eve — a synchronous relay constellation (done), and a crewed round trip (in progress):**
 
-- **3 relays at the Eve-stationary altitude (10 328 km)**, 120° phased, captured cheaply by **aerocapture**
-  in Eve's thick (5 atm) atmosphere.
-- **Crewed landing**, designed *backwards from the ascent*: land high on a mountain to cut the climb,
-  parachute down, then the **~6500 m/s Eve ascent vehicle** (aerospike asparagus, sized from the rocket
-  equation in Eve's *live* gravity and density) back to orbit and home, aerobraking free at Kerbin. Eve's
-  ascent is the single hardest stock challenge.
+- **3 synchronous relays deployed** at the Eve-stationary altitude (**10 328 km**), each launched on the
+  4-booster asparagus stack above, transferred on the precise Lambert window, and circularised onto the
+  synchronous ring — **e ≈ 0.000–0.001** (near-perfectly circular). The body-agnostic `transfer_to_body`
+  driver (`tools/deploy_relay_transfer.py`) does the whole chain: wait for the window on the ground (zero
+  fuel), eject precisely, establish the encounter by grid search, execute the correction node with
+  MechJeb's NodeExecutor, capture loosely, then Hohmann up to the sync radius and circularise. Eve's
+  10 328 km ring needs a ~3800 m/s upper — the launch problem the radial boosters were built to solve.
+- **A kerbal delivered to Eve orbit, alive.** `tools/crewed_eve_roundtrip.py` flies an Apollo-8-of-Eve:
+  board a real kerbal in the Mk1 pod after the headless ascent, fly the precise Kerbin→Eve transfer, and
+  **capture into a bound Eve orbit with the crew alive**. This is the first crew the lab has put around
+  another planet.
 
-The general `transfer_to_body` driver (`tools/deploy_relay_transfer.py`) waits for the window on the ground,
-ejects precisely, corrects, captures, and circularises to the body's synchronous ring.
+> **Honest status — the round trip is not finished.** The *single-ship* return failed on **fuel budget**:
+> one vehicle cannot carry the Kerbin→Eve injection, the Eve capture, *and* the Eve→Kerbin return ejection
+> on its own propellant (the lab also proved it cannot mass-close a vehicle that *lands* a crewed Eve
+> ascent stage — the delivery stack is a TWR<0.8 noodle the geometry gate rejects). **Crew #9 is currently
+> stranded in Eve orbit.** The round trip is being completed with a **two-ship orbital-docking
+> architecture** instead: a crew ferry and a separately launched, fully-fuelled return tug that **dock in
+> Eve orbit** so the crew comes home on the tug's propellant — **no in-flight refuelling**, just a crew
+> transfer at the dock (the same rendezvous-then-dock discipline already flown at the Mun). That work is in
+> progress, not yet flown.
 
 ---
 
@@ -298,6 +336,10 @@ ksp1-automation-lab/
 │   ├── mj_to_orbit.py             # MechJeb ascent to parking orbit
 │   ├── mj_to_mun.py               # TMI (MechJeb node executor) + kRPC capture
 │   ├── mj_to_duna.py / mj_duna_capture.py / mj_land_duna.py   # the Duna ("Mars") chain
+│   ├── deploy_relay.py            # hardened Kerbin ascent (asparagus boosters + explicit staging) -> LKO
+│   ├── deploy_relay_transfer.py   # transfer_to_body: precise window -> encounter -> capture -> sync ring
+│   ├── crewed_eve_roundtrip.py    # crew a Mk1 pod to Eve orbit alive (the Apollo-8-of-Eve)
+│   ├── _ascent_telemetry.py       # read-only ascent logger (how the crewed staging bug was diagnosed)
 │   ├── mj_land_vessel.py          # MechJeb Landing Autopilot reentry + touchdown
 │   ├── design_chart.py            # three-view chart + looks_like_a_rocket geometry gate + live verify
 │   ├── render_chart_png.py        # rasterize a chart SVG -> PNG (headless Chrome) to inspect by eye
@@ -335,7 +377,18 @@ ksp1-automation-lab/
   hoverslam curve, ran surface science, and ascended back to lunar orbit.
 - **Orion crew vehicle** launched to Mun orbit, returned to Kerbin, and recovered behind a heat shield.
 - **A live constellation**, deployed by the agent: working relays around **Kerbin** (keostationary), the
-  **Mun**, and **Duna** — the first Duna relay captured and circularised in-game.
+  **Mun**, **Duna**, and now **Eve** — a **3-relay Eve-synchronous ring at 10 328 km, e ≈ 0.000–0.001**,
+  each flown on the precise Lambert window and circularised onto the synchronous radius.
+- **Asparagus / radial-booster staging**, calculated from the rocket equation. The Eve relay lifts as a
+  ≈197 t rocket on **4 strap-on TT-70 booster pods that drop cleanly** (combined liftoff TWR ≈1.47),
+  where the single-core 205 t equivalent hung at circularization. The boosters, the radial decoupler, and
+  the ignite-together / drop-first staging are all sized and rendered by the calculated layer
+  (`design._size_radial_boosters`, `craft_writer.py`) — the feature that made heavy interplanetary
+  launches feasible.
+- **First crew around another planet — a kerbal delivered to Eve orbit alive** (`crewed_eve_roundtrip.py`).
+  *Honest caveat:* the single-ship **return failed on fuel budget** and **crew #9 is stranded in Eve
+  orbit**; the round trip is being completed with a two-ship orbital-docking architecture (crew ferry +
+  fuelled return tug, no in-flight refuelling), which is in progress, not yet flown.
 - **The precise interplanetary math, solved and experimentally verified.** A Lambert porkchop window with a
   **`0 km` RK4 round-trip** to Duna *and* Eve, and the `ν = arccos(−1/e)` asymptote ejection at a
   **`5.3× SOI` (Duna) / `2.5× SOI` (Eve)** timed miss — versus ~70× for MechJeb's planner. Body-agnostic and

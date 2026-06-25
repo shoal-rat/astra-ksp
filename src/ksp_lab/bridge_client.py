@@ -140,8 +140,12 @@ class BridgeClient:
         payload = {"toVessel": to_vessel} if to_vessel else {}
         return self._request("POST", "/transfer-crew", json=payload)
 
-    def spawn_crew(self) -> dict:
-        return self._request("POST", "/spawn-crew", json={})
+    def spawn_crew(self, vessel: str = "") -> dict:
+        """Seat a roster kerbal into the first empty crewable seat (a headless launch leaves crewed
+        pods empty). ``vessel`` (optional) targets a craft by a substring of its name; empty = the
+        active vessel. The bridge returns the spawned kerbal's name on success."""
+        payload = {"vessel": vessel} if vessel else {}
+        return self._request("POST", "/spawn-crew", json=payload)
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         url = self.base_url.rstrip("/") + path

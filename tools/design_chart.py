@@ -137,11 +137,20 @@ def _boosters_are_symmetric(geom: list[dict], booster_names: set, expected_count
     angles = sorted({round(math.degrees(math.atan2(g["z"], g["x"])) % 360.0, 0) for g in pods})
     if len(angles) != expected_count:
         return False
-    radii = [math.hypot(g["x"], g["z"]) for g in pods if math.hypot(g["x"], g["z"]) > 1e-6]
+    # RADIUS check on the pod TANK COLUMN only. A pod is a clean vertical stack of `tank_count` tanks,
+    # so the tank part is the MOST FREQUENT name in the cluster; its parts all sit at the pod's outboard
+    # radius. The pod's engine (tucked toward the core at the bell plane) and its single radial decoupler
+    # (mounted inboard, against the core hull) legitimately sit at SMALLER radii — folding them into the
+    # mean made a perfectly symmetric ring read as a 1.8->3.6 m "spread" and falsely fail the gate. Judge
+    # the ring on the tank column, exactly as this function's contract ("take the booster TANK parts").
+    from collections import Counter
+    tank_name = Counter(g["name"] for g in pods).most_common(1)[0][0]
+    radii = [math.hypot(g["x"], g["z"]) for g in pods
+             if g["name"] == tank_name and math.hypot(g["x"], g["z"]) > 1e-6]
     if not radii:
         return False
     r_mean = sum(radii) / len(radii)
-    # all pod parts within 25% of the mean radius (a tight, even ring)
+    # all pod TANK parts within 25% of the mean radius (a tight, even ring)
     if any(abs(r - r_mean) > 0.25 * r_mean + 0.5 for r in radii):
         return False
     # azimuths roughly evenly spaced: each gap close to 360/N

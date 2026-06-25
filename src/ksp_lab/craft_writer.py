@@ -148,8 +148,18 @@ class CraftWriter:
             "longAntenna", "RelayAntenna100", "solarPanels5", "batteryBankMini", "batteryBank",
             "rtg", "basicFin", "R8winglet", "asasmodule1-2", "adapterSize2-Size1", "Size3To2Adapter_v2",
         })
-        if not design.crewed and not design.landing_legs:
-            names.add("fairingSize1")  # probe comsat rides in a payload fairing (harvest the working module)
+        # Payload fairing harvest. An uncrewed no-legs probe comsat rides in one; a CREWED REENTRY CAPSULE
+        # (heat-shield + chutes, no docking port) ALSO rides in one (the blunt exposed pod+heat-shield was
+        # the +0.12 Cd ascent penalty that made the crew vehicle draggy/unstable and burn all its Δv
+        # suborbital). The fairing shrouds the pod+heat-shield+chutes through max-Q, then jettisons in orbit
+        # leaving them intact for the Kerbin-return reentry (see has_fairing in _build_nodes + the deploy
+        # fairing jettison). Mirror the has_fairing predicate so harvest and emission stay in lock-step.
+        _crewed_reentry_capsule = bool(
+            design.crewed and design.heatshield and not design.docking_port
+            and int(round(design.estimates.get("parachutes", 0))) > 0
+        )
+        if (not design.crewed and not design.landing_legs) or _crewed_reentry_capsule:
+            names.add("fairingSize1")
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
@@ -312,13 +322,20 @@ class CraftWriter:
         # field default to 1 (Kerbin recovery), preserving older craft.
         n_chute = int(round(design.estimates.get("parachutes", 1)))
         chute_r = part(root.part_name).height_m * 0.55 + 0.15
+        # A CREWED capsule keeps the nose cone (the pod apex) as the very top part and mounts EVERY chute
+        # radially around the pod — the real Mk16-radial capsule layout. Stacking the first chute on the
+        # nose put a body-role part ABOVE the nose cone, so the top part was no longer a NOSE_PARTS member
+        # and the geometry gate's "payload housed (fairing or capsule top)" check failed a sound crew
+        # vehicle. An uncrewed probe keeps the original nose-stacked first chute (its comsat rides in a
+        # fairing, so the gate passes on the fairing branch regardless).
+        stack_first_chute = (not design.crewed) and (not design.docking_port)
         for i in range(n_chute):
             chute = new_node("parachuteSingle", 0)
-            if i == 0 and not design.docking_port:
-                # First chute on the nose unless the docking port reserves it.
+            if i == 0 and stack_first_chute:
+                # First chute on the nose unless the docking port reserves it (uncrewed probe only).
                 self._attach(root, chute, "top", "bottom", up=True)
             else:
-                # Remaining chutes distributed radially around the command pod.
+                # Chutes distributed radially around the command pod (all of them on a crewed capsule).
                 ang = 2.0 * math.pi * i / max(1, n_chute)
                 self._attach_surface(root, chute, (chute_r * math.cos(ang), root.y, chute_r * math.sin(ang)))
             nodes.append(chute)
@@ -398,10 +415,25 @@ class CraftWriter:
         # PAYLOAD FAIRING: a probe comsat rides INSIDE an ogive shroud — never an exposed antenna on the
         # nose. The fairing base node-attaches BELOW the payload bus; its ModuleProceduralFairing shell
         # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
-        # before the dish + solar deploy. Only for an uncrewed, no-legs probe (the comsat); the crewed
-        # Starship lander keeps its own nose. The base diameter matches the payload body.
-        has_fairing = (not design.crewed and not design.landing_legs
-                       and (part_bodies is None or "fairingSize1" in part_bodies))
+        # before the dish + solar deploy. The base diameter matches the payload body.
+        #
+        # Two payloads ride faired:
+        #  - an UNCREWED, no-legs probe comsat (the relay), and
+        #  - a CREWED REENTRY CAPSULE: a crewed vehicle that returns by heat-shield + chutes (no docking
+        #    port, no propulsive landing legs). The blunt EXPOSED Mk1 pod + forward heat-shield was the
+        #    +0.12 Cd ascent penalty (faired False) that made the crew vehicle draggy and aerodynamically
+        #    unstable — it tumbled the gravity turn and burned all ~10 km/s of Δv suborbital. Shrouding the
+        #    capsule in the same ogive the relay uses brings Cd back to ~0.23. The fairing is jettisoned in
+        #    orbit (deploy_relay/crewed_eve_roundtrip fairing jettison), which removes ONLY the shell and
+        #    leaves the pod + heat-shield + chutes intact for the Kerbin-return reentry. A crewed Starship
+        #    lander (docking_port, propulsive legs, 0 chutes) keeps its OWN nose and is NOT faired here.
+        crewed_reentry_capsule = bool(
+            design.crewed and design.heatshield and not design.docking_port
+            and int(round(design.estimates.get("parachutes", 0))) > 0
+        )
+        has_fairing = (
+            ((not design.crewed and not design.landing_legs) or crewed_reentry_capsule)
+            and (part_bodies is None or "fairingSize1" in part_bodies))
         if has_fairing:
             payload_top = max(n.y + part(n.part_name).height_m / 2.0 for n in nodes if not n.is_surface)
             fb = new_node("fairingSize1", 0)
@@ -717,11 +749,13 @@ class CraftWriter:
             self._attach(root, dock, "top", "bottom", up=True)
             nodes.append(dock)
         elif can_emit("noseCone") and not has_fairing:
-            # Nose cone for streamlining (the aero requirement): above the parachute if one exists, else
-            # straight on the command pod's top node. SKIPPED when a payload fairing is present — the
-            # fairing's ogive shell IS the nose (never a cone on top of a fairing).
+            # Nose cone for streamlining (the aero requirement): above a STACK-mounted parachute if one
+            # exists (uncrewed probe), else straight on the command pod's top node. SKIPPED when a payload
+            # fairing is present — the fairing's ogive shell IS the nose (never a cone on top of a fairing).
+            # On a crewed capsule the chutes are radial (stack_first_chute is False), so the nose cone caps
+            # the pod directly — keeping a NOSE_PARTS member as the very top part (the "capsule top" gate).
             nose = new_node("noseCone", 0)
-            top = chute if n_chute > 0 else root
+            top = chute if (n_chute > 0 and stack_first_chute) else root
             self._attach(top, nose, "top", "bottom", up=True)
             nodes.append(nose)
 
