@@ -382,9 +382,10 @@ def _wait_until_sun_orbit(sc, v, max_loops: int = 8) -> bool:
     return v.orbit.body.name == "Sun"
 
 
-def _score_duna_node(node, duna):
-    """Score a heliocentric correction node by its Duna closest approach (kRPC patched conics), mirroring
-    flight_controller._score_mun_transfer_node. Lower = better; any real encounter beats any miss."""
+def _score_duna_node(node, duna, want_pe_m=100_000.0, atmo_top_m=60_000.0):
+    """Score a heliocentric correction node by its target-body closest approach (kRPC patched conics).
+    Lower = better; any real encounter beats any miss. ``want_pe_m`` is the desired encounter periapsis
+    ALTITUDE (Duna: ~100 km low; Eve: ~sync 10,328 km so capture is near the relay's final orbit)."""
     closest = float("inf")
     try:
         closest = float(node.orbit.distance_at_closest_approach(duna.orbit))
@@ -393,18 +394,15 @@ def _score_duna_node(node, duna):
     encounter, duna_pe = False, float("inf")
     try:
         nxt = node.orbit.next_orbit
-        if str(nxt.body.name) == "Duna":
+        if str(nxt.body.name) == duna.name:                 # `duna` is the target BODY (any), not literal Duna
             encounter, duna_pe = True, float(nxt.periapsis_altitude)
     except Exception:
         pass
     if encounter:
-        tgt = 100_000.0
-        if 60_000.0 <= duna_pe <= 250_000.0:
-            score = abs(duna_pe - tgt)
-        elif duna_pe < 60_000.0:                            # below/into Duna's ~50 km atmosphere
-            score = abs(duna_pe - tgt) + 50_000_000.0
-        else:
-            score = abs(duna_pe - tgt) + 2_000_000.0
+        if duna_pe < atmo_top_m:                            # below/into the atmosphere: penalize hard
+            score = abs(duna_pe - want_pe_m) + 50_000_000.0
+        else:                                               # any bound encounter above the atmosphere, by closeness to target
+            score = abs(duna_pe - want_pe_m)
     else:
         score = closest + 1.0e10                            # no encounter: drive the closest approach down
     return {"score": score, "encounter": encounter, "duna_pe_m": duna_pe, "closest_m": closest}
@@ -476,12 +474,13 @@ def _search_duna_ejection_prograde(sc, v, ut, base_pg, base_rad, base_nrm, pg_wi
 
 
 def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.0, pg_step=20.0,
-                                 rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0), ut_offsets=(0.0,)):
-    """Deterministic grid-search for a mid-course node that drops the Duna closest approach into the SOI —
-    the SAME pattern as the working Mun transfer. MechJeb's OperationCourseCorrection only REFINES an
+                                 rad_vals=(-30.0, 0.0, 30.0), nrm_vals=(-15.0, 0.0, 15.0), ut_offsets=(0.0,),
+                                 target_name="Duna", want_pe_m=100_000.0, atmo_top_m=60_000.0):
+    """Deterministic grid-search for a mid-course node that drops the TARGET closest approach into the SOI —
+    the SAME pattern as the working Mun/Duna transfer. MechJeb's OperationCourseCorrection only REFINES an
     existing encounter, so it can never CREATE one from a heliocentric near-miss; this evaluates each
-    candidate node's patched-conic Duna approach directly and keeps only the best."""
-    duna = sc.bodies["Duna"]
+    candidate node's patched-conic approach directly and keeps only the best. Body-agnostic."""
+    duna = sc.bodies[target_name]
     sc.rails_warp_factor = 0
     time.sleep(4)                                            # let patched-conic predictions settle after warp
     best, best_score, n = None, float("inf"), 0
@@ -492,7 +491,7 @@ def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.
                 for nrm in nrm_vals:
                     node = v.control.add_node(float(ut), prograde=float(pg), radial=float(rad), normal=float(nrm))
                     try:
-                        cand = _score_duna_node(node, duna)
+                        cand = _score_duna_node(node, duna, want_pe_m, atmo_top_m)
                         n += 1
                         if cand["score"] < best_score:
                             best_score = cand["score"]
@@ -910,37 +909,37 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
     # planner asks for an absurd burn.
     try:
         sc.target_body = target
-    except Exception as exc:
-        log(f"  could not set target ({exc})")
-    # Correct IMMEDIATELY after escape, FAR from Eve, where a course correction is CHEAPEST. The hard
-    # lesson: correcting progressively LATER (near the SOI) made the burn grow 338 -> 622 -> 1502 m/s and
-    # ran the relay dry; the EARLIEST correction was by far the cheapest. One early correction establishes
-    # the naturally-HIGH (~20,000 km) Eve encounter, which we then capture and Hohmann DOWN to sync — all
-    # inside the 90 t relay's budget (eject ~1020 + correction ~340 + capture ~600 + Hohmann ~230).
-    # ITERATE cheap early corrections until the encounter is ESTABLISHED. One correction often only
-    # narrows the miss without an SOI intercept; doing 2-3 in a row RIGHT HERE (the craft barely moves
-    # between them, so each stays cheap, unlike correcting progressively later) converges onto the
-    # encounter. Stop as soon as time_to_soi_change is set, or if a correction balloons (geometry off).
-    _corr_total = 0.0
-    for _ci in range(4):
+    except Exception:
+        pass
+    # ESTABLISH the encounter with the PROVEN GRID SEARCH (this is how the Duna constellation was built).
+    # MechJeb's course-correction can only REFINE an existing encounter — it diverges trying to CREATE one
+    # from a heliocentric miss (300->397->766->1502 m/s, ran every relay dry). The grid evaluates each
+    # candidate node's patched-conic approach directly and keeps the one whose target-SOI periapsis is
+    # closest to the SYNC altitude, so capture lands the relay near its final orbit (no costly Hohmann).
+    want_pe = target_alt_km * 1000.0
+    atmo_top = (target.atmosphere_depth if target.has_atmosphere else 0.0) + 5000.0
+    for attempt in range(1, 4):
         if v.orbit.body.name == target_name or (0 < (v.orbit.time_to_soi_change or 0) < 1e9):
             break
-        try:
-            r = bridge.mj_plan(target=target_name, operation="correction")
-            dv = r.get("dv", 0.0) if r.get("planned") else 0.0
-            if r.get("planned") and v.control.nodes and dv < 700.0 and _corr_total < 1400.0:
-                log(f"  CORRECTION {_ci+1} (MechJeb, early/cheap): {dv:.0f} m/s")
-                _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
-                _corr_total += dv
-            else:
-                log(f"  correction {dv:.0f} m/s (total {_corr_total:.0f}) over budget — keeping fuel, aborting clean")
-                v.control.remove_nodes()
-                break
-        except Exception as exc:
-            log(f"  MechJeb correction unavailable ({exc})")
-            break
-        except Exception as exc:
-            log(f"  MechJeb correction unavailable ({exc})")
+        mid_ut = sc.ut + 0.25 * win["tof"]
+        if mid_ut > sc.ut + 120.0 and v.orbit.body.name != target_name:
+            sc.warp_to(mid_ut); time.sleep(2)
+        node_ut = sc.ut + 6.0 * 3600.0
+        coarse = _search_duna_correction_grid(sc, v, node_ut, pg_width=600.0, pg_step=50.0,
+                                               rad_vals=(0.0,), nrm_vals=(-300.0, -100.0, 0.0, 100.0, 300.0),
+                                               target_name=target_name, want_pe_m=want_pe, atmo_top_m=atmo_top)
+        if coarse is None:
+            log(f"  grid {attempt}: no candidate; retrying"); continue
+        best = _search_duna_correction_grid(
+            sc, v, node_ut, seed_prograde=coarse["prograde"], pg_width=80.0, pg_step=15.0, rad_vals=(0.0,),
+            nrm_vals=tuple(_frange(coarse["normal"] - 80.0, coarse["normal"] + 80.0, 20.0)),
+            target_name=target_name, want_pe_m=want_pe, atmo_top_m=atmo_top) or coarse
+        v.control.remove_nodes()
+        v.control.add_node(best["ut"], prograde=best["prograde"], radial=best["radial"], normal=best["normal"])
+        tag = (f"pe {best.get('duna_pe_m', 0)/1000:.0f} km" if best.get("encounter")
+               else f"closest {best.get('closest_m', 0)/1e6:.0f} Mm")
+        log(f"  ESTABLISH (grid) {attempt}: aim {tag} via ({best['prograde']:.0f},{best['radial']:.0f},{best['normal']:.0f})")
+        _execute_node_manually(conn, sc, v, max_burn_s=250.0, max_throttle=1.0)
     # 3) Coast to the target SOI.
     for _ in range(4):
         if v.orbit.body.name == target_name:
