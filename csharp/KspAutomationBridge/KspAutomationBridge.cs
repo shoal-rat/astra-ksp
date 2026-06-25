@@ -1640,6 +1640,19 @@ namespace KspAutomationBridge
                 MechJebModuleRendezvousAutopilot m = core.GetComputerModule<MechJebModuleRendezvousAutopilot>();
                 if (m != null) { m.Users.Remove(core); }
             }
+            // STAGING: turn OFF MechJeb's autostager (MechJebModuleStagingController, a.k.a. core.staging). It
+            // is a SEPARATE module from the ascent AP's settings.Autostage flag, and once enabled it autostages
+            // during ANY burn — including the in-space node-executor capture burn. On a crewed/heat-shield tug
+            // it blindly fired the payload/heat-shield decoupler mid-capture and stranded the crew pod (no
+            // engine, heat shield, or chutes). Disabling it here makes the Python explicit-guarded loop the
+            // SOLE stager, so no decoupler ever fires in space. (Drop our Users token — the SAME disable
+            // mechanism the dock/rendezvous branches above use — so the autostager is released regardless of
+            // how it was switched on.)
+            if (which == "staging" || which == "all")
+            {
+                MechJebModuleStagingController stg = core.GetComputerModule<MechJebModuleStagingController>();
+                if (stg != null) { stg.Users.Remove(core); }
+            }
             return CommandResult.Ok(new Dictionary<string, object> { { "disabled", which } });
         }
 

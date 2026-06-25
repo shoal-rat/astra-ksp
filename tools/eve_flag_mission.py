@@ -76,6 +76,7 @@ from eve_two_ship_return import (
     FERRY_NAME,
     TUG_NAME,
     _crew_count,
+    _disable_inspace_autostage,
     _find_vessel,
     _make_active,
     _ship_phase,
@@ -159,6 +160,7 @@ def transfer_ferry_to_gilly(c, sc, bridge, ferry) -> bool:
     safe periapsis."""
     ferry = _make_active(sc, ferry)
     sc.rails_warp_factor = 0
+    _disable_inspace_autostage(bridge)                       # BUG 2: no MechJeb autostage during the Gilly burns
     try:
         ferry.control.remove_nodes()
     except Exception:
@@ -706,10 +708,11 @@ def main() -> int:
         log("=== TUG IN EVE ORBIT (uncrewed, full return fuel, awaiting the ferry) ===")
         _save(sc)
     elif tug_phase in ("in_lko", "in_transit"):
-        log("RESUME: TUG already up but not yet at Eve — completing its transfer ...")
+        log("RESUME: TUG already up but not yet at Eve — completing its LOOSE capture ...")
         tug = _make_active(sc, tug)
-        from deploy_relay_transfer import transfer_to_body
-        if not transfer_to_body(c, sc, bridge, tug, "Eve", EVE_PARK_ALT_KM):
+        from crewed_eve_roundtrip import capture_at_eve_loose
+        _disable_inspace_autostage(bridge)                   # BUG 2: no MechJeb autostage in space
+        if not capture_at_eve_loose(c, sc, bridge, tug):     # BUG 1: loose ellipse, not low-circular
             log("TUG resume transfer FAILED"); return 2
         tug = sc.active_vessel
         log("=== TUG IN EVE ORBIT (resumed) ===")
@@ -736,8 +739,9 @@ def main() -> int:
             from eve_two_ship_return import board_crew
             if not board_crew(sc, bridge, ferry):
                 log("RESUME ferry boarding FAILED"); return 2
-        from deploy_relay_transfer import transfer_to_body
-        if not transfer_to_body(c, sc, bridge, ferry, "Eve", EVE_PARK_ALT_KM):
+        from crewed_eve_roundtrip import capture_at_eve_loose
+        _disable_inspace_autostage(bridge)                   # BUG 2: no MechJeb autostage in space
+        if not capture_at_eve_loose(c, sc, bridge, ferry):   # BUG 1: loose ellipse, not low-circular
             log("FERRY resume transfer FAILED"); return 2
         ferry = sc.active_vessel
         log("=== FERRY IN EVE ORBIT (resumed) ===")

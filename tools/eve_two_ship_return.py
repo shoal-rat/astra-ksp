@@ -18,9 +18,10 @@ COMPOSED FROM PROVEN CODE (AGENTS.md RULE 1 — reuse, don't reinvent):
                                                       orbit, sized for the full vacuum budget.
   - deploy_relay.jettison_payload_fairings(v)       : split the ascent shroud in orbit (expose dock port +
                                                       heat shield + chutes).
-  - deploy_relay_transfer.transfer_to_body(...)     : the PROVEN outbound interplanetary leg (precise-Lambert
+  - crewed_eve_roundtrip.capture_at_eve_loose(...)  : the PROVEN outbound interplanetary leg (precise-Lambert
                                                       eject + MechJeb interplanetary node + grid-search
-                                                      encounter + capture) — used for BOTH ships to Eve.
+                                                      encounter) ending in a CHEAP loose-ellipse capture (NOT
+                                                      a low-circular orbit) — used for BOTH ships to Eve.
   - crewed_eve_roundtrip.board_crew / return_to_kerbin / descend_and_recover : crew seating, the return
                                                       ejection aimed at a ~35 km Kerbin aerocapture pe via the
                                                       proven GRID (NOT MechJeb's interplanetary node, which
@@ -50,13 +51,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import deploy_relay
 import deploy_relay_transfer as drt
-from deploy_relay_transfer import _warp_via_high, log, transfer_to_body
+from deploy_relay_transfer import _warp_via_high, log
 
 import design_chart
 from design_eve_two_ship import crew_ferry, return_tug
 
 from crewed_eve_roundtrip import (
     board_crew,
+    capture_at_eve_loose,
     descend_and_recover,
     return_to_kerbin,
     _crew_count,
@@ -67,8 +69,12 @@ from ksp_lab.design import design_ship
 DOCS = Path(__file__).resolve().parents[1] / "docs"
 KERBIN_YEAR_S = 426 * 21600
 
-# Both ships capture into a LOW Eve orbit so the rendezvous is short-range and the tug's RETURN ejection is
-# a cheap Oberth push from a low, fast periapsis. ~150 km clears Eve's 90 km atmosphere with margin.
+# Both ships capture into a LOOSE bound Eve ELLIPSE (low ~104 km periapsis, high ~0.30-SOI apoapsis) — NOT
+# a low-circular orbit. A low-circular capture (circularize + Hohmann-down) is the same capture-cost wall
+# that stranded crew #9 DRY; the loose ellipse costs ~146 m/s instead, PRESERVING the return fuel. The dock
+# works in any SHARED orbit, so both ships capturing into the same loose ~2700x8000 km ellipse is fine. The
+# low periapsis keeps the tug's RETURN ejection Oberth-cheap. (capture_at_eve_loose owns the realized orbit;
+# this constant is only kept for the resume/parking-altitude references that other modules import.)
 EVE_PARK_ALT_KM = 150.0
 
 # Rendezvous / docking close-in thresholds (metres, m/s).
@@ -170,6 +176,20 @@ def _ship_phase(v) -> str:
     return "other"
 
 
+def _disable_inspace_autostage(bridge) -> None:
+    """BUG 2 FIX: turn OFF MechJeb's autostager (MechJebModuleStagingController) before any IN-SPACE burn on
+    these crewed/heat-shield craft. That module is SEPARATE from the ascent AP's autostage flag and, once on,
+    autostages during ANY burn — including the node-executor capture burn. On the tug it blindly fired the
+    payload/heat-shield decoupler mid-capture and stranded the crew pod at Eve (no engine, heat shield, or
+    chutes). With it off, the only stager in space is the explicit guarded loop (which never fires a payload
+    decoupler), so the upper+payload (engine+heat shield+pod) is never split. Best-effort + idempotent."""
+    try:
+        r = bridge.mj_disable("staging")
+        log(f"  MechJeb autostager DISABLED for the in-space burns ({r.get('disabled')})")
+    except Exception as exc:
+        log(f"  mj-disable(staging) skipped ({exc}) — in-space staging relies on the explicit guarded loop")
+
+
 def _relative_distance_m(a, b) -> float:
     """|position of b in a's reference frame| — the same metric tools/fly_mj_dock.py polls on."""
     try:
@@ -184,8 +204,9 @@ def _relative_distance_m(a, b) -> float:
 # ==================================================================================================
 def launch_and_transfer_to_eve(c, sc, cfg, runner, bridge, name: str, req, *, board: bool):
     """Launch ``name`` (built from ``req``) to a 100 km Kerbin parking orbit, optionally board a kerbal,
-    then run the PROVEN transfer_to_body('Eve') to a LOW Eve orbit. Returns the active vessel on success
-    (in Eve orbit), or None on failure. Headless when board=False (the tug boards at the dock)."""
+    then run the PROVEN ejection + a CHEAP LOOSE-ellipse Eve capture (capture_at_eve_loose) — NOT a costly
+    low-circular orbit. Returns the active vessel on success (in Eve orbit), or None on failure. Headless
+    when board=False (the tug boards at the dock)."""
     from crewed_eve_roundtrip import _vacuum_budget_mps  # noqa: local import keeps the module import-light
     # Size the upper for a real interplanetary budget (the proven override the crewed roundtrip used). The
     # ferry/tug phase Δv already covers it; this floor just guarantees the upper is not a min-tank stub.
@@ -223,9 +244,18 @@ def launch_and_transfer_to_eve(c, sc, cfg, runner, bridge, name: str, req, *, bo
             log(f"  CREW BOARDING of {name} FAILED — refusing to fly an empty crew ferry")
             return None
 
-    log(f"MILESTONE: transferring {name} to a LOW Eve orbit (~{EVE_PARK_ALT_KM:.0f} km) ...")
-    if not transfer_to_body(c, sc, bridge, v, "Eve", EVE_PARK_ALT_KM):
-        log(f"  {name} Eve transfer/capture FAILED")
+    # BUG 1 FIX: capture into a LOOSE bound ellipse (cheap ~146 m/s), NOT transfer_to_body's low-circular
+    # capture (circularize at periapsis + Hohmann DOWN to the target alt). That low-circular path is the same
+    # capture-cost wall that ran crew #9 dry; the loose ellipse preserves the return fuel. capture_at_eve_loose
+    # reuses transfer_to_body's PROVEN ejection + grid-search-establish, then a single retrograde _retro_capture
+    # to a bound ellipse (low periapsis, ~0.30-SOI apoapsis) — no circularize, no Hohmann-down. The two ships
+    # share this loose ~2700x8000 km ellipse; the rendezvous + dock work in any shared orbit.
+    # BUG 2 FIX: kill MechJeb's autostager before the interplanetary leg so it can never fire the tug's
+    # heat-shield/payload decoupler during the in-space capture burn.
+    _disable_inspace_autostage(bridge)
+    log(f"MILESTONE: LOOSE-capturing {name} into a bound Eve ellipse (cheap; preserves return fuel) ...")
+    if not capture_at_eve_loose(c, sc, bridge, v):
+        log(f"  {name} Eve transfer/loose-capture FAILED")
         return None
     v = sc.active_vessel
     o = v.orbit
@@ -528,6 +558,9 @@ def fly_tug_home(c, sc, bridge, tug) -> bool:
     except Exception as exc:
         log(f"  return-window warp skipped ({exc}); ejecting now")
 
+    # BUG 2 FIX: the return ejection is another in-space burn — keep MechJeb's autostager off so it can't
+    # drop the tug's heat shield / chutes (which the crew needs for the Kerbin aerocapture) during the burn.
+    _disable_inspace_autostage(bridge)
     log("MILESTONE: TUG RETURN EJECT — Eve -> Kerbin (grid-aimed ~35 km aerocapture pe) ...")
     if not return_to_kerbin(c, sc, bridge, tug):
         log("  tug Eve->Kerbin return/aerocapture setup FAILED")
@@ -615,9 +648,10 @@ def main() -> int:
         except Exception:
             pass
     elif tug_phase in ("in_lko", "in_transit"):
-        log("RESUME: TUG already up but not yet at Eve — completing its transfer ...")
+        log("RESUME: TUG already up but not yet at Eve — completing its LOOSE capture ...")
         tug = _make_active(sc, tug)
-        if not transfer_to_body(c, sc, bridge, tug, "Eve", EVE_PARK_ALT_KM):
+        _disable_inspace_autostage(bridge)                   # BUG 2: no MechJeb autostage in space
+        if not capture_at_eve_loose(c, sc, bridge, tug):     # BUG 1: loose ellipse, not low-circular
             log("TUG resume transfer FAILED"); return 2
         tug = sc.active_vessel
         log("=== TUG IN EVE ORBIT (resumed) ===")
@@ -645,7 +679,8 @@ def main() -> int:
             log("RESUME: ferry pod empty — boarding a kerbal first ...")
             if not board_crew(sc, bridge, ferry):
                 log("RESUME ferry boarding FAILED"); return 2
-        if not transfer_to_body(c, sc, bridge, ferry, "Eve", EVE_PARK_ALT_KM):
+        _disable_inspace_autostage(bridge)                   # BUG 2: no MechJeb autostage in space
+        if not capture_at_eve_loose(c, sc, bridge, ferry):   # BUG 1: loose ellipse, not low-circular
             log("FERRY resume transfer FAILED"); return 2
         ferry = sc.active_vessel
         log("=== FERRY IN EVE ORBIT (resumed) ===")

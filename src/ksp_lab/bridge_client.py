@@ -120,6 +120,13 @@ class BridgeClient:
         })
 
     def mj_disable(self, which: str = "all") -> dict:
+        """Disable a MechJeb autopilot module on the active vessel. which: dock | rendezvous | staging | all.
+
+        "staging" turns OFF MechJeb's autostager (MechJebModuleStagingController) — distinct from the ascent
+        AP's autostage flag. The autostager otherwise fires decouplers during ANY burn, including the in-space
+        capture burn, which on a crewed/heat-shield craft jettisons the payload/heat-shield decoupler and
+        strands the crew pod. Call mj_disable("staging") before in-space burns on such craft so the explicit
+        guarded staging loop is the SOLE stager. "all" includes staging."""
         return self._request("POST", "/mj-disable", json={"which": which})
 
     def mj_status(self) -> dict:

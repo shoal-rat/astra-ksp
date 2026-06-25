@@ -36,6 +36,19 @@ class _Vessel:
         self.parts = _Vessel._Parts(decs, root, engines)
 
 
+class _LiveDec:
+    """A decoupler with a live ``.decouple()`` that records whether it fired — for testing _guarded_decouple
+    (which actually CALLS .decouple() on the safe side and must NOT call it on the protected side)."""
+    def __init__(self, part):
+        self.part = part
+        self.decoupled = False
+        self.fired = False
+
+    def decouple(self):
+        self.fired = True
+        self.decoupled = True
+
+
 def _stack(n_inter):
     """Build a mock part tree: probe(root) -> bus -> PAYLOAD decoupler -> upper tank -> upper engine ->
     [inter decoupler -> booster tank -> booster engine] x n_inter (each deeper than the last).
@@ -111,3 +124,57 @@ def test_crewed_two_payload_decouplers_are_both_protected():
     inter = deploy_relay._inter_stage_decouplers(vessel)
     assert [d.part.name for d in inter] == ["inter_decoupler"]          # only the booster decoupler fires
     assert all(d.part not in (hs_dec, payload_dec) for d in inter)      # both payload decouplers protected
+
+
+def _tug_stack():
+    """The TUG topology that the in-space capture-burn staging mis-fired and stranded the crew pod at Eve:
+
+        pod(root) -> payload_dec -> heatshield -> chutes -> upper_engine -> inter_dec -> booster_tank
+                  -> booster_engine
+
+    Firing payload_dec leaves the active (pod) side with NO engine (everything below it — heat shield, chutes,
+    upper engine, booster — is jettisoned): that is EXACTLY the live failure (pod stranded, engines=0, no heat
+    shield / chutes). Firing inter_dec drops only the spent booster while the upper_engine stays on the pod
+    side. Returns (vessel, payload_dec_part, inter_dec_part)."""
+    pod = _Part("pod")
+    payload_dec = _Part("payload_decoupler", pod)
+    heatshield = _Part("heatshield", payload_dec)
+    chutes = _Part("chutes", heatshield)
+    upper_engine = _Part("upper_engine", chutes)
+    inter_dec = _Part("inter_decoupler", upper_engine)
+    booster_tank = _Part("booster_tank", inter_dec)
+    booster_engine = _Part("booster_engine", booster_tank)
+    decs = [_Dec(payload_dec), _Dec(inter_dec)]
+    vessel = _Vessel(decs, pod, [_Eng(upper_engine), _Eng(booster_engine)])
+    return vessel, payload_dec, inter_dec
+
+
+def test_tug_payload_decoupler_protected_only_booster_separator_fires():
+    # REGRESSION for the in-space capture-burn bug: on the tug, only the booster inter-stage decoupler may be
+    # a separator. The payload decoupler (pod | heatshield+chutes+upper+booster) must NEVER be a separator —
+    # firing it strands the engineless pod, which is what the live run did at Eve (2761x7995 km, engines=0).
+    vessel, payload_dec, inter_dec = _tug_stack()
+    inter = deploy_relay._inter_stage_decouplers(vessel)
+    assert [d.part.name for d in inter] == ["inter_decoupler"]          # only the booster decoupler
+    assert all(d.part is not payload_dec for d in inter)               # heat-shield/payload decoupler protected
+
+
+def test_guarded_decouple_fires_the_booster_but_never_the_tug_payload_decoupler():
+    # _guarded_decouple is the SINGLE choke point every decouple (ascent AND in-space) passes through. It must
+    # actually fire the safe booster decoupler and REFUSE to fire the payload/heat-shield decoupler.
+    vessel, payload_dec, inter_dec = _tug_stack()
+    safe = _LiveDec(inter_dec)
+    protected = _LiveDec(payload_dec)
+    assert deploy_relay._guarded_decouple(vessel, safe) is True
+    assert safe.fired is True                                          # the spent booster is dropped
+    assert deploy_relay._guarded_decouple(vessel, protected) is False
+    assert protected.fired is False                                    # the crew pod's engine is preserved
+
+
+def test_root_side_keeps_engine_distinguishes_tug_decouplers():
+    # The underlying predicate: firing the inter_dec keeps the upper engine on the pod side (True); firing the
+    # payload_dec leaves no engine on the pod side (False).
+    vessel, payload_dec, inter_dec = _tug_stack()
+    decs = {d.part: d for d in vessel.parts.decouplers}
+    assert deploy_relay._root_side_keeps_engine(vessel, decs[inter_dec]) is True
+    assert deploy_relay._root_side_keeps_engine(vessel, decs[payload_dec]) is False

@@ -108,17 +108,40 @@ def _inter_stage_decouplers(vessel) -> list:
     return inter
 
 
+def _guarded_decouple(vessel, dec) -> bool:
+    """Fire ``dec`` ONLY if the active (root/pod) side keeps an engine (``_root_side_keeps_engine``); a
+    decoupler that would strand the engineless PAYLOAD (the tug's heat-shield / payload boundary) is NEVER
+    fired. This is the SINGLE choke point every decouple — ascent AND in-space — passes through, so the
+    crewed/heat-shield decoupler can never be split off no matter which staging path calls it (the in-space
+    capture-burn bug that left the crew pod stranded at Eve with no engine, heat shield, or chutes). Returns
+    True if the decouple was actually fired, False if it was protected/failed."""
+    try:
+        if not _root_side_keeps_engine(vessel, dec):
+            return False                              # PROTECTED — firing strands the engineless payload
+    except Exception:
+        # If we genuinely cannot tell (no engine list etc.), fall back to the caller's own filtering rather
+        # than firing blind; the caller only passes pre-filtered inter-stage decouplers anyway.
+        return False
+    try:
+        dec.decouple()
+        return True
+    except Exception:
+        return False
+
+
 def _separate_attached_boosters(ksc, inter_decs) -> int:
     """Fire EVERY still-un-fired inter-stage decoupler (drop the spent/attached booster stack), confirming
     each by a part-count drop over a few physics frames, then make sure the upper stage is lit. The payload
-    decoupler is never in inter_decs, so the comsat is never jettisoned. Returns the number fired."""
+    decoupler is never in inter_decs, AND every fire is gated by ``_guarded_decouple`` (root side keeps an
+    engine), so the comsat / crew payload is never jettisoned. Returns the number fired."""
     fired = 0
     for dd in list(inter_decs):
         try:
             if dd.decoupled:
                 continue
             before = len(ksc.active_vessel.parts.all)
-            dd.decouple()
+            if not _guarded_decouple(ksc.active_vessel, dd):   # GUARD: never fire a payload/heat-shield decoupler
+                continue
             fired += 1
             for _ in range(8):                       # KSP splits the vessel over several physics frames
                 time.sleep(0.5)
@@ -345,14 +368,14 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
             if dry_count >= 3 and pending:
                 # The bottom stage is spent and STILL ATTACHED (its decoupler is un-fired). Fire that
                 # decoupler EXPLICITLY and CONFIRM the separation by a part-count drop. The payload decoupler
-                # is never in this list, so a spent UPPER stage near orbit can never jettison the comsat.
+                # is never in this list, AND _guarded_decouple re-checks that the root side keeps an engine,
+                # so a spent UPPER stage near orbit can never jettison the comsat / crew payload.
                 dec = pending[0]
                 before = len(kv2.parts.all)
-                try:
-                    dec.decouple()
+                if _guarded_decouple(kv2, dec):       # GUARD: never fire a payload/heat-shield decoupler
                     log("  fired inter-stage decoupler explicitly (spent bottom stage was still attached)")
-                except Exception:
-                    pass
+                else:
+                    log("  skipped a protected decoupler (root side would lose its engine) — not fired")
                 sep = False
                 for _ in range(8):                        # KSP splits the vessel over several physics frames
                     time.sleep(0.5)

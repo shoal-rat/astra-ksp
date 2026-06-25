@@ -235,6 +235,15 @@ def capture_at_eve_loose(conn, sc, bridge, v) -> bool:
     from ksp_lab import transfer_planner as _tp
     target_name = "Eve"
     target = sc.bodies[target_name]
+    # BUG 2 FIX (shared in-space safety): turn OFF MechJeb's autostager before this interplanetary leg. It
+    # autostages during ANY burn — including the capture burn here — and on a crewed/heat-shield craft it
+    # blindly fired the payload/heat-shield decoupler mid-capture and stranded the crew pod. Disabling it
+    # makes the explicit guarded ascent loop the SOLE stager, so no decoupler ever fires in space.
+    try:
+        r = bridge.mj_disable("staging")
+        log(f"  MechJeb autostager DISABLED for the in-space capture ({r.get('disabled')})")
+    except Exception as exc:
+        log(f"  mj-disable(staging) skipped ({exc})")
     try:
         sc.target_body = target
     except Exception as exc:
