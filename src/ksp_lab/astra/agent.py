@@ -17,6 +17,8 @@ from ..config import load_config
 from .interpreter import Interpreter, MissionPlan
 from .knowledge import Diagnosis, KnowledgeBase
 from .ledger import ExperienceLedger, LedgerEntry
+from .mission_graph import MissionGraph, build_mission_graph
+from .plan_validator import ValidationReport, validate_plan
 from .primitives import CATALOG, PrimitiveContext, PrimitiveResult, run_primitive
 
 
@@ -58,6 +60,8 @@ class AstraResult:
     plan: MissionPlan
     step_results: list[StepResult] = field(default_factory=list)
     success: bool = False
+    graph: MissionGraph | None = None
+    validation: ValidationReport | None = None
 
     def summary_text(self) -> str:
         lines = [
@@ -67,6 +71,10 @@ class AstraResult:
         ]
         if self.plan.rationale:
             lines.append(f"  rationale: {self.plan.rationale}")
+        if self.graph is not None:
+            lines.append("  " + self.graph.render().replace("\n", "\n  "))
+        if self.validation is not None:
+            lines.append("  " + self.validation.render().replace("\n", "\n  "))
         for sr in self.step_results:
             tick = "OK " if sr.success else "XX "
             argstr = ", ".join(f"{k}={v}" for k, v in sr.args.items()) if sr.args else ""
@@ -86,6 +94,7 @@ class AstraAgent:
         interpreter: Interpreter | None = None,
         max_attempts: int = 2,
         dry_run: bool = False,
+        vehicle_dv: float | None = None,
     ):
         self.config_path = Path(config_path).resolve()
         # lab root = .../ksp1-automation-lab (config lives in configs/)
@@ -97,7 +106,9 @@ class AstraAgent:
         self.interpreter = interpreter or Interpreter()
         self.max_attempts = max(1, int(max_attempts))
         self.dry_run = dry_run
+        self.vehicle_dv = vehicle_dv
         self.post_status = True
+        self._graph: MissionGraph | None = None
 
     def _status(self, phase: str, message: str) -> None:
         _log(f"{phase}: {message}")
@@ -149,12 +160,34 @@ class AstraAgent:
                         {"steps": plan.steps, "source": plan.source})
         )
         result = AstraResult(command=command, plan=plan)
+
+        # ---- RIGOROUS PLAN VALIDATION (after interpret, BEFORE flying; also in dry-run). Build the
+        # MISSION GRAPH (preconditions/postconditions + per-step orbital math) and validate it. A
+        # REJECTED plan is NOT flown — we surface the SPECIFIC errors and fail the mission, rather than
+        # silently trimming the LLM's parameters. The graph + report are attached to the result.
+        report = self._validate_plan(command, plan, ctx)
+        result.graph = self._graph
+        result.validation = report
+        if not report.ok:
+            _log("plan REJECTED by the validator — NOT flying. Errors:")
+            for err in report.errors:
+                _log(f"  - {err}")
+            self._status("reject", f"{len(report.errors)} validation error(s); mission NOT flown")
+            self.ledger.record(
+                LedgerEntry(command, "validate", 0, "failure", "plan_rejected", "",
+                            "; ".join(report.errors)[:500],
+                            {"errors": report.errors, "warnings": report.warnings})
+            )
+            result.success = False
+            self._close_ctx(ctx)
+            return result
+
         if self.dry_run:
-            _log("dry-run: decomposition only, no flight.")
+            _log("dry-run: decomposition + validation only, no flight.")
             for i, step in enumerate(plan.steps, start=1):
                 result.step_results.append(
                     StepResult(i, step["primitive"], step.get("args", {}), True, "dry_run", 0,
-                               "decomposed; not flown"))
+                               "decomposed + validated; not flown"))
             result.success = True
             return result
 
@@ -171,14 +204,46 @@ class AstraAgent:
                 break
         result.success = overall
         self._write_ledger_markdown()
-        try:
-            if ctx.conn is not None:
-                ctx.conn.close()
-        except Exception:
-            pass
+        self._close_ctx(ctx)
         return result
 
     # ---------- internals ----------
+    def _validate_plan(self, command: str, plan: MissionPlan, ctx: PrimitiveContext | None
+                       ) -> ValidationReport:
+        """Build the mission graph from the decomposed plan and validate it RIGOROUSLY. The graph is
+        kept on ``self._graph`` so run() can attach it to the result. A live ``sc`` (if connected) lets
+        planet transfers use the precise Lambert window; offline the closed-form estimate is used. The
+        launch body is the body the active vessel sits on (Kerbin in stock); ``vehicle_dv`` (if the
+        caller supplied it) gates the resource-budget check."""
+        sc = getattr(ctx, "sc", None) if ctx is not None else None
+        ut_now = 0.0
+        if sc is not None:
+            try:
+                ut_now = float(sc.ut)
+            except Exception:
+                ut_now = 0.0
+        launch_body = "Kerbin"
+        if ctx is not None and getattr(ctx, "current_body", None):
+            launch_body = str(ctx.current_body)
+        graph = build_mission_graph(plan.steps, launch_body=launch_body,
+                                    vehicle_dv=self.vehicle_dv, sc=sc, ut_now=ut_now)
+        self._graph = graph
+        _log("MISSION GRAPH + VALIDATION:")
+        for line in graph.render().splitlines():
+            _log(line)
+        report = validate_plan(graph, command=command, vehicle_dv=self.vehicle_dv)
+        for line in report.render().splitlines():
+            _log(line)
+        return report
+
+    @staticmethod
+    def _close_ctx(ctx: PrimitiveContext | None) -> None:
+        """Close the live kRPC connection if one is open (no-op in dry-run, where ctx is None)."""
+        try:
+            if ctx is not None and ctx.conn is not None:
+                ctx.conn.close()
+        except Exception:
+            pass
     def _connect_context(self) -> PrimitiveContext | None:
         """Open the kRPC + bridge connections ONCE and return a live PrimitiveContext. Fails loudly."""
         try:
