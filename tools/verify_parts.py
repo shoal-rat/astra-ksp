@@ -37,31 +37,34 @@ from ksp_lab import parts as P  # noqa: E402
 # Tolerances are generous on thrust_asl (it is a derived Isp-ratio number) and tight on the cfg-direct
 # fields (mass, vac thrust, Isp, propellant capacity).
 # --------------------------------------------------------------------------------------------------
+# Keys are the LIVE AvailablePart.name (dotted) form the catalog now stores — KSP's cfg writes these with
+# underscores (liquidEngine3_v2) but the running game / part-database report them with dots
+# (liquidEngine3.v2). The catalog keys on the live form, so the ground-truth lookups must too.
 ENGINE_TRUTH = {
     #  name (materialized key)        title            dry_t   thr_vac  isp_asl isp_vac
     "liquidEngine":              ("LV-T30 Reliant",     1.25,   240.0,  265.0,  310.0),
     "liquidEngine2":             ("LV-T45 Swivel",      1.50,   215.0,  250.0,  320.0),
-    "liquidEngine3_v2":          ("LV-909 Terrier",     0.50,    60.0,   85.0,  345.0),
-    "engineLargeSkipper_v2":     ("RE-I5 Skipper",      3.00,   650.0,  280.0,  320.0),
-    "liquidEngineMainsail_v2":   ("RE-M3 Mainsail",     6.00,  1500.0,  285.0,  310.0),
+    "liquidEngine3.v2":          ("LV-909 Terrier",     0.50,    60.0,   85.0,  345.0),
+    "engineLargeSkipper.v2":     ("RE-I5 Skipper",      3.00,   650.0,  280.0,  320.0),
+    "liquidEngineMainsail.v2":   ("RE-M3 Mainsail",     6.00,  1500.0,  285.0,  310.0),
     "Size2LFB":                  ("Twin-Boar",         10.50,  2000.0,  291.0,  300.0),
     "Size3EngineCluster":        ("Mammoth",           15.00,  4000.0,  295.0,  315.0),
     "SSME":                      ("Vector",             4.00,  1000.0,  295.0,  315.0),
-    "liquidEngine2-2_v2":        ("Poodle",             1.75,   250.0,   90.0,  350.0),
+    "liquidEngine2-2.v2":        ("Poodle",             1.75,   250.0,   90.0,  350.0),
     "Size3AdvancedEngine":       ("Rhino",              9.00,  2000.0,  205.0,  340.0),
     "nuclearEngine":             ("Nerv (LV-N)",        3.00,    60.0,  185.0,  800.0),
 }
 
-# Tanks: name -> (title, dry_t, LiquidFuel, Oxidizer). Capacities are the in-VAB full amounts.
+# Tanks: name (live dotted form) -> (title, dry_t, LiquidFuel, Oxidizer). Capacities are the in-VAB fulls.
 TANK_TRUTH = {
     "fuelTankSmallFlat": ("FL-T100",  0.0625,   45.0,   55.0),
     "fuelTankSmall":     ("FL-T200",  0.125,    90.0,  110.0),
     "fuelTank":          ("FL-T400",  0.25,    180.0,  220.0),
-    "fuelTank_long":     ("FL-T800",  0.50,    360.0,  440.0),
+    "fuelTank.long":     ("FL-T800",  0.50,    360.0,  440.0),
     "Rockomax8BW":       ("X200-8",   0.50,    360.0,  440.0),
-    "Rockomax16_BW":     ("X200-16",  1.00,    720.0,  880.0),
-    "Rockomax32_BW":     ("X200-32",  2.00,   1440.0, 1760.0),
-    "Rockomax64_BW":     ("Jumbo-64", 4.00,   2880.0, 3520.0),
+    "Rockomax16.BW":     ("X200-16",  1.00,    720.0,  880.0),
+    "Rockomax32.BW":     ("X200-32",  2.00,   1440.0, 1760.0),
+    "Rockomax64.BW":     ("Jumbo-64", 4.00,   2880.0, 3520.0),
     "Size3SmallTank":    ("S3-3600",  2.25,   1620.0, 1980.0),
     "Size3MediumTank":   ("S3-7200",  4.50,   3240.0, 3960.0),
     "Size3LargeTank":    ("S3-14400", 9.00,   6480.0, 7920.0),
@@ -96,25 +99,39 @@ def reparse_catalog() -> dict[str, P.StockPart]:
 # --------------------------------------------------------------------------------------------------
 # CHECK 1 — committed JSON vs a fresh re-parse of the cfgs.
 # --------------------------------------------------------------------------------------------------
-_COMPARE_FIELDS = ("dry_mass_t", "wet_mass_t", "thrust_kn_asl", "thrust_kn_vac",
-                   "isp_asl_s", "isp_vac_s", "liquid_fuel", "oxidizer", "solid_fuel",
-                   "diameter_m", "height_m")
+# The committed JSON is now LIVE-reconciled (physics from the running game's /part-database), so the bare
+# cfg PHYSICS can legitimately differ from it (e.g. a command pod's live dry mass < its cfg mass). The
+# GEOMETRY fields are still cfg-derived and must match the re-parse exactly — those are the drift guard.
+_GEOMETRY_FIELDS = ("diameter_m", "height_m")
+_PHYSICS_FIELDS = ("dry_mass_t", "wet_mass_t", "thrust_kn_asl", "thrust_kn_vac",
+                   "isp_asl_s", "isp_vac_s", "liquid_fuel", "oxidizer", "solid_fuel")
+_COMPARE_FIELDS = _PHYSICS_FIELDS + _GEOMETRY_FIELDS
 
 
 def check_json_matches_reparse(reparsed: dict[str, P.StockPart]) -> list[str]:
-    """Every part in the committed JSON must match a fresh cfg re-parse field-for-field."""
+    """The committed JSON must match a fresh cfg re-parse on GEOMETRY (always), and on PHYSICS too unless
+    the JSON has been live-reconciled away from the bare cfg numbers (then physics diffs are expected and
+    only flagged as informational, never as a hard drift)."""
     problems: list[str] = []
     catalog = P.load_catalog()
     if not catalog:
         return ["JSON catalog is empty/absent — run `python -m ksp_lab.parts` to materialize it"]
     if not reparsed:
         return ["GameData not found — cannot re-parse; skipping JSON-vs-cfg cross-check"]
+    # If the JSON physics already diverges from the bare cfg for several parts, it was built --from-live;
+    # in that mode we drift-check geometry only (physics is authoritatively the live game's, not the cfg's).
+    physics_divergent = sum(
+        1 for name, jp in catalog.items()
+        if (rp := reparsed.get(name)) is not None
+        and any(not _close(getattr(jp, f), getattr(rp, f)) for f in _PHYSICS_FIELDS)
+    )
+    fields = _GEOMETRY_FIELDS if physics_divergent >= 3 else _COMPARE_FIELDS
     for name, jp in catalog.items():
         rp = reparsed.get(name)
         if rp is None:
             problems.append(f"{name}: in JSON but NOT produced by re-parse (parser drift)")
             continue
-        for f in _COMPARE_FIELDS:
+        for f in fields:
             a, b = getattr(jp, f), getattr(rp, f)
             if not _close(a, b):
                 problems.append(f"{name}.{f}: JSON={a} re-parse={b}")

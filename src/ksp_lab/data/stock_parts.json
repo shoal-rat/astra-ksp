@@ -87,7 +87,7 @@
   "title": "S2-33 \"Clydesdale\" Solid Fuel Booster",
   "wet_mass_t": 144.0
  },
- "Decoupler_0": {
+ "Decoupler.0": {
   "category": "Coupling",
   "cost": 150.0,
   "crew_capacity": 0,
@@ -99,7 +99,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_0",
+  "name": "Decoupler.0",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -109,7 +109,7 @@
   "title": "TD-06 Decoupler",
   "wet_mass_t": 0.01
  },
- "Decoupler_1": {
+ "Decoupler.1": {
   "category": "Coupling",
   "cost": 200.0,
   "crew_capacity": 0,
@@ -121,7 +121,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_1",
+  "name": "Decoupler.1",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -131,7 +131,7 @@
   "title": "TD-12 Decoupler",
   "wet_mass_t": 0.04
  },
- "Decoupler_1p5": {
+ "Decoupler.1p5": {
   "category": "Coupling",
   "cost": 250.0,
   "crew_capacity": 0,
@@ -143,7 +143,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_1p5",
+  "name": "Decoupler.1p5",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -153,7 +153,7 @@
   "title": "TD-18 Decoupler",
   "wet_mass_t": 0.09
  },
- "Decoupler_2": {
+ "Decoupler.2": {
   "category": "Coupling",
   "cost": 300.0,
   "crew_capacity": 0,
@@ -165,7 +165,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_2",
+  "name": "Decoupler.2",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -175,7 +175,7 @@
   "title": "TD-25 Decoupler",
   "wet_mass_t": 0.16
  },
- "Decoupler_3": {
+ "Decoupler.3": {
   "category": "Coupling",
   "cost": 375.0,
   "crew_capacity": 0,
@@ -187,7 +187,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_3",
+  "name": "Decoupler.3",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -197,7 +197,7 @@
   "title": "TD-37 Decoupler",
   "wet_mass_t": 0.36
  },
- "Decoupler_4": {
+ "Decoupler.4": {
   "category": "Coupling",
   "cost": 450.0,
   "crew_capacity": 0,
@@ -209,7 +209,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Decoupler_4",
+  "name": "Decoupler.4",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -417,7 +417,7 @@
   "title": "SP-T25 Structural Panel",
   "wet_mass_t": 0.15
  },
- "FanShroud_01": {
+ "FanShroud.01": {
   "category": "Aero",
   "cost": 85.0,
   "crew_capacity": 0,
@@ -429,7 +429,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "FanShroud_01",
+  "name": "FanShroud.01",
   "oxidizer": 0.0,
   "part_type": "aero",
   "solid_fuel": 0.0,
@@ -439,7 +439,7 @@
   "title": "S-062 Fan Shroud",
   "wet_mass_t": 0.04
  },
- "FanShroud_02": {
+ "FanShroud.02": {
   "category": "Aero",
   "cost": 175.0,
   "crew_capacity": 0,
@@ -451,7 +451,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "FanShroud_02",
+  "name": "FanShroud.02",
   "oxidizer": 0.0,
   "part_type": "aero",
   "solid_fuel": 0.0,
@@ -461,7 +461,7 @@
   "title": "S-12 Fan Shroud",
   "wet_mass_t": 0.13
  },
- "FanShroud_03": {
+ "FanShroud.03": {
   "category": "Aero",
   "cost": 325.0,
   "crew_capacity": 0,
@@ -473,7 +473,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "FanShroud_03",
+  "name": "FanShroud.03",
   "oxidizer": 0.0,
   "part_type": "aero",
   "solid_fuel": 0.0,
@@ -681,7 +681,7 @@
   "title": "Advanced Grabbing Unit",
   "wet_mass_t": 0.075
  },
- "HECS2_ProbeCore": {
+ "HECS2.ProbeCore": {
   "category": "Pods",
   "cost": 7500.0,
   "crew_capacity": 0,
@@ -693,7 +693,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "HECS2_ProbeCore",
+  "name": "HECS2.ProbeCore",
   "oxidizer": 0.0,
   "part_type": "probe",
   "solid_fuel": 0.0,
@@ -835,7 +835,7 @@
   "title": "Communotron HG-55",
   "wet_mass_t": 0.075
  },
- "HighGainAntenna5_v2": {
+ "HighGainAntenna5.v2": {
   "category": "Communication",
   "cost": 600.0,
   "crew_capacity": 0,
@@ -847,7 +847,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "HighGainAntenna5_v2",
+  "name": "HighGainAntenna5.v2",
   "oxidizer": 0.0,
   "part_type": "antenna",
   "solid_fuel": 0.0,
@@ -989,6 +989,28 @@
   "title": "J-33 \"Wheesley\" Turbofan Engine",
   "wet_mass_t": 1.5
  },
+ "Large.Crewed.Lab": {
+  "category": "Science",
+  "cost": 4000.0,
+  "crew_capacity": 2,
+  "diameter_m": 2.5,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 3.41,
+  "fin_area_m2": 0.0,
+  "height_m": 3.656,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 0.0,
+  "name": "Large.Crewed.Lab",
+  "oxidizer": 0.0,
+  "part_type": "science",
+  "solid_fuel": 0.0,
+  "stack_size": "size2",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mobile Processing Lab MPL-LG-2",
+  "wet_mass_t": 3.41
+ },
  "LargeTank": {
   "category": "FuelTank",
   "cost": 3000.0,
@@ -1010,28 +1032,6 @@
   "thrust_kn_vac": 0.0,
   "title": "Large Holding Tank",
   "wet_mass_t": 17.0
- },
- "Large_Crewed_Lab": {
-  "category": "Science",
-  "cost": 4000.0,
-  "crew_capacity": 2,
-  "diameter_m": 2.5,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 3.5,
-  "fin_area_m2": 0.0,
-  "height_m": 3.656,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 0.0,
-  "name": "Large_Crewed_Lab",
-  "oxidizer": 0.0,
-  "part_type": "science",
-  "solid_fuel": 0.0,
-  "stack_size": "size2",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mobile Processing Lab MPL-LG-2",
-  "wet_mass_t": 3.5
  },
  "LaunchEscapeSystem": {
   "category": "Utility",
@@ -1237,7 +1237,7 @@
   "crew_capacity": 2,
   "diameter_m": 0.625,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.355,
+  "dry_mass_t": 1.167,
   "fin_area_m2": 0.0,
   "height_m": 1.338,
   "isp_asl_s": 0.0,
@@ -1251,7 +1251,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Munar Excursion Module (M.E.M.)",
-  "wet_mass_t": 2.075
+  "wet_mass_t": 1.887
  },
  "MK1CrewCabin": {
   "category": "Utility",
@@ -1259,7 +1259,7 @@
   "crew_capacity": 2,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.0,
+  "dry_mass_t": 0.91,
   "fin_area_m2": 0.0,
   "height_m": 1.875,
   "isp_asl_s": 0.0,
@@ -1273,7 +1273,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1 Crew Cabin",
-  "wet_mass_t": 1.0
+  "wet_mass_t": 0.91
  },
  "MK1Fuselage": {
   "category": "FuelTank",
@@ -1347,7 +1347,7 @@
   "crew_capacity": 1,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.25,
+  "dry_mass_t": 1.156,
   "fin_area_m2": 0.0,
   "height_m": 0.175,
   "isp_asl_s": 0.0,
@@ -1361,7 +1361,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1 Cockpit",
-  "wet_mass_t": 1.28
+  "wet_mass_t": 1.186
  },
  "Mark2Cockpit": {
   "category": "Pods",
@@ -1369,7 +1369,7 @@
   "crew_capacity": 1,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.0,
+  "dry_mass_t": 0.906,
   "fin_area_m2": 0.0,
   "height_m": 1.875,
   "isp_asl_s": 0.0,
@@ -1383,7 +1383,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1 Inline Cockpit",
-  "wet_mass_t": 1.03
+  "wet_mass_t": 0.936
  },
  "MassiveBooster": {
   "category": "Engine",
@@ -1501,7 +1501,7 @@
   "crew_capacity": 2,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.56,
+  "dry_mass_t": 1.372,
   "fin_area_m2": 0.0,
   "height_m": 1.5,
   "isp_asl_s": 0.0,
@@ -1515,7 +1515,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk2 Command Pod",
-  "wet_mass_t": 1.56
+  "wet_mass_t": 1.372
  },
  "MpoProbe": {
   "category": "Pods",
@@ -1737,7 +1737,7 @@
   "title": "CR-7 R.A.P.I.E.R. Engine",
   "wet_mass_t": 2.0
  },
- "RCSBlock_v2": {
+ "RCSBlock.v2": {
   "category": "Control",
   "cost": 45.0,
   "crew_capacity": 0,
@@ -1749,7 +1749,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "RCSBlock_v2",
+  "name": "RCSBlock.v2",
   "oxidizer": 0.0,
   "part_type": "rcs",
   "solid_fuel": 0.0,
@@ -1825,7 +1825,7 @@
   "title": "FL-R750 RCS Fuel Tank",
   "wet_mass_t": 3.4
  },
- "RCSblock_01_small": {
+ "RCSblock.01.small": {
   "category": "Control",
   "cost": 30.0,
   "crew_capacity": 0,
@@ -1837,7 +1837,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "RCSblock_01_small",
+  "name": "RCSblock.01.small",
   "oxidizer": 0.0,
   "part_type": "rcs",
   "solid_fuel": 0.0,
@@ -1979,7 +1979,7 @@
   "title": "FTE-1 Drain Valve",
   "wet_mass_t": 0.01
  },
- "RobotArmScanner_S1": {
+ "RobotArmScanner.S1": {
   "category": "Science",
   "cost": 400.0,
   "crew_capacity": 0,
@@ -1991,7 +1991,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "RobotArmScanner_S1",
+  "name": "RobotArmScanner.S1",
   "oxidizer": 0.0,
   "part_type": "science",
   "solid_fuel": 0.0,
@@ -2001,7 +2001,7 @@
   "title": "CRSY Light Scanning Arm",
   "wet_mass_t": 0.06
  },
- "RobotArmScanner_S2": {
+ "RobotArmScanner.S2": {
   "category": "Science",
   "cost": 600.0,
   "crew_capacity": 0,
@@ -2013,7 +2013,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "RobotArmScanner_S2",
+  "name": "RobotArmScanner.S2",
   "oxidizer": 0.0,
   "part_type": "science",
   "solid_fuel": 0.0,
@@ -2023,7 +2023,7 @@
   "title": "SPRT Medium Scanning Arm",
   "wet_mass_t": 0.14
  },
- "RobotArmScanner_S3": {
+ "RobotArmScanner.S3": {
   "category": "Science",
   "cost": 800.0,
   "crew_capacity": 0,
@@ -2035,7 +2035,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "RobotArmScanner_S3",
+  "name": "RobotArmScanner.S3",
   "oxidizer": 0.0,
   "part_type": "science",
   "solid_fuel": 0.0,
@@ -2045,7 +2045,7 @@
   "title": "OPPO Large Scanning Arm",
   "wet_mass_t": 0.3
  },
- "Rockomax16_BW": {
+ "Rockomax16.BW": {
   "category": "FuelTank",
   "cost": 1550.0,
   "crew_capacity": 0,
@@ -2057,7 +2057,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 720.0,
-  "name": "Rockomax16_BW",
+  "name": "Rockomax16.BW",
   "oxidizer": 880.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2067,7 +2067,7 @@
   "title": "Rockomax X200-16 Fuel Tank",
   "wet_mass_t": 9.0
  },
- "Rockomax32_BW": {
+ "Rockomax32.BW": {
   "category": "FuelTank",
   "cost": 3000.0,
   "crew_capacity": 0,
@@ -2079,7 +2079,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 1440.0,
-  "name": "Rockomax32_BW",
+  "name": "Rockomax32.BW",
   "oxidizer": 1760.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2089,7 +2089,7 @@
   "title": "Rockomax X200-32 Fuel Tank",
   "wet_mass_t": 18.0
  },
- "Rockomax64_BW": {
+ "Rockomax64.BW": {
   "category": "FuelTank",
   "cost": 5750.0,
   "crew_capacity": 0,
@@ -2101,7 +2101,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 2880.0,
-  "name": "Rockomax64_BW",
+  "name": "Rockomax64.BW",
   "oxidizer": 3520.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2177,7 +2177,7 @@
   "title": "Experiment Storage Unit",
   "wet_mass_t": 0.05
  },
- "Separator_0": {
+ "Separator.0": {
   "category": "Coupling",
   "cost": 215.0,
   "crew_capacity": 0,
@@ -2189,7 +2189,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_0",
+  "name": "Separator.0",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2199,7 +2199,7 @@
   "title": "TS-06 Stack Separator",
   "wet_mass_t": 0.01
  },
- "Separator_1": {
+ "Separator.1": {
   "category": "Coupling",
   "cost": 275.0,
   "crew_capacity": 0,
@@ -2211,7 +2211,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_1",
+  "name": "Separator.1",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2221,7 +2221,7 @@
   "title": "TS-12 Stack Separator",
   "wet_mass_t": 0.05
  },
- "Separator_1p5": {
+ "Separator.1p5": {
   "category": "Coupling",
   "cost": 325.0,
   "crew_capacity": 0,
@@ -2233,7 +2233,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_1p5",
+  "name": "Separator.1p5",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2243,7 +2243,7 @@
   "title": "TS-18 Stack Separator",
   "wet_mass_t": 0.12
  },
- "Separator_2": {
+ "Separator.2": {
   "category": "Coupling",
   "cost": 400.0,
   "crew_capacity": 0,
@@ -2255,7 +2255,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_2",
+  "name": "Separator.2",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2265,7 +2265,7 @@
   "title": "TS-25 Stack Separator",
   "wet_mass_t": 0.21
  },
- "Separator_3": {
+ "Separator.3": {
   "category": "Coupling",
   "cost": 500.0,
   "crew_capacity": 0,
@@ -2277,7 +2277,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_3",
+  "name": "Separator.3",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2287,7 +2287,7 @@
   "title": "TS-37 Stack Separator",
   "wet_mass_t": 0.48
  },
- "Separator_4": {
+ "Separator.4": {
   "category": "Coupling",
   "cost": 650.0,
   "crew_capacity": 0,
@@ -2299,7 +2299,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Separator_4",
+  "name": "Separator.4",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2309,7 +2309,7 @@
   "title": "TS-50 Stack Separator",
   "wet_mass_t": 0.85
  },
- "ServiceBay_125_v2": {
+ "ServiceBay.125.v2": {
   "category": "Payload",
   "cost": 500.0,
   "crew_capacity": 0,
@@ -2321,7 +2321,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "ServiceBay_125_v2",
+  "name": "ServiceBay.125.v2",
   "oxidizer": 0.0,
   "part_type": "misc",
   "solid_fuel": 0.0,
@@ -2331,7 +2331,7 @@
   "title": "Service Bay (1.25m)",
   "wet_mass_t": 0.1
  },
- "ServiceBay_250_v2": {
+ "ServiceBay.250.v2": {
   "category": "Payload",
   "cost": 500.0,
   "crew_capacity": 0,
@@ -2343,7 +2343,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "ServiceBay_250_v2",
+  "name": "ServiceBay.250.v2",
   "oxidizer": 0.0,
   "part_type": "misc",
   "solid_fuel": 0.0,
@@ -2419,7 +2419,29 @@
   "title": "F3S0 \"Shrimp\" Solid Fuel Booster",
   "wet_mass_t": 0.825
  },
- "Size1p5_Monoprop": {
+ "Size.1.5.Cone": {
+  "category": "Aero",
+  "cost": 160.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.12,
+  "fin_area_m2": 0.0,
+  "height_m": 0.5,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 0.0,
+  "name": "Size.1.5.Cone",
+  "oxidizer": 0.0,
+  "part_type": "nose_cone",
+  "solid_fuel": 0.0,
+  "stack_size": "",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Protective Rocket Nosecone Mk5A",
+  "wet_mass_t": 0.12
+ },
+ "Size1p5.Monoprop": {
   "category": "FuelTank",
   "cost": 960.0,
   "crew_capacity": 0,
@@ -2431,7 +2453,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Size1p5_Monoprop",
+  "name": "Size1p5.Monoprop",
   "oxidizer": 0.0,
   "part_type": "rcs_tank",
   "solid_fuel": 0.0,
@@ -2441,7 +2463,7 @@
   "title": "FL-R400 RCS Fuel Tank",
   "wet_mass_t": 1.85
  },
- "Size1p5_Size0_Adapter_01": {
+ "Size1p5.Size0.Adapter.01": {
   "category": "FuelTank",
   "cost": 160.0,
   "crew_capacity": 0,
@@ -2453,7 +2475,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 72.0,
-  "name": "Size1p5_Size0_Adapter_01",
+  "name": "Size1p5.Size0.Adapter.01",
   "oxidizer": 88.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2463,7 +2485,7 @@
   "title": "FL-A150 Fuel Tank Adapter",
   "wet_mass_t": 0.9
  },
- "Size1p5_Size1_Adapter_01": {
+ "Size1p5.Size1.Adapter.01": {
   "category": "FuelTank",
   "cost": 600.0,
   "crew_capacity": 0,
@@ -2475,7 +2497,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 270.0,
-  "name": "Size1p5_Size1_Adapter_01",
+  "name": "Size1p5.Size1.Adapter.01",
   "oxidizer": 330.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2485,7 +2507,7 @@
   "title": "FL-A151L Fuel Tank Adapter",
   "wet_mass_t": 3.375
  },
- "Size1p5_Size1_Adapter_02": {
+ "Size1p5.Size1.Adapter.02": {
   "category": "FuelTank",
   "cost": 160.0,
   "crew_capacity": 0,
@@ -2497,7 +2519,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 72.0,
-  "name": "Size1p5_Size1_Adapter_02",
+  "name": "Size1p5.Size1.Adapter.02",
   "oxidizer": 88.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2507,7 +2529,7 @@
   "title": "FL-A151S Fuel Tank Adapter",
   "wet_mass_t": 0.9
  },
- "Size1p5_Size2_Adapter_01": {
+ "Size1p5.Size2.Adapter.01": {
   "category": "FuelTank",
   "cost": 1200.0,
   "crew_capacity": 0,
@@ -2519,7 +2541,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 540.0,
-  "name": "Size1p5_Size2_Adapter_01",
+  "name": "Size1p5.Size2.Adapter.01",
   "oxidizer": 660.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2529,7 +2551,7 @@
   "title": "FL-A215 Fuel Tank Adapter",
   "wet_mass_t": 6.75
  },
- "Size1p5_Strut_Decoupler": {
+ "Size1p5.Strut.Decoupler": {
   "category": "Coupling",
   "cost": 475.0,
   "crew_capacity": 0,
@@ -2541,7 +2563,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "Size1p5_Strut_Decoupler",
+  "name": "Size1p5.Strut.Decoupler",
   "oxidizer": 0.0,
   "part_type": "decoupler",
   "solid_fuel": 0.0,
@@ -2551,7 +2573,7 @@
   "title": "Size 1.5 Decoupler",
   "wet_mass_t": 0.09
  },
- "Size1p5_Tank_01": {
+ "Size1p5.Tank.01": {
   "category": "FuelTank",
   "cost": 220.0,
   "crew_capacity": 0,
@@ -2563,7 +2585,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 99.0,
-  "name": "Size1p5_Tank_01",
+  "name": "Size1p5.Tank.01",
   "oxidizer": 121.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2573,7 +2595,7 @@
   "title": "FL-TX220 Fuel Tank",
   "wet_mass_t": 1.2375
  },
- "Size1p5_Tank_02": {
+ "Size1p5.Tank.02": {
   "category": "FuelTank",
   "cost": 440.0,
   "crew_capacity": 0,
@@ -2585,7 +2607,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 198.0,
-  "name": "Size1p5_Tank_02",
+  "name": "Size1p5.Tank.02",
   "oxidizer": 242.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2595,7 +2617,7 @@
   "title": "FL-TX440 Fuel Tank",
   "wet_mass_t": 2.475
  },
- "Size1p5_Tank_03": {
+ "Size1p5.Tank.03": {
   "category": "FuelTank",
   "cost": 900.0,
   "crew_capacity": 0,
@@ -2607,7 +2629,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 405.0,
-  "name": "Size1p5_Tank_03",
+  "name": "Size1p5.Tank.03",
   "oxidizer": 495.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2617,7 +2639,7 @@
   "title": "FL-TX900 Fuel Tank",
   "wet_mass_t": 5.0625
  },
- "Size1p5_Tank_04": {
+ "Size1p5.Tank.04": {
   "category": "FuelTank",
   "cost": 1800.0,
   "crew_capacity": 0,
@@ -2629,7 +2651,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 810.0,
-  "name": "Size1p5_Tank_04",
+  "name": "Size1p5.Tank.04",
   "oxidizer": 990.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2639,7 +2661,7 @@
   "title": "FL-TX1800 Fuel Tank",
   "wet_mass_t": 10.125
  },
- "Size1p5_Tank_05": {
+ "Size1p5.Tank.05": {
   "category": "FuelTank",
   "cost": 1400.0,
   "crew_capacity": 0,
@@ -2651,7 +2673,7 @@
   "isp_asl_s": 118.0,
   "isp_vac_s": 154.0,
   "liquid_fuel": 540.0,
-  "name": "Size1p5_Tank_05",
+  "name": "Size1p5.Tank.05",
   "oxidizer": 660.0,
   "part_type": "solid_booster",
   "solid_fuel": 4.0,
@@ -2705,7 +2727,7 @@
   "title": "LFB KR-1x2 \"Twin-Boar\" Liquid Fuel Engine",
   "wet_mass_t": 42.5
  },
- "Size2LFB_v2": {
+ "Size2LFB.v2": {
   "category": "Engine",
   "cost": 17000.0,
   "crew_capacity": 0,
@@ -2717,7 +2739,7 @@
   "isp_asl_s": 280.0,
   "isp_vac_s": 300.0,
   "liquid_fuel": 2880.0,
-  "name": "Size2LFB_v2",
+  "name": "Size2LFB.v2",
   "oxidizer": 3520.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -2726,6 +2748,28 @@
   "thrust_kn_vac": 2000.0,
   "title": "LFB KR-1x2 \"Twin-Boar\" Liquid Fuel Engine",
   "wet_mass_t": 42.5
+ },
+ "Size3.Size4.Adapter.01": {
+  "category": "FuelTank",
+  "cost": 6400.0,
+  "crew_capacity": 0,
+  "diameter_m": 3.75,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 4.0,
+  "fin_area_m2": 0.0,
+  "height_m": 2.5,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 2880.0,
+  "name": "Size3.Size4.Adapter.01",
+  "oxidizer": 3520.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "size3",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Kerbodyne S3-S4 Adapter Tank",
+  "wet_mass_t": 36.0
  },
  "Size3AdvancedEngine": {
   "category": "Engine",
@@ -2837,7 +2881,7 @@
   "title": "Kerbodyne S3-3600 Tank",
   "wet_mass_t": 20.25
  },
- "Size3To2Adapter_v2": {
+ "Size3To2Adapter.v2": {
   "category": "FuelTank",
   "cost": 1623.0,
   "crew_capacity": 0,
@@ -2849,7 +2893,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 1350.0,
-  "name": "Size3To2Adapter_v2",
+  "name": "Size3To2Adapter.v2",
   "oxidizer": 1650.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2859,29 +2903,7 @@
   "title": "Kerbodyne ADTP-2-3",
   "wet_mass_t": 16.875
  },
- "Size3_Size4_Adapter_01": {
-  "category": "FuelTank",
-  "cost": 6400.0,
-  "crew_capacity": 0,
-  "diameter_m": 3.75,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 4.0,
-  "fin_area_m2": 0.0,
-  "height_m": 2.5,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 2880.0,
-  "name": "Size3_Size4_Adapter_01",
-  "oxidizer": 3520.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "size3",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Kerbodyne S3-S4 Adapter Tank",
-  "wet_mass_t": 36.0
- },
- "Size4_EngineAdapter_01": {
+ "Size4.EngineAdapter.01": {
   "category": "FuelTank",
   "cost": 9000.0,
   "crew_capacity": 0,
@@ -2893,7 +2915,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 4050.0,
-  "name": "Size4_EngineAdapter_01",
+  "name": "Size4.EngineAdapter.01",
   "oxidizer": 4950.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -2903,7 +2925,7 @@
   "title": "Kerbodyne Engine Cluster Adapter Tank",
   "wet_mass_t": 50.625
  },
- "Size4_Tank_01": {
+ "Size4.Tank.01": {
   "category": "FuelTank",
   "cost": 6400.0,
   "crew_capacity": 0,
@@ -2915,7 +2937,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 2880.0,
-  "name": "Size4_Tank_01",
+  "name": "Size4.Tank.01",
   "oxidizer": 3520.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2925,7 +2947,7 @@
   "title": "Kerbodyne S4-64 Fuel Tank",
   "wet_mass_t": 36.0
  },
- "Size4_Tank_02": {
+ "Size4.Tank.02": {
   "category": "FuelTank",
   "cost": 12800.0,
   "crew_capacity": 0,
@@ -2937,7 +2959,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 5760.0,
-  "name": "Size4_Tank_02",
+  "name": "Size4.Tank.02",
   "oxidizer": 7040.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2947,7 +2969,7 @@
   "title": "Kerbodyne S4-128 Fuel Tank",
   "wet_mass_t": 72.0
  },
- "Size4_Tank_03": {
+ "Size4.Tank.03": {
   "category": "FuelTank",
   "cost": 25600.0,
   "crew_capacity": 0,
@@ -2959,7 +2981,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 11520.0,
-  "name": "Size4_Tank_03",
+  "name": "Size4.Tank.03",
   "oxidizer": 14080.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2969,7 +2991,7 @@
   "title": "Kerbodyne S4-256 Fuel Tank",
   "wet_mass_t": 144.0
  },
- "Size4_Tank_04": {
+ "Size4.Tank.04": {
   "category": "FuelTank",
   "cost": 51200.0,
   "crew_capacity": 0,
@@ -2981,7 +3003,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 23040.0,
-  "name": "Size4_Tank_04",
+  "name": "Size4.Tank.04",
   "oxidizer": 28160.0,
   "part_type": "fuel_tank",
   "solid_fuel": 0.0,
@@ -2990,28 +3012,6 @@
   "thrust_kn_vac": 0.0,
   "title": "Kerbodyne S4-512 Fuel Tank",
   "wet_mass_t": 288.0
- },
- "Size_1_5_Cone": {
-  "category": "Aero",
-  "cost": 160.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.12,
-  "fin_area_m2": 0.0,
-  "height_m": 0.5,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 0.0,
-  "name": "Size_1_5_Cone",
-  "oxidizer": 0.0,
-  "part_type": "nose_cone",
-  "solid_fuel": 0.0,
-  "stack_size": "",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Protective Rocket Nosecone Mk5A",
-  "wet_mass_t": 0.12
  },
  "SmallGearBay": {
   "category": "Ground",
@@ -4009,7 +4009,7 @@
   "crew_capacity": 4,
   "diameter_m": 2.5,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.25,
+  "dry_mass_t": 2.07,
   "fin_area_m2": 0.0,
   "height_m": 1.9738,
   "isp_asl_s": 0.0,
@@ -4023,7 +4023,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "PPD-10 Hitchhiker Storage Container",
-  "wet_mass_t": 2.25
+  "wet_mass_t": 2.07
  },
  "cupola": {
   "category": "Pods",
@@ -4031,7 +4031,7 @@
   "crew_capacity": 1,
   "diameter_m": 2.5,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 0.94,
+  "dry_mass_t": 0.846,
   "fin_area_m2": 0.0,
   "height_m": 1.23,
   "isp_asl_s": 0.0,
@@ -4045,7 +4045,29 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "PPD-12 Cupola Module",
-  "wet_mass_t": 0.98
+  "wet_mass_t": 0.886
+ },
+ "delta.small": {
+  "category": "Aero",
+  "cost": 200.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.05,
+  "fin_area_m2": 0.0,
+  "height_m": 1.0,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 0.0,
+  "name": "delta.small",
+  "oxidizer": 0.0,
+  "part_type": "fin",
+  "solid_fuel": 0.0,
+  "stack_size": "",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Small Delta Wing",
+  "wet_mass_t": 0.05
  },
  "deltaWing": {
   "category": "Aero",
@@ -4068,28 +4090,6 @@
   "thrust_kn_vac": 0.0,
   "title": "Delta Wing",
   "wet_mass_t": 0.2
- },
- "delta_small": {
-  "category": "Aero",
-  "cost": 200.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.05,
-  "fin_area_m2": 0.0,
-  "height_m": 1.0,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 0.0,
-  "name": "delta_small",
-  "oxidizer": 0.0,
-  "part_type": "fin",
-  "solid_fuel": 0.0,
-  "stack_size": "",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Small Delta Wing",
-  "wet_mass_t": 0.05
  },
  "dockingPort1": {
   "category": "Coupling",
@@ -4289,7 +4289,7 @@
   "title": "Elevon 5",
   "wet_mass_t": 0.08
  },
- "engineLargeSkipper_v2": {
+ "engineLargeSkipper.v2": {
   "category": "Engine",
   "cost": 5300.0,
   "crew_capacity": 0,
@@ -4301,7 +4301,7 @@
   "isp_asl_s": 280.0,
   "isp_vac_s": 320.0,
   "liquid_fuel": 0.0,
-  "name": "engineLargeSkipper_v2",
+  "name": "engineLargeSkipper.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -4559,7 +4559,7 @@
   "crew_capacity": 0,
   "diameter_m": 0.625,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 3e-05,
+  "dry_mass_t": 2e-05,
   "fin_area_m2": 0.0,
   "height_m": 1.0,
   "isp_asl_s": 0.0,
@@ -4573,7 +4573,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "RFP-0 Flag (.625m)",
-  "wet_mass_t": 3e-05
+  "wet_mass_t": 2e-05
  },
  "flagPartSize1": {
   "category": "Utility",
@@ -4795,6 +4795,28 @@
   "title": "FL-T400 Fuel Tank",
   "wet_mass_t": 2.25
  },
+ "fuelTank.long": {
+  "category": "FuelTank",
+  "cost": 800.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.5,
+  "fin_area_m2": 0.0,
+  "height_m": 3.7625,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 360.0,
+  "name": "fuelTank.long",
+  "oxidizer": 440.0,
+  "part_type": "fuel_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "FL-T800 Fuel Tank",
+  "wet_mass_t": 4.5
+ },
  "fuelTankSmall": {
   "category": "FuelTank",
   "cost": 275.0,
@@ -4839,28 +4861,6 @@
   "title": "FL-T100 Fuel Tank",
   "wet_mass_t": 0.5625
  },
- "fuelTank_long": {
-  "category": "FuelTank",
-  "cost": 800.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.5,
-  "fin_area_m2": 0.0,
-  "height_m": 3.7625,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 360.0,
-  "name": "fuelTank_long",
-  "oxidizer": 440.0,
-  "part_type": "fuel_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "FL-T800 Fuel Tank",
-  "wet_mass_t": 4.5
- },
  "ionEngine": {
   "category": "Engine",
   "cost": 8000.0,
@@ -4883,7 +4883,7 @@
   "title": "IX-6315 \"Dawn\" Electric Propulsion System",
   "wet_mass_t": 0.25
  },
- "ksp_r_largeBatteryPack": {
+ "ksp.r.largeBatteryPack": {
   "category": "Electrical",
   "cost": 550.0,
   "crew_capacity": 0,
@@ -4895,7 +4895,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "ksp_r_largeBatteryPack",
+  "name": "ksp.r.largeBatteryPack",
   "oxidizer": 0.0,
   "part_type": "battery",
   "solid_fuel": 0.0,
@@ -4911,7 +4911,7 @@
   "crew_capacity": 1,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 0.75,
+  "dry_mass_t": 0.656,
   "fin_area_m2": 0.0,
   "height_m": 1.7,
   "isp_asl_s": 0.0,
@@ -4925,7 +4925,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "KV-1 'Onion' Reentry Module",
-  "wet_mass_t": 0.75
+  "wet_mass_t": 0.656
  },
  "kv2Pod": {
   "category": "Pods",
@@ -4933,7 +4933,7 @@
   "crew_capacity": 2,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.5,
+  "dry_mass_t": 1.312,
   "fin_area_m2": 0.0,
   "height_m": 1.7,
   "isp_asl_s": 0.0,
@@ -4947,7 +4947,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "KV-2 'Onion' Reentry Module",
-  "wet_mass_t": 1.5
+  "wet_mass_t": 1.312
  },
  "kv3Pod": {
   "category": "Pods",
@@ -4955,7 +4955,7 @@
   "crew_capacity": 3,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.25,
+  "dry_mass_t": 1.968,
   "fin_area_m2": 0.0,
   "height_m": 1.7,
   "isp_asl_s": 0.0,
@@ -4969,7 +4969,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "KV-3 'Tato' Reentry Module",
-  "wet_mass_t": 2.25
+  "wet_mass_t": 1.968
  },
  "lGripPad": {
   "category": "Structural",
@@ -5043,7 +5043,7 @@
   "crew_capacity": 1,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 0.6,
+  "dry_mass_t": 0.506,
   "fin_area_m2": 0.0,
   "height_m": 1.25,
   "isp_asl_s": 0.0,
@@ -5057,7 +5057,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1 Lander Can",
-  "wet_mass_t": 0.66
+  "wet_mass_t": 0.566
  },
  "landingLeg1": {
   "category": "Ground",
@@ -5301,6 +5301,28 @@
   "title": "LV-T30 \"Reliant\" Liquid Fuel Engine",
   "wet_mass_t": 1.25
  },
+ "liquidEngine.v2": {
+  "category": "Engine",
+  "cost": 1100.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 1.25,
+  "fin_area_m2": 0.0,
+  "height_m": 1.63,
+  "isp_asl_s": 265.0,
+  "isp_vac_s": 310.0,
+  "liquid_fuel": 0.0,
+  "name": "liquidEngine.v2",
+  "oxidizer": 0.0,
+  "part_type": "liquid_engine",
+  "solid_fuel": 0.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 205.161,
+  "thrust_kn_vac": 240.0,
+  "title": "LV-T30 \"Reliant\" Liquid Fuel Engine",
+  "wet_mass_t": 1.25
+ },
  "liquidEngine2": {
   "category": "none",
   "cost": 1200.0,
@@ -5323,7 +5345,7 @@
   "title": "LV-T45 \"Swivel\" Liquid Fuel Engine",
   "wet_mass_t": 1.5
  },
- "liquidEngine2-2_v2": {
+ "liquidEngine2-2.v2": {
   "category": "Engine",
   "cost": 1300.0,
   "crew_capacity": 0,
@@ -5335,7 +5357,7 @@
   "isp_asl_s": 90.0,
   "isp_vac_s": 350.0,
   "liquid_fuel": 0.0,
-  "name": "liquidEngine2-2_v2",
+  "name": "liquidEngine2-2.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5345,7 +5367,7 @@
   "title": "RE-L10 \"Poodle\" Liquid Fuel Engine",
   "wet_mass_t": 1.75
  },
- "liquidEngine2_v2": {
+ "liquidEngine2.v2": {
   "category": "Engine",
   "cost": 1200.0,
   "crew_capacity": 0,
@@ -5357,7 +5379,7 @@
   "isp_asl_s": 250.0,
   "isp_vac_s": 320.0,
   "liquid_fuel": 0.0,
-  "name": "liquidEngine2_v2",
+  "name": "liquidEngine2.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5367,7 +5389,7 @@
   "title": "LV-T45 \"Swivel\" Liquid Fuel Engine",
   "wet_mass_t": 1.5
  },
- "liquidEngine3_v2": {
+ "liquidEngine3.v2": {
   "category": "Engine",
   "cost": 390.0,
   "crew_capacity": 0,
@@ -5379,7 +5401,7 @@
   "isp_asl_s": 85.0,
   "isp_vac_s": 345.0,
   "liquid_fuel": 0.0,
-  "name": "liquidEngine3_v2",
+  "name": "liquidEngine3.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5389,7 +5411,7 @@
   "title": "LV-909 \"Terrier\" Liquid Fuel Engine",
   "wet_mass_t": 0.5
  },
- "liquidEngineMainsail_v2": {
+ "liquidEngineMainsail.v2": {
   "category": "Engine",
   "cost": 13000.0,
   "crew_capacity": 0,
@@ -5401,7 +5423,7 @@
   "isp_asl_s": 285.0,
   "isp_vac_s": 310.0,
   "liquid_fuel": 0.0,
-  "name": "liquidEngineMainsail_v2",
+  "name": "liquidEngineMainsail.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5411,7 +5433,7 @@
   "title": "RE-M3 \"Mainsail\" Liquid Fuel Engine",
   "wet_mass_t": 6.0
  },
- "liquidEngineMini_v2": {
+ "liquidEngineMini.v2": {
   "category": "Engine",
   "cost": 240.0,
   "crew_capacity": 0,
@@ -5423,7 +5445,7 @@
   "isp_asl_s": 265.0,
   "isp_vac_s": 320.0,
   "liquid_fuel": 0.0,
-  "name": "liquidEngineMini_v2",
+  "name": "liquidEngineMini.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5432,28 +5454,6 @@
   "thrust_kn_vac": 20.0,
   "title": "48-7S \"Spark\" Liquid Fuel Engine",
   "wet_mass_t": 0.13
- },
- "liquidEngine_v2": {
-  "category": "Engine",
-  "cost": 1100.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 1.25,
-  "fin_area_m2": 0.0,
-  "height_m": 1.63,
-  "isp_asl_s": 265.0,
-  "isp_vac_s": 310.0,
-  "liquid_fuel": 0.0,
-  "name": "liquidEngine_v2",
-  "oxidizer": 0.0,
-  "part_type": "liquid_engine",
-  "solid_fuel": 0.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 205.161,
-  "thrust_kn_vac": 240.0,
-  "title": "LV-T30 \"Reliant\" Liquid Fuel Engine",
-  "wet_mass_t": 1.25
  },
  "longAntenna": {
   "category": "Communication",
@@ -5587,7 +5587,7 @@
   "title": "Propeller Blade Type B",
   "wet_mass_t": 0.035
  },
- "microEngine_v2": {
+ "microEngine.v2": {
   "category": "Engine",
   "cost": 110.0,
   "crew_capacity": 0,
@@ -5599,7 +5599,7 @@
   "isp_asl_s": 80.0,
   "isp_vac_s": 315.0,
   "liquid_fuel": 0.0,
-  "name": "microEngine_v2",
+  "name": "microEngine.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -5725,7 +5725,7 @@
   "crew_capacity": 3,
   "diameter_m": 2.5,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.6,
+  "dry_mass_t": 2.318,
   "fin_area_m2": 0.0,
   "height_m": 1.6724,
   "isp_asl_s": 0.0,
@@ -5739,21 +5739,21 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1-3 Command Pod",
-  "wet_mass_t": 2.72
+  "wet_mass_t": 2.438
  },
- "mk1pod_v2": {
+ "mk1pod.v2": {
   "category": "Pods",
   "cost": 600.0,
   "crew_capacity": 1,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 0.8,
+  "dry_mass_t": 0.706,
   "fin_area_m2": 0.0,
   "height_m": 1.0474,
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "mk1pod_v2",
+  "name": "mk1pod.v2",
   "oxidizer": 0.0,
   "part_type": "pod",
   "solid_fuel": 0.0,
@@ -5761,7 +5761,51 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk1 Command Pod",
-  "wet_mass_t": 0.84
+  "wet_mass_t": 0.746
+ },
+ "mk2.1m.AdapterLong": {
+  "category": "Propulsion",
+  "cost": 1050.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.57,
+  "fin_area_m2": 0.0,
+  "height_m": 3.75,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 360.0,
+  "name": "mk2.1m.AdapterLong",
+  "oxidizer": 440.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mk2 to 1.25m Adapter Long",
+  "wet_mass_t": 4.57
+ },
+ "mk2.1m.Bicoupler": {
+  "category": "Propulsion",
+  "cost": 860.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.29,
+  "fin_area_m2": 0.0,
+  "height_m": 0.9375,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 180.0,
+  "name": "mk2.1m.Bicoupler",
+  "oxidizer": 220.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mk2 Bicoupler",
+  "wet_mass_t": 2.29
  },
  "mk2CargoBayL": {
   "category": "Payload",
@@ -5807,19 +5851,19 @@
   "title": "Mk2 Cargo Bay CRG-04",
   "wet_mass_t": 0.25
  },
- "mk2Cockpit_Inline": {
+ "mk2Cockpit.Inline": {
   "category": "Pods",
   "cost": 3500.0,
   "crew_capacity": 2,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.0,
+  "dry_mass_t": 1.812,
   "fin_area_m2": 0.0,
   "height_m": 2.5,
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "mk2Cockpit_Inline",
+  "name": "mk2Cockpit.Inline",
   "oxidizer": 0.0,
   "part_type": "pod",
   "solid_fuel": 0.0,
@@ -5827,21 +5871,21 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk2 Inline Cockpit",
-  "wet_mass_t": 2.1
+  "wet_mass_t": 1.912
  },
- "mk2Cockpit_Standard": {
+ "mk2Cockpit.Standard": {
   "category": "Pods",
   "cost": 3500.0,
   "crew_capacity": 2,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.0,
+  "dry_mass_t": 1.812,
   "fin_area_m2": 0.0,
   "height_m": 1.25,
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "mk2Cockpit_Standard",
+  "name": "mk2Cockpit.Standard",
   "oxidizer": 0.0,
   "part_type": "pod",
   "solid_fuel": 0.0,
@@ -5849,7 +5893,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk2 Cockpit",
-  "wet_mass_t": 2.06
+  "wet_mass_t": 1.872
  },
  "mk2CrewCabin": {
   "category": "Utility",
@@ -5857,7 +5901,7 @@
   "crew_capacity": 4,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 2.03,
+  "dry_mass_t": 1.85,
   "fin_area_m2": 0.0,
   "height_m": 1.875,
   "isp_asl_s": 0.0,
@@ -5871,7 +5915,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "MK2 Crew Cabin",
-  "wet_mass_t": 2.03
+  "wet_mass_t": 1.85
  },
  "mk2DockingPort": {
   "category": "Coupling",
@@ -6027,19 +6071,19 @@
   "title": "Mk2 Monopropellant Tank",
   "wet_mass_t": 1.89
  },
- "mk2LanderCabin_v2": {
+ "mk2LanderCabin.v2": {
   "category": "Pods",
   "cost": 3250.0,
   "crew_capacity": 2,
   "diameter_m": 2.5,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 1.355,
+  "dry_mass_t": 1.167,
   "fin_area_m2": 0.0,
   "height_m": 1.1555,
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "mk2LanderCabin_v2",
+  "name": "mk2LanderCabin.v2",
   "oxidizer": 0.0,
   "part_type": "pod",
   "solid_fuel": 0.0,
@@ -6047,7 +6091,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk2 Lander Can",
-  "wet_mass_t": 1.515
+  "wet_mass_t": 1.327
  },
  "mk2SpacePlaneAdapter": {
   "category": "Propulsion",
@@ -6069,50 +6113,6 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk2 to 1.25m Adapter",
-  "wet_mass_t": 2.29
- },
- "mk2_1m_AdapterLong": {
-  "category": "Propulsion",
-  "cost": 1050.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.57,
-  "fin_area_m2": 0.0,
-  "height_m": 3.75,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 360.0,
-  "name": "mk2_1m_AdapterLong",
-  "oxidizer": 440.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mk2 to 1.25m Adapter Long",
-  "wet_mass_t": 4.57
- },
- "mk2_1m_Bicoupler": {
-  "category": "Propulsion",
-  "cost": 860.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.29,
-  "fin_area_m2": 0.0,
-  "height_m": 0.9375,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 180.0,
-  "name": "mk2_1m_Bicoupler",
-  "oxidizer": 220.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mk2 Bicoupler",
   "wet_mass_t": 2.29
  },
  "mk3CargoBayL": {
@@ -6203,19 +6203,19 @@
   "title": "Mk3 Cargo Ramp",
   "wet_mass_t": 4.0
  },
- "mk3Cockpit_Shuttle": {
+ "mk3Cockpit.Shuttle": {
   "category": "Pods",
   "cost": 10000.0,
   "crew_capacity": 4,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 3.5,
+  "dry_mass_t": 3.124,
   "fin_area_m2": 0.0,
   "height_m": 4.4375,
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "mk3Cockpit_Shuttle",
+  "name": "mk3Cockpit.Shuttle",
   "oxidizer": 0.0,
   "part_type": "pod",
   "solid_fuel": 0.0,
@@ -6223,7 +6223,7 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk3 Cockpit",
-  "wet_mass_t": 3.9
+  "wet_mass_t": 3.524
  },
  "mk3CrewCabin": {
   "category": "Utility",
@@ -6231,7 +6231,7 @@
   "crew_capacity": 16,
   "diameter_m": 1.25,
   "drag_area_m2": 0.0,
-  "dry_mass_t": 7.9,
+  "dry_mass_t": 7.18,
   "fin_area_m2": 0.0,
   "height_m": 3.75,
   "isp_asl_s": 0.0,
@@ -6245,75 +6245,9 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk3 Passenger Module",
-  "wet_mass_t": 7.9
+  "wet_mass_t": 7.18
  },
- "mk3FuselageLFO_100": {
-  "category": "FuelTank",
-  "cost": 10000.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 7.14,
-  "fin_area_m2": 0.0,
-  "height_m": 10.0,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 4500.0,
-  "name": "mk3FuselageLFO_100",
-  "oxidizer": 5500.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mk3 Rocket Fuel Fuselage Long",
-  "wet_mass_t": 57.14
- },
- "mk3FuselageLFO_25": {
-  "category": "FuelTank",
-  "cost": 2500.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 1.79,
-  "fin_area_m2": 0.0,
-  "height_m": 2.5,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 1125.0,
-  "name": "mk3FuselageLFO_25",
-  "oxidizer": 1375.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mk3 Rocket Fuel Fuselage Short",
-  "wet_mass_t": 14.29
- },
- "mk3FuselageLFO_50": {
-  "category": "FuelTank",
-  "cost": 5000.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 3.57,
-  "fin_area_m2": 0.0,
-  "height_m": 5.0,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 2250.0,
-  "name": "mk3FuselageLFO_50",
-  "oxidizer": 2750.0,
-  "part_type": "adapter_tank",
-  "solid_fuel": 0.0,
-  "stack_size": "",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Mk3 Rocket Fuel Fuselage",
-  "wet_mass_t": 28.57
- },
- "mk3FuselageLF_100": {
+ "mk3FuselageLF.100": {
   "category": "FuelTank",
   "cost": 17200.0,
   "crew_capacity": 0,
@@ -6325,7 +6259,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 10000.0,
-  "name": "mk3FuselageLF_100",
+  "name": "mk3FuselageLF.100",
   "oxidizer": 0.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -6335,7 +6269,7 @@
   "title": "Mk3 Liquid Fuel Fuselage Long",
   "wet_mass_t": 57.14
  },
- "mk3FuselageLF_25": {
+ "mk3FuselageLF.25": {
   "category": "FuelTank",
   "cost": 4300.0,
   "crew_capacity": 0,
@@ -6347,7 +6281,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 2500.0,
-  "name": "mk3FuselageLF_25",
+  "name": "mk3FuselageLF.25",
   "oxidizer": 0.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -6357,7 +6291,7 @@
   "title": "Mk3 Liquid Fuel Fuselage Short",
   "wet_mass_t": 14.29
  },
- "mk3FuselageLF_50": {
+ "mk3FuselageLF.50": {
   "category": "FuelTank",
   "cost": 8600.0,
   "crew_capacity": 0,
@@ -6369,7 +6303,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 5000.0,
-  "name": "mk3FuselageLF_50",
+  "name": "mk3FuselageLF.50",
   "oxidizer": 0.0,
   "part_type": "adapter_tank",
   "solid_fuel": 0.0,
@@ -6377,6 +6311,72 @@
   "thrust_kn_asl": 0.0,
   "thrust_kn_vac": 0.0,
   "title": "Mk3 Liquid Fuel Fuselage",
+  "wet_mass_t": 28.57
+ },
+ "mk3FuselageLFO.100": {
+  "category": "FuelTank",
+  "cost": 10000.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 7.14,
+  "fin_area_m2": 0.0,
+  "height_m": 10.0,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 4500.0,
+  "name": "mk3FuselageLFO.100",
+  "oxidizer": 5500.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mk3 Rocket Fuel Fuselage Long",
+  "wet_mass_t": 57.14
+ },
+ "mk3FuselageLFO.25": {
+  "category": "FuelTank",
+  "cost": 2500.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 1.79,
+  "fin_area_m2": 0.0,
+  "height_m": 2.5,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 1125.0,
+  "name": "mk3FuselageLFO.25",
+  "oxidizer": 1375.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mk3 Rocket Fuel Fuselage Short",
+  "wet_mass_t": 14.29
+ },
+ "mk3FuselageLFO.50": {
+  "category": "FuelTank",
+  "cost": 5000.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 3.57,
+  "fin_area_m2": 0.0,
+  "height_m": 5.0,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 2250.0,
+  "name": "mk3FuselageLFO.50",
+  "oxidizer": 2750.0,
+  "part_type": "adapter_tank",
+  "solid_fuel": 0.0,
+  "stack_size": "",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Mk3 Rocket Fuel Fuselage",
   "wet_mass_t": 28.57
  },
  "mk3FuselageMONO": {
@@ -6594,7 +6594,7 @@
   "part_type": "monoprop_engine",
   "solid_fuel": 0.0,
   "stack_size": "",
-  "thrust_kn_asl": 20.0,
+  "thrust_kn_asl": 9.6,
   "thrust_kn_vac": 20.0,
   "title": "O-10 \"Puff\" MonoPropellant Fuel Engine",
   "wet_mass_t": 0.09
@@ -6753,7 +6753,7 @@
   "title": "Probodobodyne QBE",
   "wet_mass_t": 0.07
  },
- "probeCoreHex_v2": {
+ "probeCoreHex.v2": {
   "category": "Pods",
   "cost": 650.0,
   "crew_capacity": 0,
@@ -6765,7 +6765,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "probeCoreHex_v2",
+  "name": "probeCoreHex.v2",
   "oxidizer": 0.0,
   "part_type": "probe",
   "solid_fuel": 0.0,
@@ -6775,29 +6775,7 @@
   "title": "Probodobodyne HECS",
   "wet_mass_t": 0.1
  },
- "probeCoreOcto2_v2": {
-  "category": "Pods",
-  "cost": 1480.0,
-  "crew_capacity": 0,
-  "diameter_m": 0.625,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.04,
-  "fin_area_m2": 0.0,
-  "height_m": 0.1221,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 0.0,
-  "name": "probeCoreOcto2_v2",
-  "oxidizer": 0.0,
-  "part_type": "probe",
-  "solid_fuel": 0.0,
-  "stack_size": "size0",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Probodobodyne OKTO2",
-  "wet_mass_t": 0.04
- },
- "probeCoreOcto_v2": {
+ "probeCoreOcto.v2": {
   "category": "Pods",
   "cost": 450.0,
   "crew_capacity": 0,
@@ -6809,7 +6787,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "probeCoreOcto_v2",
+  "name": "probeCoreOcto.v2",
   "oxidizer": 0.0,
   "part_type": "probe",
   "solid_fuel": 0.0,
@@ -6819,7 +6797,29 @@
   "title": "Probodobodyne OKTO",
   "wet_mass_t": 0.1
  },
- "probeCoreSphere_v2": {
+ "probeCoreOcto2.v2": {
+  "category": "Pods",
+  "cost": 1480.0,
+  "crew_capacity": 0,
+  "diameter_m": 0.625,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.04,
+  "fin_area_m2": 0.0,
+  "height_m": 0.1221,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 0.0,
+  "name": "probeCoreOcto2.v2",
+  "oxidizer": 0.0,
+  "part_type": "probe",
+  "solid_fuel": 0.0,
+  "stack_size": "size0",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Probodobodyne OKTO2",
+  "wet_mass_t": 0.04
+ },
+ "probeCoreSphere.v2": {
   "category": "Pods",
   "cost": 300.0,
   "crew_capacity": 0,
@@ -6831,7 +6831,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "probeCoreSphere_v2",
+  "name": "probeCoreSphere.v2",
   "oxidizer": 0.0,
   "part_type": "probe",
   "solid_fuel": 0.0,
@@ -7061,7 +7061,7 @@
   "title": "Engine Pre-cooler",
   "wet_mass_t": 0.35
  },
- "radialEngineMini_v2": {
+ "radialEngineMini.v2": {
   "category": "Engine",
   "cost": 120.0,
   "crew_capacity": 0,
@@ -7073,7 +7073,7 @@
   "isp_asl_s": 260.0,
   "isp_vac_s": 290.0,
   "liquid_fuel": 0.0,
-  "name": "radialEngineMini_v2",
+  "name": "radialEngineMini.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -7193,6 +7193,28 @@
   "title": "Stratus-V Cylindrified Monopropellant Tank",
   "wet_mass_t": 0.23
  },
+ "rocketNoseCone.v3": {
+  "category": "Aero",
+  "cost": 450.0,
+  "crew_capacity": 0,
+  "diameter_m": 2.5,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.2,
+  "fin_area_m2": 0.0,
+  "height_m": 1.0,
+  "isp_asl_s": 0.0,
+  "isp_vac_s": 0.0,
+  "liquid_fuel": 0.0,
+  "name": "rocketNoseCone.v3",
+  "oxidizer": 0.0,
+  "part_type": "nose_cone",
+  "solid_fuel": 0.0,
+  "stack_size": "size2",
+  "thrust_kn_asl": 0.0,
+  "thrust_kn_vac": 0.0,
+  "title": "Protective Rocket Nose Cone Mk7",
+  "wet_mass_t": 0.2
+ },
  "rocketNoseConeSize3": {
   "category": "Aero",
   "cost": 850.0,
@@ -7237,29 +7259,7 @@
   "title": "Protective Nose Cone Mk16A",
   "wet_mass_t": 0.8
  },
- "rocketNoseCone_v3": {
-  "category": "Aero",
-  "cost": 450.0,
-  "crew_capacity": 0,
-  "diameter_m": 2.5,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.2,
-  "fin_area_m2": 0.0,
-  "height_m": 1.0,
-  "isp_asl_s": 0.0,
-  "isp_vac_s": 0.0,
-  "liquid_fuel": 0.0,
-  "name": "rocketNoseCone_v3",
-  "oxidizer": 0.0,
-  "part_type": "nose_cone",
-  "solid_fuel": 0.0,
-  "stack_size": "size2",
-  "thrust_kn_asl": 0.0,
-  "thrust_kn_vac": 0.0,
-  "title": "Protective Rocket Nose Cone Mk7",
-  "wet_mass_t": 0.2
- },
- "roverBody_v2": {
+ "roverBody.v2": {
   "category": "Pods",
   "cost": 800.0,
   "crew_capacity": 0,
@@ -7271,7 +7271,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "roverBody_v2",
+  "name": "roverBody.v2",
   "oxidizer": 0.0,
   "part_type": "probe",
   "solid_fuel": 0.0,
@@ -7457,7 +7457,7 @@
   "title": "Small Inline Reaction Wheel",
   "wet_mass_t": 0.05
  },
- "science_module": {
+ "science.module": {
   "category": "Science",
   "cost": 1800.0,
   "crew_capacity": 0,
@@ -7469,7 +7469,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "science_module",
+  "name": "science.module",
   "oxidizer": 0.0,
   "part_type": "science",
   "solid_fuel": 0.0,
@@ -7809,7 +7809,7 @@
   "title": "24-77 \"Twitch\" Liquid Fuel Engine",
   "wet_mass_t": 0.09
  },
- "smallRadialEngine_v2": {
+ "smallRadialEngine.v2": {
   "category": "Engine",
   "cost": 230.0,
   "crew_capacity": 0,
@@ -7821,7 +7821,7 @@
   "isp_asl_s": 275.0,
   "isp_vac_s": 290.0,
   "liquid_fuel": 0.0,
-  "name": "smallRadialEngine_v2",
+  "name": "smallRadialEngine.v2",
   "oxidizer": 0.0,
   "part_type": "liquid_engine",
   "solid_fuel": 0.0,
@@ -8029,6 +8029,50 @@
   "title": "OX-STAT Photovoltaic Panels",
   "wet_mass_t": 0.005
  },
+ "solidBooster.sm.v2": {
+  "category": "Engine",
+  "cost": 200.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.45,
+  "fin_area_m2": 0.0,
+  "height_m": 1.755,
+  "isp_asl_s": 140.0,
+  "isp_vac_s": 165.0,
+  "liquid_fuel": 0.0,
+  "name": "solidBooster.sm.v2",
+  "oxidizer": 0.0,
+  "part_type": "solid_booster",
+  "solid_fuel": 140.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 162.909,
+  "thrust_kn_vac": 192.0,
+  "title": "RT-5 \"Flea\" Solid Fuel Booster",
+  "wet_mass_t": 1.5
+ },
+ "solidBooster.v2": {
+  "category": "Engine",
+  "cost": 400.0,
+  "crew_capacity": 0,
+  "diameter_m": 1.25,
+  "drag_area_m2": 0.0,
+  "dry_mass_t": 0.75,
+  "fin_area_m2": 0.0,
+  "height_m": 2.8439,
+  "isp_asl_s": 170.0,
+  "isp_vac_s": 195.0,
+  "liquid_fuel": 0.0,
+  "name": "solidBooster.v2",
+  "oxidizer": 0.0,
+  "part_type": "solid_booster",
+  "solid_fuel": 375.0,
+  "stack_size": "size1",
+  "thrust_kn_asl": 197.897,
+  "thrust_kn_vac": 227.0,
+  "title": "RT-10 \"Hammer\" Solid Fuel Booster",
+  "wet_mass_t": 3.5625
+ },
  "solidBooster1-1": {
   "category": "Engine",
   "cost": 850.0,
@@ -8051,51 +8095,7 @@
   "title": "BACC \"Thumper\" Solid Fuel Booster",
   "wet_mass_t": 7.65
  },
- "solidBooster_sm_v2": {
-  "category": "Engine",
-  "cost": 200.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.45,
-  "fin_area_m2": 0.0,
-  "height_m": 1.755,
-  "isp_asl_s": 140.0,
-  "isp_vac_s": 165.0,
-  "liquid_fuel": 0.0,
-  "name": "solidBooster_sm_v2",
-  "oxidizer": 0.0,
-  "part_type": "solid_booster",
-  "solid_fuel": 140.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 162.909,
-  "thrust_kn_vac": 192.0,
-  "title": "RT-5 \"Flea\" Solid Fuel Booster",
-  "wet_mass_t": 1.5
- },
- "solidBooster_v2": {
-  "category": "Engine",
-  "cost": 400.0,
-  "crew_capacity": 0,
-  "diameter_m": 1.25,
-  "drag_area_m2": 0.0,
-  "dry_mass_t": 0.75,
-  "fin_area_m2": 0.0,
-  "height_m": 2.8439,
-  "isp_asl_s": 170.0,
-  "isp_vac_s": 195.0,
-  "liquid_fuel": 0.0,
-  "name": "solidBooster_v2",
-  "oxidizer": 0.0,
-  "part_type": "solid_booster",
-  "solid_fuel": 375.0,
-  "stack_size": "size1",
-  "thrust_kn_asl": 197.897,
-  "thrust_kn_vac": 227.0,
-  "title": "RT-10 \"Hammer\" Solid Fuel Booster",
-  "wet_mass_t": 3.5625
- },
- "spotLight1_v2": {
+ "spotLight1.v2": {
   "category": "Utility",
   "cost": 100.0,
   "crew_capacity": 0,
@@ -8107,7 +8107,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "spotLight1_v2",
+  "name": "spotLight1.v2",
   "oxidizer": 0.0,
   "part_type": "utility",
   "solid_fuel": 0.0,
@@ -8117,7 +8117,7 @@
   "title": "Illuminator Mk1",
   "wet_mass_t": 0.015
  },
- "spotLight2_v2": {
+ "spotLight2.v2": {
   "category": "Utility",
   "cost": 100.0,
   "crew_capacity": 0,
@@ -8129,7 +8129,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "spotLight2_v2",
+  "name": "spotLight2.v2",
   "oxidizer": 0.0,
   "part_type": "utility",
   "solid_fuel": 0.0,
@@ -8161,7 +8161,7 @@
   "title": "Spotlight Mk1",
   "wet_mass_t": 0.005
  },
- "stackBiCoupler_v2": {
+ "stackBiCoupler.v2": {
   "category": "Structural",
   "cost": 400.0,
   "crew_capacity": 0,
@@ -8173,7 +8173,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "stackBiCoupler_v2",
+  "name": "stackBiCoupler.v2",
   "oxidizer": 0.0,
   "part_type": "structural",
   "solid_fuel": 0.0,
@@ -8227,7 +8227,7 @@
   "title": "TVR-2160C Mk2 Stack Quad-Coupler",
   "wet_mass_t": 0.175
  },
- "stackTriCoupler_v2": {
+ "stackTriCoupler.v2": {
   "category": "Structural",
   "cost": 680.0,
   "crew_capacity": 0,
@@ -8239,7 +8239,7 @@
   "isp_asl_s": 0.0,
   "isp_vac_s": 0.0,
   "liquid_fuel": 0.0,
-  "name": "stackTriCoupler_v2",
+  "name": "stackTriCoupler.v2",
   "oxidizer": 0.0,
   "part_type": "structural",
   "solid_fuel": 0.0,

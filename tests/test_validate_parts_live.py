@@ -107,6 +107,44 @@ def test_part_database_ignores_non_rocket_relevant_parts():
     assert rep.matches == 0 and rep.mismatches == []
 
 
+def test_part_database_underscore_catalog_key_matches_dotted_live_name():
+    """KSP's cfg/persistence name (Rockomax16_BW) and the live AvailablePart.name (Rockomax16.BW) differ
+    only in the _/. separator. A legacy underscore-form catalog key must still reconcile to its dotted
+    live twin via canonicalization, not be a false 'in catalog but NOT in live' miss."""
+    catalog = {"Rockomax16_BW": _tank(name="Rockomax16_BW", dry=1.0, lf=720.0, ox=880.0)}
+    live = [_live_tank(name="Rockomax16.BW", dry=1.0, lf=720.0, ox=880.0)]
+    rep = V.cross_check_part_database(live, catalog)
+    assert rep.mismatches == [], rep.mismatches
+    assert not any("NOT in live" in s for s in rep.skips), rep.skips
+    assert rep.matches == 3   # dry + LF + Ox all matched across the name-form boundary
+
+
+def test_part_database_multimode_engine_skips_jet_mode_isp_compare():
+    """A multimode engine (the RAPIER) headlines its air-breathing JET mode in /part-database: a low
+    thrust and an "Isp" of ~3200 s that is a velocity curve, not a vacuum Isp. The catalog stores the
+    ROCKET mode (the rocket-relevant numbers). The cross-check must SKIP the thrust/Isp compare for such
+    a part (live Isp > 900 s while the catalog holds a normal rocket Isp) — never flag a MISMATCH —
+    while still comparing the dry mass."""
+    catalog = {"RAPIER": _engine(name="RAPIER", dry=2.0, thr_vac=180.0, isp_vac=305.0, isp_asl=275.0)}
+    live = [_live_engine(name="RAPIER", dry=2.0, thr_vac=105.0, isp_vac=3200.0, isp_asl=3200.0)]
+    rep = V.cross_check_part_database(live, catalog)
+    assert rep.mismatches == [], rep.mismatches            # the mode disagreement is NOT a failure
+    assert any("RAPIER" in s and "multimode" in s for s in rep.skips), rep.skips
+    assert rep.matches == 1                                # only the dry mass was compared
+
+
+def test_part_database_pure_jet_still_compares_and_matches():
+    """A PURE jet (not multimode) reports the SAME high 'Isp' in both catalog and live, so it must still
+    be compared and MATCH — the multimode skip must not swallow genuine single-mode air-breathers."""
+    jet = _engine(name="JetEngine", dry=1.8, thr_vac=120.0, isp_vac=10500.0, isp_asl=10500.0)
+    catalog = {"JetEngine": jet}
+    live = [_live_engine(name="JetEngine", dry=1.8, thr_vac=120.0, isp_vac=10500.0, isp_asl=10500.0)]
+    rep = V.cross_check_part_database(live, catalog)
+    assert rep.mismatches == [], rep.mismatches
+    assert not any("multimode" in s for s in rep.skips), rep.skips
+    assert rep.matches == 4   # dry + thrust + ispVac + ispAsl all compared and matched
+
+
 # --------------------------------------------------------------------------------------------------
 # PATH B — cross_check_in_use_parts (fallback, no new endpoint needed).
 # --------------------------------------------------------------------------------------------------

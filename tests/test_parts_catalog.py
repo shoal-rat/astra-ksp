@@ -108,6 +108,36 @@ def test_back_compat_part_api_resolves_names_with_accurate_masses():
         assert parts.part(name).name == name
 
 
+def test_catalog_keys_on_the_live_dotted_part_name_form():
+    """KSP names a part with underscores in the cfg (``Rockomax16_BW``) but the running game's
+    ``AvailablePart.name`` — and ``/part-database`` — report the dotted form (``Rockomax16.BW``). The
+    catalog must key on the dotted live form so the same string matches the live db AND names a part the
+    game can load. After reconciliation, no underscore-form duplicate of a ``.``-form part remains."""
+    # live_part_name canonicalizes the cfg/persistence (underscore) form to the live (dotted) form.
+    assert parts.live_part_name("Rockomax16_BW") == "Rockomax16.BW"
+    assert parts.live_part_name("mk1pod_v2") == "mk1pod.v2"
+    assert parts.live_part_name("liquidEngine") == "liquidEngine"   # idempotent, no separator
+    # The materialized catalog keys on the live form: the dotted names resolve, the cfg underscore
+    # duplicates do NOT (they were the false "missing" flags before the fix).
+    catalog = parts.load_catalog()
+    for live_name in ("Rockomax16.BW", "Rockomax32.BW", "liquidEngine3.v2", "mk1pod.v2"):
+        assert live_name in catalog, live_name
+        assert live_name.replace(".", "_") not in catalog, live_name
+
+
+def test_rocket_relevant_parts_reconciled_to_live_game_masses():
+    """The 14 live mismatches were fixed by taking the running game's post-load physics. The marquee one:
+    the Mk1 command pod's true dry mass is 0.706 t (the game reduces crewed-pod mass), not the old curated
+    0.84 t — and the catalog now carries the live value while keeping the curated 1.25 m draw diameter."""
+    pod = parts.part("mk1pod.v2")
+    assert pod.dry_mass_t == 0.706            # live AvailablePart.dryMassT, not the old curated 0.84
+    assert pod.diameter_m == 1.25             # curated draw geometry preserved (not the cfg bulkhead)
+    # The RAPIER is a multimode engine; the catalog keeps its ROCKET mode (the rocket-relevant numbers),
+    # NOT the air-breathing jet primary mode the live /part-database headlines (105 kN / 3200 s).
+    rapier = parts.part("RAPIER")
+    assert rapier.thrust_kn_vac == 180.0 and rapier.isp_vac_s == 305.0 and rapier.isp_asl_s == 275.0
+
+
 def test_unknown_part_still_raises_keyerror():
     try:
         parts.part("definitely-not-a-real-part")
@@ -173,8 +203,9 @@ def test_design_pools_are_the_whole_catalog_no_curated_tier():
     assert "Size3EngineCluster" in D.BOOSTER_ENGINES          # Mammoth
     assert any("Size2LFB" in n for n in D.BOOSTER_ENGINES)    # Twin-Boar
     assert len(D.BOOSTER_ENGINES) >= 10                       # a deep pool, not a 5-engine hand-list
-    # The vacuum pool keeps the high-Isp engines a booster pool excludes (Terrier, Nerv, Poodle).
-    assert "nuclearEngine" in D.VACUUM_ENGINES and "liquidEngine3_v2" in D.VACUUM_ENGINES
+    # The vacuum pool keeps the high-Isp engines a booster pool excludes (Terrier, Nerv, Poodle). The
+    # catalog now keys on the live AvailablePart.name (dotted) form, so the Terrier is "liquidEngine3.v2".
+    assert "nuclearEngine" in D.VACUUM_ENGINES and "liquidEngine3.v2" in D.VACUUM_ENGINES
     # Single tier: the *_FULL aliases are the SAME object as the base pool (back-compat, not a 2nd tier).
     assert D.BOOSTER_ENGINES_FULL is D.BOOSTER_ENGINES
     assert D.TANKS_BY_DIAMETER_FULL is D.TANKS_BY_DIAMETER

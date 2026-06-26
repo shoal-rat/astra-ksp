@@ -115,12 +115,17 @@ def cross_check_part_database(live_parts: list[dict], catalog: dict[str, "P.Stoc
     LF/Ox/SolidFuel capacities the live entry reports. Parts only the game has (or only the catalog has)
     are recorded as SKIP, not failures — the catalog is intentionally rocket-relevant, not exhaustive.
     """
+    # KSP names a part TWO ways: the cfg/persistence form (underscores) and the runtime AvailablePart.name
+    # the /part-database reports (dots). The reconciled catalog keys on the live (dotted) form, so a direct
+    # by_name hit is the norm; we ALSO index by the canonical (underscore->dot) form so a legacy
+    # underscore alias still resolves to its live twin instead of being a false "missing".
     by_name = {p.get("name"): p for p in live_parts if p.get("name")}
+    by_canon = {P.live_part_name(p.get("name", "")): p for p in live_parts if p.get("name")}
     report = Report()
     for name, sp in sorted(catalog.items()):
         if sp.part_type not in ROCKET_RELEVANT_TYPES:
             continue
-        live = by_name.get(name)
+        live = by_name.get(name) or by_canon.get(P.live_part_name(name))
         if live is None:
             report.skip(f"{name}: in catalog but NOT in live part-database")
             continue
@@ -128,12 +133,29 @@ def cross_check_part_database(live_parts: list[dict], catalog: dict[str, "P.Stoc
         report.field(name, "dry_mass_t", sp.dry_mass_t, float(live.get("dryMassT", 0.0)), "t")
 
         # Engine stats — only when the live part actually exposes them (has a ModuleEngines).
-        if "maxThrustKn" in live and sp.thrust_kn_vac > 0:
-            report.field(name, "thrust_kn_vac", sp.thrust_kn_vac, float(live["maxThrustKn"]), "kN")
-        if "ispVacS" in live and sp.isp_vac_s > 0:
-            report.field(name, "isp_vac_s", sp.isp_vac_s, float(live["ispVacS"]), "s")
-        if "ispAslS" in live and sp.isp_asl_s > 0:
-            report.field(name, "isp_asl_s", sp.isp_asl_s, float(live["ispAslS"]), "s")
+        #
+        # MULTIMODE skip (the RAPIER). A multimode engine's /part-database entry reports its PRIMARY mode,
+        # which for the RAPIER is the air-breathing jet: maxThrust 105 kN and an "Isp" of ~3200 s that is a
+        # velocity curve, not a vacuum Isp (no chemical rocket exceeds Nerv's 800 s). The catalog correctly
+        # stores the engine's ROCKET mode (180 kN, 305/275 s) — the rocket-relevant numbers — so comparing
+        # the two modes would be a spurious MISMATCH. We skip the thrust/Isp compare ONLY when the live Isp
+        # is a jet-curve artifact (>900 s) AND the catalog holds a normal rocket Isp (<=900 s) — i.e. a real
+        # mode disagreement. A PURE jet (Wheesley/Panther/…) has the SAME high "Isp" in both catalog and
+        # live, so it still compares and MATCHES normally; only a genuine multimode part is skipped.
+        live_isp = float(live.get("ispVacS", 0.0))
+        catalog_holds_rocket_mode = 0 < sp.isp_vac_s <= 900.0
+        if live_isp > 900.0 and catalog_holds_rocket_mode:
+            report.skip(f"{name}: multimode engine — live reports jet mode "
+                        f"(thrust={live.get('maxThrustKn')}kN, isp={live.get('ispVacS')}s); "
+                        f"catalog keeps the ROCKET mode (thrust={sp.thrust_kn_vac}kN, "
+                        f"isp={sp.isp_asl_s}/{sp.isp_vac_s}s)")
+        else:
+            if "maxThrustKn" in live and sp.thrust_kn_vac > 0:
+                report.field(name, "thrust_kn_vac", sp.thrust_kn_vac, float(live["maxThrustKn"]), "kN")
+            if "ispVacS" in live and sp.isp_vac_s > 0:
+                report.field(name, "isp_vac_s", sp.isp_vac_s, float(live["ispVacS"]), "s")
+            if "ispAslS" in live and sp.isp_asl_s > 0:
+                report.field(name, "isp_asl_s", sp.isp_asl_s, float(live["ispAslS"]), "s")
 
         # Resource capacities the catalog tracks (LF/Ox/SolidFuel).
         live_res = live.get("resources", {}) or {}

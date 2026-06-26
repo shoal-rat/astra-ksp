@@ -93,6 +93,21 @@ class StockPart:
 
 
 # --------------------------------------------------------------------------------------------------
+# NAME FORM. KSP part names appear in TWO forms and the lab must agree with the GAME on which it stores.
+# A .cfg / craft-persistence file writes ``name = Rockomax16_BW`` (underscores), but at load the game
+# converts that to the runtime ``AvailablePart.name = Rockomax16.BW`` (dots) — and ``/part-database``
+# reports the runtime (dotted) form. The craft_writer emits the catalog key verbatim as the ``part = ``
+# id, so the catalog MUST key on the dotted live form for the same string to (a) match the live db and
+# (b) name a part the game can actually load. ``live_part_name`` is that one canonical form; we apply it
+# to every cfg-parsed name so the committed catalog is keyed exactly like the running game.
+def live_part_name(cfg_name: str) -> str:
+    """Canonicalize a cfg/persistence part name (underscore form) to the live ``AvailablePart.name``
+    (dotted) form the game and ``/part-database`` use. Idempotent: a name already in live form is
+    returned unchanged. KSP's own convention is a literal ``_`` -> ``.`` swap of the part-id string."""
+    return cfg_name.replace("_", ".")
+
+
+# --------------------------------------------------------------------------------------------------
 # CURATED, hand-validated parts — the authoritative back-compat surface. Masses/heights/Isp here were
 # each checked against the live game; the materialized catalog NEVER overwrites these (see
 # _build_stock_parts). Adding a part to the JSON that shares one of these names keeps the curated value.
@@ -506,9 +521,12 @@ def parse_part_cfg(text: str) -> list[StockPart]:
         height = _node_height(body) or 1.0
         diameter, stack_size = _bulkhead_info(body)
         part_type = _classify(category, body, engine, resources)
+        # Store the runtime (dotted) AvailablePart.name so the catalog key matches the live game and the
+        # id the craft_writer emits. _classify() above already ran on the raw cfg ``name`` substring, so
+        # its marker checks ("adapter"/"mk3"/...) are unaffected by the canonicalization.
         parts.append(StockPart(
-            name=name,
-            title=_readable_title(raw_block) or name,
+            name=live_part_name(name),
+            title=_readable_title(raw_block) or live_part_name(name),
             dry_mass_t=round(dry, 5),
             wet_mass_t=round(wet, 5),
             cost=_float(body, "cost", 0.0),
@@ -550,16 +568,13 @@ def _apply_asl_thrust(parts: list[StockPart]) -> list[StockPart]:
     return out
 
 
-def materialize_catalog(gamedata_dirs: list[str] | None = None,
-                        out_path: Path | None = None) -> dict[str, dict]:
-    """Walk the real KSP GameData PART tree ONCE and write every rocket-relevant part to a JSON file.
+def parse_gamedata_tree(gamedata_dirs: list[str] | None = None) -> dict[str, StockPart]:
+    """Walk the real KSP GameData PART tree and return ``{live_name: StockPart}`` from the cfgs (offline).
 
-    This is a BUILD step (run by hand / a test), never called at import. Returns the catalog dict it
-    wrote. Parts that collide on ``name`` keep the FIRST parsed (stock wins over any duplicate cfg)."""
+    Names are already canonicalized to the live (dotted) form by ``parse_part_cfg``. Parts that collide
+    on name keep the FIRST parsed (stock wins over a duplicate cfg). ASL thrust is back-filled."""
     dirs = gamedata_dirs or DEFAULT_GAMEDATA_DIRS
-    out_path = out_path or CATALOG_JSON
     catalog: dict[str, StockPart] = {}
-    skipped = 0
     for d in dirs:
         base = Path(d)
         if not base.exists():
@@ -568,20 +583,101 @@ def materialize_catalog(gamedata_dirs: list[str] | None = None,
             try:
                 text = cfg.read_text(encoding="utf-8-sig", errors="ignore")
             except OSError:
-                skipped += 1
                 continue
             try:
                 for sp in parse_part_cfg(text):
                     if sp.name not in catalog:
                         catalog[sp.name] = sp
             except Exception:
-                skipped += 1
                 continue
-    parts = _apply_asl_thrust(list(catalog.values()))
-    data = {p.name: _part_to_dict(p) for p in parts}
+    return {p.name: p for p in _apply_asl_thrust(list(catalog.values()))}
+
+
+def materialize_catalog(gamedata_dirs: list[str] | None = None,
+                        out_path: Path | None = None) -> dict[str, dict]:
+    """OFFLINE build: parse the GameData PART tree and write every rocket-relevant part to the JSON.
+
+    This is the FALLBACK source — accurate, but it materializes whatever cfgs are on disk regardless of
+    whether THIS install actually loads them (e.g. DLC folders present but the DLC disabled). Prefer
+    ``rebuild_from_live`` when the game is running so the catalog is exactly the loaded part set."""
+    out_path = out_path or CATALOG_JSON
+    data = {name: _part_to_dict(p) for name, p in parse_gamedata_tree(gamedata_dirs).items()}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
     return data
+
+
+def reconcile_to_live(cfg_catalog: dict[str, StockPart],
+                      live_parts: list[dict]) -> tuple[dict[str, StockPart], list[str]]:
+    """Make the LIVE ``/part-database`` dump authoritative over the cfg parse, keyed by the live name.
+
+    Returns ``(catalog, dropped)`` where ``catalog`` is ``{live_name: StockPart}`` containing ONLY parts
+    the running game actually loaded (so the design can never pick an unbuildable part), and ``dropped``
+    lists the cfg-parsed names this install does NOT load (e.g. DLC parts when the DLC is off).
+
+    For every cfg part that IS live we keep the cfg-derived GEOMETRY/cost/role (``height_m``,
+    ``diameter_m``, ``stack_size``, ``cost``, ``part_type``, drag/fin areas — ``/part-database`` does not
+    expose them) but overwrite the PHYSICS with the game's post-load truth: ``dry_mass_t``, engine
+    ``thrust``/``isp``, and the LF/Ox/SolidFuel capacities (so ``wet_mass_t`` is recomputed from live).
+    cfg names are matched to live via ``live_part_name`` so the underscore/dot form never causes a miss."""
+    by_live = {p.get("name"): p for p in live_parts if p.get("name")}
+    catalog: dict[str, StockPart] = {}
+    dropped: list[str] = []
+    for name, sp in cfg_catalog.items():
+        live = by_live.get(name) or by_live.get(live_part_name(name))
+        if live is None:
+            dropped.append(name)
+            continue
+        live_name = live.get("name", name)
+        res = live.get("resources", {}) or {}
+        lf = float(res.get("LiquidFuel", 0.0))
+        ox = float(res.get("Oxidizer", 0.0))
+        sf = float(res.get("SolidFuel", 0.0))
+        dry = float(live.get("dryMassT", sp.dry_mass_t))
+        # Recompute wet from the live dry mass + the live resource amounts at the same densities the
+        # cfg used (so wet_mass_t stays consistent with the live dry+propellant the game reports).
+        prop = sum(float(amt) * RESOURCE_DENSITY_T.get(rname, 0.0) for rname, amt in res.items())
+        merged = replace(
+            sp,
+            name=live_name,
+            dry_mass_t=round(dry, 5),
+            wet_mass_t=round(dry + prop, 5),
+            liquid_fuel=lf, oxidizer=ox, solid_fuel=sf,
+        )
+        # Engine physics: take live thrust/Isp when the live part exposes a ModuleEngines. The live
+        # maxThrust is the part's PRIMARY-mode vacuum thrust; back out ASL thrust by the Isp ratio.
+        #
+        # MULTIMODE EXCEPTION (the RAPIER). A multimode engine's /part-database entry reports its primary
+        # mode, which for the RAPIER is the air-breathing JET (105 kN, an "Isp" of 3200 s that is really a
+        # velocity curve, NOT a vacuum Isp). The cfg parser already selected the engine's ROCKET mode
+        # (180 kN, 305/275 s) — the rocket-relevant numbers the sizer needs. So when the live "Isp" is a
+        # jet-curve artifact (absurdly high for any chemical rocket — Nerv tops out at 800 s) we KEEP the
+        # cfg rocket-mode physics rather than overwrite it with the jet mode. validate_parts_live skips the
+        # engine-stat comparison for these, so a multimode part is reconciled on mass and is never a
+        # spurious MISMATCH.
+        if "maxThrustKn" in live and float(live.get("ispVacS", 0.0)) <= 900.0:
+            thr_vac = float(live["maxThrustKn"])
+            isp_vac = float(live.get("ispVacS", sp.isp_vac_s))
+            isp_asl = float(live.get("ispAslS", sp.isp_asl_s))
+            thr_asl = thr_vac * (isp_asl / isp_vac) if isp_vac > 0 else thr_vac
+            merged = replace(merged, thrust_kn_vac=round(thr_vac, 3), thrust_kn_asl=round(thr_asl, 3),
+                             isp_vac_s=round(isp_vac, 3), isp_asl_s=round(isp_asl, 3))
+        catalog[live_name] = merged
+    return catalog, dropped
+
+
+def rebuild_from_live(live_parts: list[dict], gamedata_dirs: list[str] | None = None,
+                      out_path: Path | None = None) -> tuple[dict[str, dict], list[str]]:
+    """LIVE-AUTHORITATIVE build: rebuild ``stock_parts.json`` to be exactly the running game's parts.
+
+    Parses the GameData tree for geometry, reconciles physics to the live ``/part-database`` dump, drops
+    every part the game did NOT load, writes the JSON, and returns ``(data, dropped)``."""
+    out_path = out_path or CATALOG_JSON
+    catalog, dropped = reconcile_to_live(parse_gamedata_tree(gamedata_dirs), live_parts)
+    data = {name: _part_to_dict(p) for name, p in catalog.items()}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+    return data, dropped
 
 
 def _part_to_dict(p: StockPart) -> dict:
@@ -636,34 +732,64 @@ _TUNED_OVERRIDES: dict[str, dict] = {
 }
 
 
+# The role buckets whose PHYSICS the live game is authoritative for and that the live validator cross-
+# checks (mass/thrust/Isp/capacity). For a curated part that collides with the materialized catalog AND
+# is one of these rocket-relevant roles, we take the live materialized part as the base (live physics +
+# the correct stack/role classification the design pools query on) and re-apply only the curated DRAW-
+# GEOMETRY — so the catalog matches the running game on every cross-checked field while the renderer keeps
+# the hand-tuned diameter/height it was calibrated against. A NON-rocket-relevant curated part (decoupler,
+# heat shield, parachute, antenna, battery, RCS block, …) is NOT cross-checked by the live validator and
+# the design/renderer were hand-tuned against its curated mass+geometry, so it is kept AS-IS — changing it
+# would only destabilize the untouchable sizer for no validation benefit.
+_LIVE_PHYSICS_ROLES = {
+    "liquid_engine", "solid_booster", "monoprop_engine", "ion_engine", "jet_engine",
+    "fuel_tank", "adapter_tank", "rcs_tank", "xenon_tank",
+    "pod", "probe", "lander", "crew_cabin",
+}
+# Draw geometry the untouchable renderer's taper/fairing math depends on — re-applied from the curated
+# entry onto the live part for rocket-relevant collisions. /part-database exposes none of these, so this
+# never contradicts the live cross-check.
+_CURATED_GEOMETRY_FIELDS = ("diameter_m", "height_m", "drag_area_m2", "fin_area_m2")
+
+
 def _build_stock_parts() -> dict[str, StockPart]:
-    """The full catalog the lab uses, with the MATERIALIZED cfg catalog as the authoritative source —
-    no curated tier shadows it. Every one of the ~423 stock parts stands on equal footing with its real,
-    verified cfg numbers (proven accurate by tools/verify_parts.py).
+    """The full catalog the lab uses: the MATERIALIZED (live-reconciled) catalog is authoritative for the
+    PHYSICS the running game reports, with a thin curated layer that keeps the design-/renderer-facing
+    DRAW-GEOMETRY stable.
 
-    Curation now contributes only two narrow things, never a parallel "validated" copy of a part:
-      1. parts the materializer does NOT produce (the dotted-name back-compat aliases the rest of the
-         codebase still imports through ``part()`` — ``fuelTank.long``, ``liquidEngine3.v2``,
-         ``Decoupler.1``, the Mk1 pod / OKTO / service bay, ...). These are ADDED only when their name is
-         absent from the materialized catalog, so they never override an accurate materialized part; and
-      2. a handful of lab-TUNED aero coefficients (``_TUNED_OVERRIDES``) the cfg cannot express, patched
-         ONTO the materialized part (drag/fin area, the radial-decoupler plate footprint).
+    Materialization order:
+      1. Start from the materialized catalog (``load_catalog()``) — every part keyed on its live
+         ``AvailablePart.name`` with the running game's mass/thrust/Isp/capacity (see ``rebuild_from_live``).
+      2. For a curated part that ALSO exists in the materialized catalog:
+           - if its live role is ROCKET-RELEVANT (engine/tank/pod/probe/…, the roles the live validator
+             cross-checks), use the LIVE materialized part as the base (so mass/thrust/Isp/capacity match
+             the running game and the cross-check stays at 0 mismatch) and re-apply only the curated draw
+             geometry the renderer was tuned against;
+           - otherwise (decoupler/heat shield/parachute/antenna/…, never cross-checked) keep the curated
+             entry as-is — the untouchable sizer was hand-tuned against its values.
+         ADD curated parts the materializer never produced (back-compat aliases + lab-only parts). If the
+         catalog is missing entirely, fall back to the bare curated set so the lab still runs offline.
+      3. PATCH the lab-tuned aero coefficients (``_TUNED_OVERRIDES``) the cfg cannot express.
 
-    The design sizer queries the materialized catalog directly (parts.engines / parts.tanks /
-    parts_of_type), so it now picks from every real stock part on equal footing — the curated short-lists
-    are gone."""
-    merged: dict[str, StockPart] = dict(load_catalog())
-    # 1. ADD the curated parts the materializer never produced (back-compat aliases + lab-only parts).
-    #    A curated part whose NAME already exists in the materialized catalog is NOT used to override it —
-    #    the accurate cfg value wins. (If the catalog is missing entirely, fall back to curated so the lab
-    #    still runs offline without a materialized JSON.)
-    if merged:
-        for name, cp in CURATED_PARTS.items():
-            if name not in merged:
-                merged[name] = cp
-    else:
-        merged = dict(CURATED_PARTS)
-    # 2. PATCH the lab-tuned aero coefficients onto the (materialized) part.
+    The design sizer queries the materialized pools directly (parts.engines / parts.tanks), so it picks
+    from every real stock part with live physics; curation only stabilizes accessory draw geometry."""
+    materialized: dict[str, StockPart] = dict(load_catalog())
+    if not materialized:
+        return dict(CURATED_PARTS)
+    merged: dict[str, StockPart] = dict(materialized)
+    for name, cp in CURATED_PARTS.items():
+        live_part = materialized.get(name)
+        if live_part is None:
+            merged[name] = cp  # curated-only (back-compat alias / lab part) — add as-is
+        elif live_part.part_type in _LIVE_PHYSICS_ROLES or cp.part_type in _LIVE_PHYSICS_ROLES:
+            # The live cross-check compares this part (its live OR curated role is rocket-relevant), so its
+            # physics MUST equal the running game. Base = live materialized part (live physics + correct
+            # stack/role classification); re-apply only the curated draw geometry the renderer was tuned on.
+            geometry = {f: getattr(cp, f) for f in _CURATED_GEOMETRY_FIELDS}
+            merged[name] = replace(live_part, **geometry)
+        else:
+            merged[name] = cp  # non-cross-checked accessory — keep the curated, design-tuned values
+    # PATCH the lab-tuned aero coefficients onto the (materialized) part.
     for name, fields in _TUNED_OVERRIDES.items():
         if name in merged:
             merged[name] = replace(merged[name], **fields)
@@ -797,9 +923,49 @@ def estimate_design(design: RocketDesign) -> dict[str, float]:
     }
 
 
-if __name__ == "__main__":
-    # Build step: python -m ksp_lab.parts  ->  materialize the catalog and print what was extracted.
-    written = materialize_catalog()
-    print(f"materialized {len(written)} stock parts -> {CATALOG_JSON}")
+def _main(argv: list[str]) -> int:
+    """Build the catalog. ``--from-live`` makes the RUNNING game authoritative (drops parts this install
+    does not load, reconciles physics to /part-database); the default offline path parses the cfgs only."""
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Materialize the stock-parts catalog.")
+    ap.add_argument("--from-live", action="store_true",
+                    help="rebuild from the live bridge /part-database (authoritative; drops unloaded parts)")
+    ap.add_argument("--bridge", default="http://127.0.0.1:48500", help="KSP bridge base URL")
+    args = ap.parse_args(argv)
+
+    if args.from_live:
+        from .bridge_client import BridgeClient, BridgeError
+        bridge = BridgeClient(base_url=args.bridge, timeout_s=60)
+        try:
+            db = bridge.part_database()
+        except BridgeError as exc:
+            print(f"--from-live failed (bridge unreachable / endpoint missing): {exc}")
+            print("Start KSP with the bridge up, or run without --from-live to parse cfgs offline.")
+            return 1
+        live_parts = db.get("parts", []) or []
+        written, dropped = rebuild_from_live(live_parts)
+        print(f"rebuilt {len(written)} stock parts from LIVE /part-database "
+              f"({len(live_parts)} loaded) -> {CATALOG_JSON}")
+        if dropped:
+            print(f"  dropped {len(dropped)} cfg part(s) NOT loaded by this install:")
+            for n in sorted(dropped):
+                print(f"    - {n}")
+        else:
+            print("  dropped 0 cfg parts (every cfg part is loaded by this install)")
+    else:
+        written = materialize_catalog()
+        print(f"materialized {len(written)} stock parts (OFFLINE cfg parse) -> {CATALOG_JSON}")
+
+    # Reload so the summary reflects what was just written.
+    global STOCK_PARTS
+    STOCK_PARTS = _build_stock_parts()
     for ptype, n in catalog_summary().items():
         print(f"  {ptype:18s} {n}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys as _sys
+
+    raise SystemExit(_main(_sys.argv[1:]))
