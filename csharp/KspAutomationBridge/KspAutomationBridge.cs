@@ -412,6 +412,17 @@ namespace KspAutomationBridge
                 return RunOnMainThread(() => LoadSaveCommand(fields), 60000);
             }
 
+            // ---- Fully autonomous save load callable FROM THE MAIN MENU (no human clicking
+            // "Resume Saved Game"). Distinct from /save/load (which is meant for re-loading a save while
+            // ALREADY in a scene, e.g. after a bridge rebuild). /load-save accepts the save name as
+            // "saveName" (default "persistent") and brings the game from the main menu straight into the
+            // space center (or flight, if scene=flight). Loading a game can take a while -> 120s timeout.
+            if (request.Method == "POST" && request.Path == "/load-save")
+            {
+                Dictionary<string, string> fields = JsonObject.Parse(request.Body);
+                return RunOnMainThread(() => LoadSaveFromMenuCommand(fields), 120000);
+            }
+
             if (request.Method == "POST" && request.Path == "/space-center")
             {
                 return RunOnMainThread(SpaceCenterCommand, 60000);
@@ -805,6 +816,76 @@ namespace KspAutomationBridge
                 { "saveFolder", saveFolder },
                 { "scene", scene }
             });
+        }
+
+        // Autonomous "Resume Saved Game" — loads a named save WITHOUT a human clicking the menu, and is
+        // callable while the game is sitting on the MAIN MENU (the addon runs in every scene, so the
+        // main-thread pump that invokes this is alive at the menu too). Accepts "saveName" (default
+        // "persistent"; KSP's per-platform default folder is "default"/"默认", picked up by the
+        // autostart layer / config, NOT hardcoded here). Returns {ok, scene, vessel?}.
+        //
+        // Loading uses GamePersistence.LoadGame(filename, saveFolder, nullIfIncompatible=true,
+        // suppressIncompatibleMessage=false) — the string overload verified against this install's
+        // Assembly-CSharp (LoadGameCfg's first parameter is a ConfigNode, not a save name, so the
+        // string-name path is LoadGame, the same call /save/load already relies on). We then set
+        // game.startScene and call game.Start(), which is the engine's own "load this game into a scene"
+        // entry point — exactly what the main menu's Resume button ends up invoking.
+        private CommandResult LoadSaveFromMenuCommand(Dictionary<string, string> fields)
+        {
+            string saveFolder = GetOptional(fields, "saveName", "persistent");
+            ValidateSaveFolder(saveFolder);
+            string saveDir = Path.GetFullPath(Path.Combine(KSPUtil.ApplicationRootPath, "saves", saveFolder));
+            string persistentPath = Path.Combine(saveDir, "persistent.sfs");
+            if (!File.Exists(persistentPath))
+            {
+                return CommandResult.Fail("Persistent save does not exist: " + persistentPath, 404);
+            }
+
+            Game game = GamePersistence.LoadGame("persistent", saveFolder, true, false);
+            if (game == null || game.flightState == null)
+            {
+                return CommandResult.Fail("KSP failed to load save (incompatible or corrupt): " + saveFolder);
+            }
+
+            HighLogic.CurrentGame = game;
+            HighLogic.SaveFolder = saveFolder;
+
+            string scene = GetOptional(fields, "scene", "spacecenter").ToLowerInvariant();
+            string vesselName = null;
+            if (scene == "flight" && game.flightState.activeVesselIdx >= 0
+                && game.flightState.protoVessels != null
+                && game.flightState.activeVesselIdx < game.flightState.protoVessels.Count)
+            {
+                // Resume the recorded active vessel directly in flight. FlightDriver.StartAndFocusVessel
+                // (verified overload: (Game stateToLoad, int vesselToFocusIdx)) is the engine path that
+                // loads a saved game and focuses a specific vessel into the FLIGHT scene.
+                ProtoVessel pv = game.flightState.protoVessels[game.flightState.activeVesselIdx];
+                if (pv != null)
+                {
+                    vesselName = pv.vesselName;
+                }
+                FlightDriver.StartAndFocusVessel(game, game.flightState.activeVesselIdx);
+            }
+            else
+            {
+                // Default: bring the loaded game up at the Space Center, the natural autostart landing
+                // spot from which the rest of the pipeline (load craft -> launch) proceeds.
+                scene = "spacecenter";
+                game.startScene = GameScenes.SPACECENTER;
+                game.Start();
+            }
+
+            Dictionary<string, object> data = new Dictionary<string, object>
+            {
+                { "message", "Save loaded from main menu." },
+                { "saveFolder", saveFolder },
+                { "scene", scene }
+            };
+            if (vesselName != null)
+            {
+                data["vessel"] = vesselName;
+            }
+            return CommandResult.Ok(data);
         }
 
         private CommandResult SpaceCenterCommand()

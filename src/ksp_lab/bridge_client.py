@@ -42,9 +42,26 @@ class BridgeClient:
     def save(self) -> dict:
         return self._request("POST", "/save", json={})
 
-    def load_save(self, save_folder: str, scene: str = "spacecenter") -> dict:
-        """Load a save. scene='spacecenter' (default) or 'flight' to resume the saved active vessel
-        directly in flight (lets an in-space vessel be re-controlled after a bridge rebuild)."""
+    def load_save(self, save_name: str = "persistent", *, timeout: int = 120) -> dict:
+        """Autonomously load a named save from the MAIN MENU (no human clicking "Resume Saved Game").
+
+        Posts ``/load-save`` (distinct from :meth:`reload_save`'s ``/save/load``, which re-loads a save
+        while already in a scene). ``save_name`` is the save FOLDER name (KSP's per-platform default is
+        "default"/"默认"; the autostart layer supplies the configured name). Loading a game can take a
+        while, so this allows a longer per-request ``timeout`` (seconds) than the client default.
+
+        Returns the parsed bridge result, e.g. ``{"ok": True, "scene": "spacecenter", ...}`` (a
+        ``"vessel"`` key is present when resumed directly into flight). Raises :class:`BridgeError` on
+        an HTTP/transport failure or a non-ok bridge response."""
+        return self._request(
+            "POST", "/load-save", json={"saveName": save_name}, timeout=timeout
+        )
+
+    def reload_save(self, save_folder: str, scene: str = "spacecenter") -> dict:
+        """Re-load a save while ALREADY in a scene (``/save/load``). scene='spacecenter' (default) or
+        'flight' to resume the saved active vessel directly in flight (lets an in-space vessel be
+        re-controlled after a bridge rebuild). For a from-the-main-menu autonomous load, use
+        :meth:`load_save`."""
         return self._request("POST", "/save/load", json={"saveFolder": save_folder, "scene": scene})
 
     def space_center(self) -> dict:
@@ -272,6 +289,7 @@ class BridgeClient:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         url = self.base_url.rstrip("/") + path
+        timeout = kwargs.pop("timeout", None) or self.timeout_s
         if "json" in kwargs:
             payload = kwargs.pop("json")
             kwargs["data"] = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -279,7 +297,7 @@ class BridgeClient:
             headers.setdefault("Content-Type", "application/json; charset=utf-8")
             kwargs["headers"] = headers
         try:
-            response = requests.request(method, url, timeout=self.timeout_s, **kwargs)
+            response = requests.request(method, url, timeout=timeout, **kwargs)
         except requests.RequestException as exc:
             raise BridgeError(f"KSP bridge request failed: {method} {url}: {exc}") from exc
         try:
