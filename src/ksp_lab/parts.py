@@ -1,25 +1,46 @@
-"""Stock-part catalog: the hand-validated core PLUS a comprehensive catalog materialized from the
-ACTUAL KSP GameData .cfg files.
+"""Stock-part catalog — ONE schema (``StockPart``), filled ENTIRELY from authoritative sources. No
+hand-curated part values, every part on equal footing.
 
-WHY TWO LAYERS. The sizer and the .craft renderer were built against a SMALL hand-list of engines/
-tanks whose masses, heights and Isp were checked against the live game one-by-one (the "don't touch
-validated masses" rule). That curated set (``CURATED_PARTS``) stays authoritative — it is the back-
-compat surface every other module imports through ``part()`` / ``STOCK_PARTS`` / ``stage_masses``.
+AUTHORITATIVE SOURCES (the "Transport Pod" schema — every field traces to one of these, none is a
+hand-tuned literal):
 
-On TOP of it we now MATERIALIZE the whole stock parts tree. ``materialize_catalog()`` walks the real
-GameData folders ONCE (offline, a build step — never at import time) and writes every rocket-relevant
-PART{} node into a committed ``data/stock_parts.json``. At import we load that JSON so the lab knows
-the entire stock catalog (every liquid engine, SRB, tank, decoupler, adapter, nose cone, fairing,
-pod, RCS, reaction wheel, heat shield, chute, leg, science part) WITHOUT the game installed. Where a
-materialized part shares a curated part's identity the CURATED value wins, so the validated numbers
-are never overwritten — the JSON only ADDS the parts the hand-list never covered.
+  PHYSICS  (dry_mass_t, wet_mass_t, thrust ASL/vac, isp ASL/vac, LF/Ox/SolidFuel capacity)
+      <- the LIVE-reconciled catalog in ``data/stock_parts.json``. That JSON is built by
+         ``rebuild_from_live`` from the running game's ``/part-database`` (PartLoader's post-load truth:
+         cfg + ModuleManager + variant resolution) and is verified 0-mismatch by
+         ``tools/validate_parts_live.py``. Offline, the fallback is the bare cfg parse (same fields,
+         from ``mass`` / ``maxThrust`` / ``atmosphereCurve`` / ``RESOURCE``).
 
-The design sizer then queries the full catalog ("every atmospheric engine in diameter class 2.5 m,
-sorted by thrust") instead of the old five-engine pool.
+  GEOMETRY (diameter_m, height_m, stack_size, category, part_type, crew_capacity)
+      <- DERIVED from the part ``.cfg``: diameter from the WIDEST stack-node size class /
+         ``bulkheadProfiles`` token (see ``_bulkhead_info`` — this is what makes an adapter's wide end
+         correct without a hand-typed number), height from the node_stack top<->bottom span scaled by
+         ``rescaleFactor``/``scale`` (see ``_node_height``), role/category by ``_classify``. Size-class
+         FALLBACKS (a cfg with no sized stack node) use the documented nominal default and are LOGGED.
+
+  AERO COEFFS (drag_area_m2, fin_area_m2)
+      <- ``_TUNED_OVERRIDES``: the only fields the .cfg cannot express as the lab's calibrated reference
+         areas (KSP stores ``fullyDeployedDrag`` / ``deflectionLiftCoeff``, not the Cd*A / fin reference
+         area the lab's terminal-velocity and static-margin math want). These carry NO mass / thrust /
+         dimensional override — only the two aero coefficients — and are documented as such.
+
+NO DATA-OVERRIDING CURATION. There is no ``CURATED_PARTS`` layer whose hand-validated numbers win over
+the catalog. The live ``/part-database`` reconciliation already PROVED the old curated data wrong (13
+crewed-pod dry masses were off vs the running game), so the catalog is now materialized( cfg geometry +
+live physics ) and nothing overrides it. The ONLY back-compat layer is ``ALIAS_RENAMES``: a thin
+name->name map (e.g. ``RCSBlock`` -> the live ``RCSBlock.v2``) that resolves a legacy import name to its
+authoritative live entry. A rename carries NO data — it returns the materialized part unchanged (only
+re-keyed), so it cannot reintroduce a hand-tuned value.
+
+The whole stock tree is materialized into ``data/stock_parts.json`` by ``materialize_catalog()`` /
+``rebuild_from_live()`` (offline build steps, never at import), so the lab knows every rocket-relevant
+PART without the game installed. The design sizer queries the full catalog ("every atmospheric engine in
+diameter class 2.5 m, sorted by thrust") on equal footing.
 """
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, replace
 from math import log
@@ -28,6 +49,13 @@ from pathlib import Path
 from .models import RocketDesign, StageSpec
 
 G0 = 9.80665
+
+# Geometry derivation logs here (named ``_geom_log`` so it never shadows ``math.log``, used below in the
+# rocket-equation Δv math). Size-class FALLBACKS (a part whose .cfg lacks a stack diameter, so the
+# diameter is the nominal size-class default instead of a parsed value) are emitted at DEBUG so the build
+# step / a curious caller can see every place the cfg under-specified geometry. Nothing is hand-tuned;
+# the fallback is the documented size-class default, logged so it is never silent.
+_geom_log = logging.getLogger(__name__)
 
 # Resource densities (t per unit) from Squad/Resources/ResourcesGeneric.cfg — used to turn a tank's
 # RESOURCE amounts into a propellant mass so wet = dry + propellant.
@@ -40,15 +68,35 @@ RESOURCE_DENSITY_T = {
     "Ore": 0.010,
 }
 
-# bulkheadProfiles size class -> stack diameter (m). srf/mk2/mk3 are surface-attach / spaceplane
-# profiles with no round stack diameter; they fall back to a nominal 1.25 m for drawing only.
+# bulkheadProfiles size class -> stack diameter (m). This is the part's BODY profile — the authoritative
+# hull diameter. ``size1p5`` (1.875 m) is the Making History intermediate class. srf/mk2/mk3 are surface-
+# attach / spaceplane profiles with no round stack diameter; they fall back to a nominal 1.25 m for drawing.
 BULKHEAD_DIAMETER_M = {
     "size0": 0.625,
     "size1": 1.25,
+    "size1p5": 1.875,
     "size2": 2.5,
     "size3": 3.75,
     "size4": 5.0,
 }
+
+# A stock attach-node line is ``node_stack_X = px, py, pz, dx, dy, dz, SIZE`` where the trailing integer
+# is the node's STACK SIZE CLASS (0 = 0.625 m, 1 = 1.25 m, 2 = 2.5 m, 3 = 3.75 m, 4 = 5 m). This is the
+# AUTHORITATIVE per-end diameter KSP itself draws the attach node at — and it is how an ADAPTER encodes
+# that its two ends differ (a 2.5 m -> 1.25 m adapter has a size-2 bottom node and a size-1 top node).
+# The hull DIAMETER the renderer needs is the WIDEST end (the base the stack rests on), so we read every
+# node's size suffix and take the max — which fixes the adapter diameter the single bulkheadProfiles
+# token (it lists size1 first) read too narrow. Default size used when a part has only surface nodes.
+NODE_SIZE_DIAMETER_M = {
+    0: 0.625,
+    1: 1.25,
+    2: 2.5,
+    3: 3.75,
+    4: 5.0,
+}
+# Fallback hull diameter (m) for a part whose cfg exposes NO stack diameter at all (only srf/mk2/mk3
+# profiles). Draw-only; such a part is never a standard round-stack part the sizer stacks.
+FALLBACK_DIAMETER_M = 1.25
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,123 +156,28 @@ def live_part_name(cfg_name: str) -> str:
 
 
 # --------------------------------------------------------------------------------------------------
-# CURATED, hand-validated parts — the authoritative back-compat surface. Masses/heights/Isp here were
-# each checked against the live game; the materialized catalog NEVER overwrites these (see
-# _build_stock_parts). Adding a part to the JSON that shares one of these names keeps the curated value.
+# ALIAS RENAMES — the ONLY back-compat layer, and it carries NO data.
+#
+# Some modules import a part by a LEGACY name that the running game renamed (the KSP 1.x part ids were
+# superseded by ``.v2`` revisions). An alias is a pure name->name redirect: ``part("RCSBlock")`` resolves
+# to the live ``RCSBlock.v2`` materialized entry and returns it UNCHANGED (re-keyed under the legacy name
+# so the importer still finds it, but with the authoritative live ``.name`` so the .craft references a
+# part the game can load). A rename therefore reintroduces ZERO hand-tuned value — it cannot, because it
+# has no StockPart of its own; it points at the one materialized from cfg geometry + live physics.
+#
+# Each entry's RHS is a LIVE catalog key (the dotted ``AvailablePart.name`` the JSON is keyed on). These
+# are the only three legacy ids the codebase still references that the live game spells differently:
+#   * RCSBlock           -> RCSBlock.v2          (KSP renamed the RV-105 block to the .v2 revision)
+#   * engineLargeSkipper -> engineLargeSkipper.v2 (RE-I5 Skipper .v2 revision)
+#   * Size3To2Adapter_v2 -> Size3To2Adapter.v2   (cfg underscore form -> live dotted form)
+# (Engines the SIZER picks already come straight from the catalog under their live names, so only the
+# hand-referenced literals in design.py / craft_writer.py need these redirects.)
 # --------------------------------------------------------------------------------------------------
-CURATED_PARTS: dict[str, StockPart] = {
-    "mk1pod.v2": StockPart("mk1pod.v2", "Mk1 Command Pod", 0.84, 0.84, 600, 1.05, crew_capacity=1, part_type="pod", category="Pods"),
-    "probeCoreOcto.v2": StockPart("probeCoreOcto.v2", "Probodobodyne OKTO", 0.1, 0.1, 450, 0.374, part_type="probe", category="Pods"),
-    "parachuteSingle": StockPart("parachuteSingle", "Mk16 Parachute", 0.1, 0.1, 422, 0.35, drag_area_m2=489.0, part_type="parachute", category="Utility"),
-    "dockingPort2": StockPart("dockingPort2", "Clamp-O-Tron Docking Port", 0.05, 0.05, 280, 0.28, part_type="docking", category="Coupling"),
-    # NOTE: mass 1.0 t + 1.25 m identify this as the Mk1 Crew Cabin (real height 1.875 m, node-to-node).
-    # The part-name string "crewCabin" is KSP's internal id for the HITCHHIKER (2.5 t / 1.97 m) — a latent
-    # name/identity mismatch (not a height issue); left as-is per the "don't touch validated masses" rule.
-    "crewCabin": StockPart("crewCabin", "Mk1 Crew Cabin", 1.0, 1.0, 600, 1.875, crew_capacity=2, part_type="crew_cabin", category="Pods"),
-    "RCSBlock": StockPart("RCSBlock", "RV-105 RCS Thruster Block", 0.04, 0.04, 620, 0.2, part_type="rcs", category="Control"),
-    "rcsTankRadialLong": StockPart("rcsTankRadialLong", "FL-R25 RCS Fuel Tank", 0.1, 0.4, 330, 0.9, part_type="rcs_tank", category="FuelTank"),
-    "HeatShield1": StockPart("HeatShield1", "Heat Shield 1.25m", 0.3, 0.3, 300, 0.2, part_type="heatshield", category="Thermal"),
-    "Decoupler.1": StockPart("Decoupler.1", "TD-12 Decoupler", 0.05, 0.05, 400, 0.1, part_type="decoupler", category="Coupling"),
-    # RADIAL decoupler: srfAttaches a strap-on booster pod to the side of the core and blows it off
-    # when the booster is spent (the asparagus/radial-booster jettison). Stock TT-70 (radialDecoupler2):
-    # 0.05 t, 700 funds, ~0.6 m mounting plate. Mass/cost from the stock 1.12 RadialDecoupler2.cfg;
-    # diameter is the small mounting plate (the booster rides on it, the plate does not set the hull).
-    "radialDecoupler2": StockPart("radialDecoupler2", "TT-70 Radial Decoupler", 0.05, 0.05, 700, 0.6, diameter_m=0.6, part_type="radial_decoupler", category="Coupling"),
-    "ServiceBay.125.v2": StockPart("ServiceBay.125.v2", "Service Bay 1.25m", 0.1, 0.1, 500, 0.6, part_type="structural", category="Structural"),
-    "fuelTankSmallFlat": StockPart(
-        "fuelTankSmallFlat", "FL-T100 Fuel Tank", 0.0625, 0.5625, 150, 0.625, liquid_fuel=45, oxidizer=55, part_type="fuel_tank", category="FuelTank"
-    ),
-    "fuelTankSmall": StockPart(
-        "fuelTankSmall", "FL-T200 Fuel Tank", 0.125, 1.125, 275, 1.11, liquid_fuel=90, oxidizer=110, part_type="fuel_tank", category="FuelTank"
-    ),
-    "fuelTank": StockPart(
-        "fuelTank", "FL-T400 Fuel Tank", 0.25, 2.25, 500, 1.894, liquid_fuel=180, oxidizer=220, part_type="fuel_tank", category="FuelTank"
-    ),
-    "fuelTank.long": StockPart(
-        "fuelTank.long", "FL-T800 Fuel Tank", 0.5, 4.5, 800, 3.762, liquid_fuel=360, oxidizer=440, part_type="fuel_tank", category="FuelTank"
-    ),
-    # 2.5 m Rockomax tank heights are node-to-node (node_stack_top.y - node_stack_bottom.y) from the stock
-    # 1.12 cfgs: X200-16 = 0.92*2 = 1.84 m, X200-32 = 1.86*2 = 3.72 m. (Earlier values 3.75 / 7.5 were each
-    # one size too large -- the X200-32 and Jumbo-64 heights -- which inflated the design-chart fineness.)
-    "Rockomax16.BW": StockPart(
-        "Rockomax16.BW", "Rockomax X200-16 Fuel Tank", 1.0, 9.0, 1550, 1.84, liquid_fuel=720, oxidizer=880, diameter_m=2.5, part_type="fuel_tank", category="FuelTank"
-    ),
-    "Rockomax32.BW": StockPart(
-        "Rockomax32.BW", "Rockomax X200-32 Fuel Tank", 2.0, 18.0, 3000, 3.72, liquid_fuel=1440, oxidizer=1760, diameter_m=2.5, part_type="fuel_tank", category="FuelTank"
-    ),
-    "Size3SmallTank": StockPart(
-        "Size3SmallTank", "Kerbodyne S3-3600 Tank", 2.25, 20.25, 3250, 1.927, liquid_fuel=1620, oxidizer=1980, diameter_m=3.75, part_type="fuel_tank", category="FuelTank"
-    ),
-    "Size3MediumTank": StockPart(
-        "Size3MediumTank", "Kerbodyne S3-7200 Tank", 4.5, 40.5, 6500, 3.868, liquid_fuel=3240, oxidizer=3960, diameter_m=3.75, part_type="fuel_tank", category="FuelTank"
-    ),
-    "Size3LargeTank": StockPart(
-        "Size3LargeTank", "Kerbodyne S3-14400 Tank", 9.0, 81.0, 13000, 7.48, liquid_fuel=6480, oxidizer=7920, diameter_m=3.75, part_type="fuel_tank", category="FuelTank"
-    ),
-    "liquidEngine": StockPart(
-        "liquidEngine", "LV-T30 Reliant", 1.25, 1.25, 1100, 1.63, 205, 240, 265, 310, part_type="liquid_engine", category="Engine"
-    ),
-    "liquidEngine2": StockPart(
-        "liquidEngine2", "LV-T45 Swivel", 1.5, 1.5, 1200, 1.63, 167.97, 215, 250, 320, part_type="liquid_engine", category="Engine"
-    ),
-    "liquidEngine3.v2": StockPart(
-        "liquidEngine3.v2", "LV-909 Terrier", 0.5, 0.5, 390, 0.83, 14.78, 60, 85, 345, part_type="liquid_engine", category="Engine"
-    ),
-    "engineLargeSkipper": StockPart(
-        "engineLargeSkipper", "RE-I5 Skipper", 3.0, 3.0, 5300, 2.375, 568.75, 650, 280, 320, diameter_m=2.5, part_type="liquid_engine", category="Engine"
-    ),
-    "liquidEngineMainsail.v2": StockPart(
-        "liquidEngineMainsail.v2", "RE-M3 Mainsail", 6.0, 6.0, 13000, 2.97, 1379.03, 1500, 285, 310, diameter_m=2.5, part_type="liquid_engine", category="Engine"
-    ),
-    "Size3AdvancedEngine": StockPart(
-        "Size3AdvancedEngine", 'Kerbodyne KR-2L+ "Rhino"', 9.0, 9.0, 25000, 4.025, 1205.88, 2000, 205, 340, diameter_m=3.75, part_type="liquid_engine", category="Engine"
-    ),
-    # Avionics / payload accessories (no propellant; mass/cost for the budget only).
-    "longAntenna": StockPart("longAntenna", "Communotron 16 (direct antenna)", 0.005, 0.005, 300, 0.3, part_type="antenna", category="Communication"),
-    "RelayAntenna5": StockPart("RelayAntenna5", "RA-2 Relay (relay antenna)", 0.015, 0.015, 600, 0.3, part_type="antenna", category="Communication"),
-    # RA-100: the strongest stock RELAY antenna (100 Gm). Combined with a level-3 DSN (250 Gm) it
-    # reaches Kerbin from anywhere in the system (~158 Gm) — fixes the no-signal-at-Duna problem; the
-    # weak RA-2 (2 Gm -> ~22 Gm combined) drops out when Duna is past ~22 Gm. Relay antennas also let
-    # the comsat constellation extend the network for other craft.
-    "RelayAntenna100": StockPart("RelayAntenna100", "RA-100 Relay Antenna", 0.65, 0.65, 1000, 0.6, part_type="antenna", category="Communication"),
-    "solarPanels5": StockPart("solarPanels5", "SP-W 3x2 Photovoltaic Panels", 0.0175, 0.0175, 380, 0.3, part_type="solar", category="Electrical"),
-    "batteryBankMini": StockPart("batteryBankMini", "Z-200 Rechargeable Battery Bank", 0.01, 0.01, 360, 0.3, part_type="battery", category="Electrical"),
-    "batteryBank": StockPart("batteryBank", "Z-1k Rechargeable Battery Bank", 0.05, 0.05, 880, 0.4, part_type="battery", category="Electrical"),
-    # PB-NUK RTG: continuous ~0.75 EC/s, SUN-INDEPENDENT power. A comsat spends part of every orbit in
-    # shadow; with solar alone the battery drains and the probe loses control (ControlState.none) — which
-    # killed the keo circularisation burns. The RTG keeps it controllable through eclipse.
-    "rtg": StockPart("rtg", "PB-NUK Radioisotope Thermoelectric Generator", 0.08, 0.08, 23300, 0.5, part_type="generator", category="Electrical"),
-    "R8winglet": StockPart("R8winglet", "AV-R8 Winglet (active control surface)", 0.08, 0.08, 640, 0.5, fin_area_m2=2.0, part_type="fin", category="Aero"),
-    "basicFin": StockPart("basicFin", "Basic Fin (passive aero stabiliser)", 0.01, 0.01, 25, 0.5, fin_area_m2=1.0, part_type="fin", category="Aero"),
-    # NOTE: these numbers (0.05 t, 1.25 m, 0.3 m) model a SMALL inline reaction wheel and are left as-is.
-    # KSP's part-name "asasmodule1-2" is actually the LARGE 2.5 m Advanced Reaction Wheel (0.2 t, 0.5 m) —
-    # a latent name/identity mismatch. Correcting the diameter to 2.5 m would break the slender bus's
-    # monotonic-taper gate and contradict the validated mass, so the fix belongs with the part-name audit.
-    "asasmodule1-2": StockPart("asasmodule1-2", "Advanced Reaction Wheel Module (attitude authority)", 0.05, 0.05, 2100, 0.3, part_type="reaction_wheel", category="Control"),
-    "landingLeg1": StockPart("landingLeg1", "LT-2 Landing Strut", 0.1, 0.1, 440, 0.5, part_type="landing_leg", category="Ground"),
-    "noseCone": StockPart("noseCone", "Aerodynamic Nose Cone (streamlining)", 0.03, 0.03, 240, 0.7, part_type="nose_cone", category="Aero"),
-    # Conical ADAPTER bridging a 2.5 m lower stage to a 1.25 m upper stage so there is no exposed flat
-    # shoulder at the diameter step (the aerodynamic + structural fix the uniform-diameter rule wants).
-    # diameter_m is the WIDE (lower) end; the cone tapers to 1.25 m on top.
-    "adapterSize2-Size1": StockPart("adapterSize2-Size1", "Rockomax Brand Adapter (2.5 -> 1.25 m)",
-                                    0.8, 0.8, 800, 2.5, diameter_m=2.5, part_type="adapter", category="Coupling"),
-    "Size3To2Adapter_v2": StockPart(
-        "Size3To2Adapter_v2", "Kerbodyne ADTP-2-3 (3.75 -> 2.5 m)",
-        # Used as a structural aero adapter in generated launch stacks. The stock part can carry
-        # fuel, but craft_writer strips those resources so hidden adapter propellant is not counted
-        # outside the calculated stage budgets.
-        1.875, 1.875, 1623, 2.25, diameter_m=3.75, part_type="adapter", category="Coupling"
-    ),
-    # PAYLOAD FAIRING bases. The base node-attaches below the payload; its ModuleProceduralFairing shell
-    # (a list of XSECTIONS) wraps everything above it into an ogive nose and is jettisoned in space. This
-    # is how a real satellite rides: enclosed + protected through max-Q, then the shroud splits away
-    # before the dish/solar deploy. fairingSize1 = 1.25 m base (r 0.625), fairingSize2 = 2.5 m base (r 1.25).
-    "fairingSize1": StockPart("fairingSize1", "AE-FF1 Airstream Fairing (1.25 m)", 0.075, 0.075, 200, 0.42, diameter_m=1.25, part_type="fairing", category="Aero"),
-    "fairingSize2": StockPart("fairingSize2", "AE-FF2 Airstream Fairing (2.5 m)", 0.15, 0.15, 750, 0.42, diameter_m=2.5, part_type="fairing", category="Aero"),
+ALIAS_RENAMES: dict[str, str] = {
+    "RCSBlock": "RCSBlock.v2",
+    "engineLargeSkipper": "engineLargeSkipper.v2",
+    "Size3To2Adapter_v2": "Size3To2Adapter.v2",
 }
-
-# Back-compat alias retained for any importer that referenced the old name.
-STOCK_PARTS_CURATED = CURATED_PARTS
 
 
 # --------------------------------------------------------------------------------------------------
@@ -333,17 +286,59 @@ def _node_height(body: str) -> float:
     return abs(ty - by) * mult
 
 
-def _bulkhead_info(body: str) -> tuple[float, str]:
-    """Return (stack diameter m, size token). The token is the matched size0..size4 string, or "" when
-    the part has only surface/spaceplane (srf/mk2/mk3) profiles — in which case the diameter is a
-    nominal 1.25 m fallback for DRAWING only and the part is NOT a standard round-stack part."""
+def _node_stack_diameters(body: str) -> list[float]:
+    """Every STACK attach node's diameter (m), read from the trailing size-class integer of each
+    ``node_stack_*`` line (``... , dy, dz, SIZE``). This is the per-end diameter KSP draws the node at,
+    and it is how an adapter records its two different ends. Returns [] when no stack node carries a size
+    suffix (older parts omit it)."""
+    out: list[float] = []
+    for m in re.finditer(r"(?m)^\s*node_stack_\w+\s*=\s*(.+?)\s*$", body):
+        fields = [f.strip() for f in m.group(1).split(",") if f.strip()]
+        if len(fields) >= 7:
+            try:
+                size_cls = int(float(fields[6]))
+            except (ValueError, IndexError):
+                continue
+            if size_cls in NODE_SIZE_DIAMETER_M:
+                out.append(NODE_SIZE_DIAMETER_M[size_cls])
+    return out
+
+
+def _bulkhead_info(body: str, part_name: str = "") -> tuple[float, str]:
+    """Return (hull diameter m, size token) derived ENTIRELY from the .cfg geometry, no hand-tuned value.
+
+    PRIORITY 1 — ``bulkheadProfiles``. This is the part's BODY profile and the authoritative hull
+    diameter. We take the WIDEST recognized size token, which gives the right answer for BOTH a normal
+    part (a single token = its body, e.g. a tank's ``size2``) AND an ADAPTER (KSP lists BOTH ends, e.g.
+    ``size1, size2`` -> the 2.5 m wide base the stack rests on). The returned token is that widest one.
+
+    PRIORITY 2 — node stack size class. If ``bulkheadProfiles`` is absent or names only non-standard
+    profiles (srf/mk2/mk3/...), fall to the WIDEST ``node_stack_*`` size-class suffix (the diameter KSP
+    draws that attach node at). This recovers a diameter for older parts that omit bulkheadProfiles.
+
+    FALLBACK — a part with neither a recognized bulkhead token nor a sized stack node has no round stack
+    diameter (a pure surface/spaceplane part): it uses the nominal FALLBACK_DIAMETER_M for DRAWING only
+    (token "" => the sizer never stacks it), and the fallback is LOGGED so it is never silent."""
+    _dia_to_token = {d: tok for tok, d in BULKHEAD_DIAMETER_M.items()}
+
     bp = _field(body, "bulkheadProfiles")
-    if not bp:
-        return 1.25, ""
-    for tok in (t.strip() for t in bp.replace(",", " ").split()):
-        if tok in BULKHEAD_DIAMETER_M:
-            return BULKHEAD_DIAMETER_M[tok], tok
-    return 1.25, ""
+    bp_tokens = [t.strip() for t in bp.replace(",", " ").split()] if bp else []
+    bp_dias = [(BULKHEAD_DIAMETER_M[t], t) for t in bp_tokens if t in BULKHEAD_DIAMETER_M]
+    if bp_dias:                                            # PRIORITY 1: the body profile (widest token)
+        return max(bp_dias, key=lambda c: c[0])
+
+    node_dias = _node_stack_diameters(body)
+    if node_dias:                                          # PRIORITY 2: widest sized stack node
+        dia = max(node_dias)
+        _geom_log.debug("geometry: %s has no standard bulkheadProfiles token; using widest node size "
+                  "%.3f m", part_name or "<part>", dia)
+        return dia, _dia_to_token.get(dia, "")
+
+    # No sized stack geometry at all (srf/mk2/mk3 only): draw-only fallback, logged.
+    _geom_log.debug("geometry fallback: %s has no sized stack node/bulkhead; "
+              "using nominal %.3f m draw diameter (cfg under-specified)",
+              part_name or "<part>", FALLBACK_DIAMETER_M)
+    return FALLBACK_DIAMETER_M, ""
 
 
 def _resources(body: str) -> dict[str, float]:
@@ -519,7 +514,7 @@ def parse_part_cfg(text: str) -> list[StockPart]:
         prop = sum(amount * RESOURCE_DENSITY_T.get(res, 0.0) for res, amount in resources.items())
         wet = dry + prop
         height = _node_height(body) or 1.0
-        diameter, stack_size = _bulkhead_info(body)
+        diameter, stack_size = _bulkhead_info(body, name)
         part_type = _classify(category, body, engine, resources)
         # Store the runtime (dotted) AvailablePart.name so the catalog key matches the live game and the
         # id the craft_writer emits. _classify() above already ran on the raw cfg ``name`` substring, so
@@ -717,79 +712,66 @@ def load_catalog() -> dict[str, StockPart]:
     return {name: _part_from_dict(d) for name, d in data.items()}
 
 
-# Lab-tuned fields the cfg cannot express (calibrated against the live game), keyed by part name. These
-# are the ONLY values curation still contributes for a part that ALSO exists in the materialized catalog:
-# the materialized cfg numbers (mass/thrust/Isp/capacity/diameter/height) win, and we only patch these
-# few aero coefficients on top. drag_area_m2 sizes parachute counts (astro.terminal_velocity); fin_area_m2
-# is the control-surface reference area the static-margin calc places. radialDecoupler2's diameter is the
-# small mounting-plate footprint (the cfg bulkhead reads a draw-only 1.25 m, but the plate a booster pod
-# rides on is ~0.6 m — keep that so the pod sits snug against the core, not 0.6 m off it).
+# AERO COEFFICIENTS the .cfg cannot express as the lab's calibrated reference areas. This is the ONLY
+# non-cfg field layer, and it touches NO mass / thrust / Isp / capacity / dimension — only two derived
+# aero coefficients KSP stores in an incompatible form:
+#   * drag_area_m2 — the fully-deployed parachute Cd*A (m^2) the lab's astro.terminal_velocity uses to
+#     size chute counts. The cfg stores ``fullyDeployedDrag`` (a unitless drag cube coefficient), not a
+#     Cd*A, so the lab's value is calibrated from the live datum "one Mk16 lands ~1.2 t at ~6.5 m/s at
+#     Kerbin sea level" — a physics-derived reference area, not a hand-picked geometry number.
+#   * fin_area_m2 — the lateral reference area the static-margin (CoP) calc places at a fin's position.
+#     The cfg stores ``deflectionLiftCoeff`` (a lift slope), not the reference area the lab's planar
+#     CoP model needs; basicFin=1.0 / R8winglet=2.0 are the lab's calibrated relative areas.
+# Both are coefficients for the lab's OWN aero models; they are not part geometry and do not override any
+# materialized field. (Geometry — diameter/height — is 100% cfg-derived; nothing is patched here.)
 _TUNED_OVERRIDES: dict[str, dict] = {
     "parachuteSingle": {"drag_area_m2": 489.0},
     "R8winglet": {"fin_area_m2": 2.0},
     "basicFin": {"fin_area_m2": 1.0},
-    "radialDecoupler2": {"diameter_m": 0.6, "height_m": 0.6},
 }
-
-
-# The role buckets whose PHYSICS the live game is authoritative for and that the live validator cross-
-# checks (mass/thrust/Isp/capacity). For a curated part that collides with the materialized catalog AND
-# is one of these rocket-relevant roles, we take the live materialized part as the base (live physics +
-# the correct stack/role classification the design pools query on) and re-apply only the curated DRAW-
-# GEOMETRY — so the catalog matches the running game on every cross-checked field while the renderer keeps
-# the hand-tuned diameter/height it was calibrated against. A NON-rocket-relevant curated part (decoupler,
-# heat shield, parachute, antenna, battery, RCS block, …) is NOT cross-checked by the live validator and
-# the design/renderer were hand-tuned against its curated mass+geometry, so it is kept AS-IS — changing it
-# would only destabilize the untouchable sizer for no validation benefit.
-_LIVE_PHYSICS_ROLES = {
-    "liquid_engine", "solid_booster", "monoprop_engine", "ion_engine", "jet_engine",
-    "fuel_tank", "adapter_tank", "rcs_tank", "xenon_tank",
-    "pod", "probe", "lander", "crew_cabin",
-}
-# Draw geometry the untouchable renderer's taper/fairing math depends on — re-applied from the curated
-# entry onto the live part for rocket-relevant collisions. /part-database exposes none of these, so this
-# never contradicts the live cross-check.
-_CURATED_GEOMETRY_FIELDS = ("diameter_m", "height_m", "drag_area_m2", "fin_area_m2")
 
 
 def _build_stock_parts() -> dict[str, StockPart]:
-    """The full catalog the lab uses: the MATERIALIZED (live-reconciled) catalog is authoritative for the
-    PHYSICS the running game reports, with a thin curated layer that keeps the design-/renderer-facing
-    DRAW-GEOMETRY stable.
+    """The full catalog the lab uses: the MATERIALIZED (live-reconciled) catalog, with ZERO value
+    override. Every part stands on equal footing with its authoritative numbers — PHYSICS from the live
+    game (or the offline cfg parse), GEOMETRY derived from the .cfg. The only additions are name-only
+    alias redirects and the two cfg-inexpressible aero coefficients above.
 
     Materialization order:
       1. Start from the materialized catalog (``load_catalog()``) — every part keyed on its live
-         ``AvailablePart.name`` with the running game's mass/thrust/Isp/capacity (see ``rebuild_from_live``).
-      2. For a curated part that ALSO exists in the materialized catalog:
-           - if its live role is ROCKET-RELEVANT (engine/tank/pod/probe/…, the roles the live validator
-             cross-checks), use the LIVE materialized part as the base (so mass/thrust/Isp/capacity match
-             the running game and the cross-check stays at 0 mismatch) and re-apply only the curated draw
-             geometry the renderer was tuned against;
-           - otherwise (decoupler/heat shield/parachute/antenna/…, never cross-checked) keep the curated
-             entry as-is — the untouchable sizer was hand-tuned against its values.
-         ADD curated parts the materializer never produced (back-compat aliases + lab-only parts). If the
-         catalog is missing entirely, fall back to the bare curated set so the lab still runs offline.
-      3. PATCH the lab-tuned aero coefficients (``_TUNED_OVERRIDES``) the cfg cannot express.
+         ``AvailablePart.name`` with the running game's mass/thrust/Isp/capacity and cfg-derived geometry
+         (see ``rebuild_from_live``). NOTHING is overridden here; the materialized values ARE the catalog.
+      2. Add ALIAS RENAMES (``ALIAS_RENAMES``): for each legacy ``alias -> live`` pair where the live part
+         exists, register the SAME live StockPart UNCHANGED under the legacy key (so an importer that looks
+         up ``RCSBlock`` finds the live RV-105 block, and its ``.name`` is the LIVE loadable id so the
+         .craft references a part the game can load). No data is changed — only an extra dict key points at
+         the existing live entry. (The legacy id ``RCSBlock`` is NOT loadable in KSP 1.12 — the real part
+         is ``RCSBlock.v2`` — so resolving the alias to the live ``.name`` also FIXES the unloadable-id bug
+         the old curated entry shipped.)
+      3. PATCH the two cfg-inexpressible aero coefficients (``_TUNED_OVERRIDES``) — drag/fin reference
+         areas for the lab's own terminal-velocity / static-margin models. These touch no materialized
+         physics or geometry.
 
-    The design sizer queries the materialized pools directly (parts.engines / parts.tanks), so it picks
-    from every real stock part with live physics; curation only stabilizes accessory draw geometry."""
+    OFFLINE FALLBACK: when the live-reconciled JSON is unavailable, build the catalog from a pure cfg parse
+    of the GameData tree (same schema, physics from the bare cfgs) so the lab still runs without the JSON
+    or the game. If even that is empty (no JSON, no GameData), return an empty catalog rather than any
+    hand-curated stand-in — there is no curated data to fall back to.
+
+    The design sizer queries these pools directly (parts.engines / parts.tanks), so it picks from every
+    real stock part with authoritative numbers; there is no hand-tuned tier in front of it."""
     materialized: dict[str, StockPart] = dict(load_catalog())
     if not materialized:
-        return dict(CURATED_PARTS)
+        # OFFLINE FALLBACK: no committed JSON — parse the cfgs on disk (pure cfg geometry + cfg physics).
+        materialized = parse_gamedata_tree()
     merged: dict[str, StockPart] = dict(materialized)
-    for name, cp in CURATED_PARTS.items():
-        live_part = materialized.get(name)
-        if live_part is None:
-            merged[name] = cp  # curated-only (back-compat alias / lab part) — add as-is
-        elif live_part.part_type in _LIVE_PHYSICS_ROLES or cp.part_type in _LIVE_PHYSICS_ROLES:
-            # The live cross-check compares this part (its live OR curated role is rocket-relevant), so its
-            # physics MUST equal the running game. Base = live materialized part (live physics + correct
-            # stack/role classification); re-apply only the curated draw geometry the renderer was tuned on.
-            geometry = {f: getattr(cp, f) for f in _CURATED_GEOMETRY_FIELDS}
-            merged[name] = replace(live_part, **geometry)
-        else:
-            merged[name] = cp  # non-cross-checked accessory — keep the curated, design-tuned values
-    # PATCH the lab-tuned aero coefficients onto the (materialized) part.
+    # ALIAS RENAMES — pure name redirects, no data. Register the live part UNCHANGED under the legacy key
+    # (its ``.name`` stays the live loadable id, so a craft built from the alias references a part the game
+    # can actually load — and an importer that keyed on the legacy name still resolves to the live entry).
+    for alias, live_key in ALIAS_RENAMES.items():
+        live_part = merged.get(live_key)
+        if live_part is not None:
+            merged[alias] = live_part
+    # PATCH the cfg-inexpressible aero coefficients onto the materialized part (no geometry/physics change).
     for name, fields in _TUNED_OVERRIDES.items():
         if name in merged:
             merged[name] = replace(merged[name], **fields)
@@ -797,7 +779,7 @@ def _build_stock_parts() -> dict[str, StockPart]:
 
 
 # The public catalog. ``part()`` and ``stage_masses`` resolve through this, so every importer sees the
-# curated parts PLUS the whole materialized stock tree.
+# whole materialized stock tree plus the thin alias redirects.
 STOCK_PARTS: dict[str, StockPart] = _build_stock_parts()
 
 

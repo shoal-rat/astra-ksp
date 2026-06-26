@@ -269,11 +269,12 @@ def _bus_mass(req: ShipRequirements) -> float:
     # CALCULATING the count, and add crew-cabin mass for extra seats and docking hardware here.
     extra = 0.0
     if req.crew > 1:
-        # Extra seats for crew beyond the command pod's one. Use the Mk2 Command Pod (Mk2Pod): a real
-        # 1.25 m, 2-seat part, so the crew section stays a clean 1.25 m column (the cfg-named "crewCabin"
-        # is actually the 2.5 m Hitchhiker, which would break the bus's monotonic-taper as a 2.5 m part
-        # sitting above the 1.25 m pod). Mk2Pod seats 2, matching the old ~2-per-cabin assumption.
-        extra += part("Mk2Pod").wet_mass_t * math.ceil((req.crew - 1) / 2.0)
+        # Extra seats for crew beyond the command pod's one. Use the KV-2 'Onion' reentry module (kv2Pod):
+        # a genuine 1.25 m, 2-seat pod, so the crew section stays a clean 1.25 m column. (The Mk2 Command
+        # Pod "Mk2Pod" is a 1.875 m Making-History part — its true cfg diameter would break the bus's
+        # monotonic taper; the cfg-named "crewCabin" is the 2.5 m Hitchhiker, also wrong here.) kv2Pod
+        # seats 2, matching the old ~2-per-cabin assumption.
+        extra += part("kv2Pod").wet_mass_t * math.ceil((req.crew - 1) / 2.0)
     if req.needs_docking:
         extra += part("dockingPort2").wet_mass_t + part("RCSBlock").wet_mass_t * 4 + part("rcsTankRadialLong").wet_mass_t
     return base + extra

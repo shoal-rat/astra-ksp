@@ -291,9 +291,15 @@ def test_radial_boosters_are_sized_and_attached():
 def test_radial_boosters_make_an_unliftable_core_launchable():
     """The headline fix: a heavy ~3800 m/s upper that CANNOT lift on a single core engine (TWR < 1.2,
     infeasible) becomes launchable once strap-on boosters carry the liftoff thrust — combined TWR in the
-    flight window AND the design feasible."""
+    flight window AND the design feasible.
+
+    Pod count 6 (was 4): with the catalog now carrying ACCURATE cfg geometry, the KE-1 Mastodon reads as
+    the real 2.5 m engine it is (it was mis-sized 1.25 m by the old hand-list), so a 1.25 m booster pod no
+    longer pairs with it; the height-clamped 1.25 m pods each bank less ascent Δv, so this heavy core needs
+    6 strap-ons to clear the reserve floor, not 4. The point of the test — boosters turn an unliftable core
+    launchable — is unchanged."""
     single = design_ship(_eve_relay_requirements(0))
-    boosted = design_ship(_eve_relay_requirements(4))
+    boosted = design_ship(_eve_relay_requirements(6))
     # The single core engine cannot lift this heavy stack: below the 1.2 floor -> infeasible.
     assert single.estimates["launch_twr"] < 1.2, single.estimates
     assert single.feasible is False, single.infeasible_reasons

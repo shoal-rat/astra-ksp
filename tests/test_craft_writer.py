@@ -160,7 +160,7 @@ def _crewed_design(name: str = "AI-Crew-Test"):
 # part the headless launch's probe core does NOT provide a seat for (the probe core has capacity 0). A
 # crewed craft MUST render at least one of these with a free seat or no kerbal can board (the live bug:
 # kRPC crew_capacity == 0 / /spawn-crew "No crewable part with a free seat found").
-_CREW_CAPACITY = {"mk1pod.v2": 1, "Mk2Pod": 2}
+_CREW_CAPACITY = {"mk1pod.v2": 1, "kv2Pod": 2}
 
 
 def test_crewed_design_renders_a_crewable_mk1_pod():
@@ -250,7 +250,9 @@ def test_docking_vehicle_rides_in_a_fairing_enclosing_its_top_service_hardware()
         ),
         "mk1pod.v2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleCommand\n\t}",
         "dockingPort2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleDockingNode\n\t}",
-        "RCSBlock": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleRCSFX\n\t}",
+        # RCSBlock.v2 is the LIVE loadable id the catalog resolves the legacy "RCSBlock" alias to; the
+        # harvest library + emitted nodes key on the live name, so the donor body is keyed on it too.
+        "RCSBlock.v2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleRCSFX\n\t}",
         "rcsTankRadialLong": "\tEVENTS\n\t{\n\t}\n\tRESOURCE\n\t{\n\t\tname = MonoPropellant\n\t}",
     }
     from ksp_lab.craft_writer import CraftWriter as _CW
@@ -265,7 +267,7 @@ def test_docking_vehicle_rides_in_a_fairing_enclosing_its_top_service_hardware()
         # 2) The docking port + RCS + monoprop tank survive inside the shroud (jettison only removes the
         #    shell, exposing them in orbit for the dock).
         assert "dockingPort2" in names, "docking vehicle lost its docking port"
-        assert names.count("RCSBlock") >= 4, "docking vehicle lost its RCS translation quad"
+        assert names.count("RCSBlock.v2") >= 4, "docking vehicle lost its RCS translation quad"
         assert "rcsTankRadialLong" in names, "docking vehicle lost its monoprop tank"
         # 3) The fairing shell radius (max XSECTION r) must swallow the OUTERMOST top appendage that is
         #    actually carried for this part_bodies set — the docking RCS quad/monoprop tank and the bus

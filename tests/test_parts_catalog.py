@@ -102,10 +102,20 @@ def test_back_compat_part_api_resolves_names_with_accurate_masses():
     # Materialized headline parts that USED to be shadowed by curated literals now carry cfg values.
     assert parts.part("Size3LargeTank").diameter_m == 3.75 and parts.part("Size3LargeTank").liquid_fuel == 6480.0
     assert parts.part("Size3EngineCluster").thrust_kn_vac == 4000.0  # Mammoth, from the cfg
-    # Back-compat aliases (dotted names + lab-only parts) still resolve through part().
+    # Names that ARE their own live key resolve to themselves through part().
     for name in ("mk1pod.v2", "probeCoreOcto.v2", "parachuteSingle", "Decoupler.1",
-                 "engineLargeSkipper", "Rockomax32.BW", "radialDecoupler2", "fairingSize2"):
+                 "Rockomax32.BW", "radialDecoupler2", "fairingSize2"):
         assert parts.part(name).name == name
+    # ALIAS RENAMES are pure name redirects with NO data: a legacy import name resolves to the LIVE
+    # entry, and its ``.name`` is the live loadable id (so a craft built from the alias loads in-game).
+    # This is the only back-compat layer, and it overrides nothing.
+    assert parts.ALIAS_RENAMES["engineLargeSkipper"] == "engineLargeSkipper.v2"
+    skipper_alias = parts.part("engineLargeSkipper")
+    skipper_live = parts.part("engineLargeSkipper.v2")
+    assert skipper_alias.name == "engineLargeSkipper.v2"          # alias resolves to the live loadable id
+    assert skipper_alias == skipper_live                          # SAME StockPart — no overriding data
+    assert parts.part("RCSBlock").name == "RCSBlock.v2"
+    assert parts.part("RCSBlock") == parts.part("RCSBlock.v2")
 
 
 def test_catalog_keys_on_the_live_dotted_part_name_form():

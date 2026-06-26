@@ -141,8 +141,8 @@ class CraftWriter:
         names = {"parachuteSingle", "Decoupler.1", "ServiceBay.125.v2"}
         names.add("mk1pod.v2" if design.crewed else "probeCoreOcto.v2")
         if design.crewed:
-            names.add("probeCoreOcto.v2")  # inline control source for headless crewed launch
-            names.add("Mk2Pod")  # extra 1.25 m crew seats so astronauts can be transferred between modules
+            names.add("probeStackSmall")  # 1.25 m inline control source for the headless crewed launch
+            names.add("kv2Pod")  # genuine 1.25 m 2-seat pod so astronauts can be transferred between modules
         if design.crewed or design.heatshield:
             names.add("HeatShield1")
         # Avionics/power/comms bus + aero fins added by _build_nodes; harvest their real
@@ -192,7 +192,10 @@ class CraftWriter:
             names.update({rb.tank, rb.decoupler})
             if not getattr(rb, "is_drop_tank", False) and rb.engine:
                 names.add(rb.engine)        # a powered pod also needs its engine; a drop tank has none
-        return names
+        # Canonicalize every harvest name to its LIVE loadable id (resolving legacy aliases like
+        # RCSBlock -> RCSBlock.v2), so the harvested part-body library is keyed exactly like the nodes
+        # new_node() builds — keeping harvest and emission in lock-step under the live names.
+        return {part(n).name for n in names if n in STOCK_PARTS}
 
     @staticmethod
     def _part_source_dirs(save_vab_dir: str | Path) -> list[Path]:
@@ -329,7 +332,11 @@ class CraftWriter:
             nonlocal uid
             if part_name not in STOCK_PARTS:
                 raise CraftValidationError(f"Unknown stock part in design: {part_name}")
-            node = CraftNode(part_name=part_name, uid=uid, stage_index=stage_index)
+            # Canonicalize a legacy ALIAS to the live loadable part id (e.g. RCSBlock -> RCSBlock.v2) so the
+            # emitted ``part = `` id is one the game can actually load. The catalog resolves the alias to the
+            # live StockPart whose ``.name`` is that loadable id; the node carries it everywhere downstream.
+            live_name = part(part_name).name
+            node = CraftNode(part_name=live_name, uid=uid, stage_index=stage_index)
             uid -= 173
             return node
 
@@ -378,17 +385,23 @@ class CraftWriter:
                 nodes.append(capsule_decoupler)
                 current = capsule_decoupler
         if design.crewed:
-            # Inline probe core: a guaranteed control source for the headless launch.
-            probe = new_node("probeCoreOcto.v2", 0)
+            # Inline probe core: a guaranteed control source for the headless launch. Use the 1.25 m
+            # RC-001S Remote Guidance Unit (probeStackSmall) so the crew column stays a clean 1.25 m
+            # cylinder. (The Probodobodyne OKTO probeCoreOcto.v2 is a genuine 0.625 m part — now that the
+            # catalog carries the real cfg diameter, tucking a 0.625 m core into a 1.25 m stack inverts the
+            # monotonic-taper gate; probeStackSmall is the correct 1.25 m inline guidance unit.)
+            probe = new_node("probeStackSmall", 0)
             self._attach(current, probe, "bottom", "top")
             nodes.append(probe)
             current = probe
             # Extra crew seats for transfers (kept BELOW the decoupler so the launch CoM stays low and
-            # stable — see the capsule note above for the all-crew-recovery caveat). Use the Mk2 Command
-            # Pod (Mk2Pod): a 1.25 m 2-seat part, so the crew section is a clean 1.25 m column. (The
-            # cfg-named "crewCabin" is the 2.5 m Hitchhiker — putting it here broke the monotonic taper.)
-            if part_bodies is None or "Mk2Pod" in part_bodies:
-                cabin = new_node("Mk2Pod", 0)
+            # stable — see the capsule note above for the all-crew-recovery caveat). Use the KV-2 'Onion'
+            # reentry module (kv2Pod): a genuine 1.25 m 2-seat pod, so the crew section is a clean 1.25 m
+            # column. (The Mk2 Command Pod "Mk2Pod" is really a 1.875 m Making-History part — now that the
+            # catalog carries its true cfg diameter, stacking it on the 1.25 m bus inverts the taper gate;
+            # the cfg-named "crewCabin" is the 2.5 m Hitchhiker, also wrong here.)
+            if part_bodies is None or "kv2Pod" in part_bodies:
+                cabin = new_node("kv2Pod", 0)
                 self._attach(current, cabin, "bottom", "top")
                 nodes.append(cabin)
                 current = cabin
@@ -532,7 +545,7 @@ class CraftWriter:
                 current = adapter
             if (prev_dia is not None and abs(stage.diameter_m - 3.75) < 0.1 and abs(prev_dia - 1.25) < 0.1
                     and (part_bodies is None or (
-                        "adapterSize2-Size1" in part_bodies and "Size3To2Adapter_v2" in part_bodies
+                        "adapterSize2-Size1" in part_bodies and "Size3To2Adapter.v2" in part_bodies
                     ))):
                 # Smooth the full 1.25 -> 3.75 m step with two real conical adapters instead of leaving
                 # a flat aerodynamic shoulder under the upper stack.
@@ -545,7 +558,7 @@ class CraftWriter:
                 nodes.append(adapter_250_375)
                 current = adapter_250_375
             if (prev_dia is not None and abs(stage.diameter_m - 3.75) < 0.1 and abs(prev_dia - 2.5) < 0.1
-                    and (part_bodies is None or "Size3To2Adapter_v2" in part_bodies)):
+                    and (part_bodies is None or "Size3To2Adapter.v2" in part_bodies)):
                 adapter = new_node("Size3To2Adapter_v2", render_index)
                 self._attach(current, adapter, "bottom", "top")
                 nodes.append(adapter)
@@ -691,7 +704,10 @@ class CraftWriter:
         def can_emit(part_name: str) -> bool:
             # Only attach a part when a real serialization is available (or in minimal mode),
             # so we never splice a module-less body that re-triggers the launch NullReference.
-            return part_bodies is None or part_name in part_bodies
+            # Resolve a legacy alias (RCSBlock) to its live id (RCSBlock.v2) so the lookup matches the
+            # live-keyed harvest library; an unknown name is checked verbatim.
+            live = part(part_name).name if part_name in STOCK_PARTS else part_name
+            return part_bodies is None or live in part_bodies
 
         # Avionics / power / comms bus on the command part: a satellite needs a comm link, power
         # generation, and storage to function and stay controllable away from Kerbin. Mounted
@@ -924,7 +940,7 @@ class CraftWriter:
     def _rcs_radial_extent(cls, root: CraftNode, part_bodies: dict[str, str] | None) -> float:
         """Outermost radius the docking RCS quad + monoprop tank reach."""
         r0 = cls._rcs_mount_radius(root)
-        ext = r0 + part("RCSBlock").diameter_m / 2.0 if (part_bodies is None or "RCSBlock" in part_bodies) else r0
+        ext = r0 + part("RCSBlock").diameter_m / 2.0 if (part_bodies is None or "RCSBlock.v2" in part_bodies) else r0
         if part_bodies is None or "rcsTankRadialLong" in part_bodies:
             ext = max(ext, r0 + part("rcsTankRadialLong").diameter_m / 2.0)
         return ext
@@ -1000,7 +1016,7 @@ class CraftWriter:
             # Replace the harvested fairing's XSECTION shell (sized for the donor craft) with the
             # computed ogive that wraps THIS payload, keeping it inside the ModuleProceduralFairing.
             body = re.sub(r"(?:\n\t\tXSECTION\n\t\t\{[^}]*\})+", "\n" + node.fairing_xsections, body, count=1)
-        if body and node.part_name == "Size3To2Adapter_v2":
+        if body and node.part_name == "Size3To2Adapter.v2":
             # The ADTP-2-3 is used here as an aerodynamic structural adapter, not as unplanned fuel
             # storage. Remove stock RESOURCE blocks so the live vessel mass matches the calculated dry
             # adapter mass in parts.py.
