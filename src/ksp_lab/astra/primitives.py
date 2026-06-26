@@ -211,6 +211,34 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
                       "svg_path": report.get("svg_path")})
     _log(f"  design gate PASSED for {name}; three-view PNG: {png_path}")
 
+    # ---- WIRING 1b: FORCED Codex (ChatGPT) three-view review. Claude's geometry gate just passed; now
+    # Codex must LOOK at the same PNG and critique the SHAPE (protruding mass, staging/separation, booster
+    # height, exposed engines, payload housing). This is the user's hard constraint that Codex reviews
+    # EVERY flown design. Gated by ASTRA_CODEX_DESIGN (default-ON). If Codex is unavailable (not installed,
+    # timeout, error) we FALL BACK to the Claude gate result so flights aren't blocked; if Codex IS
+    # available and objects, we REJECT the launch and log the objection for Claude to fix.
+    import os
+    if os.environ.get("ASTRA_CODEX_DESIGN", "1") != "0" and png_path:
+        from . import codex_review  # import outside the try so the handler can build a fallback verdict
+        try:
+            ctx_str = (f"mission target_alt_km={target_alt_km:.0f}, crew={crew}, "
+                       f"radial_boosters={radial_boosters}, name={name}")
+            verdict = codex_review.codex_review_three_view([png_path], context=ctx_str)
+        except Exception as exc:  # the review path must never crash a flight by itself
+            verdict = codex_review.CodexVerdict(approved=False,
+                                                flaws=[f"codex unavailable: review raised {exc}"])
+        codex_unavailable = any(str(f).startswith("codex unavailable") for f in verdict.flaws)
+        if verdict.approved:
+            _log(f"  Codex three-view review APPROVED {name}")
+        elif codex_unavailable:
+            # Codex isn't usable here — do NOT block the flight; defer to Claude's passing gate.
+            _log(f"  Codex review unavailable ({'; '.join(verdict.flaws)}); falling back to Claude gate")
+        else:
+            # Codex is available AND objects -> reject this design and surface the flaws.
+            return _emit("launch", False, "codex_design_objection",
+                         f"{name}: Codex objected to the three-view; flaws: {verdict.flaws}",
+                         {"png_path": png_path, "codex_flaws": verdict.flaws})
+
     # insertion_dv_override stays 0 here (a plain orbit). transfer() sizes the upper for an interplanetary
     # budget when it is the next step; for a bare launch the calculated raise+circularize budget suffices.
     try:

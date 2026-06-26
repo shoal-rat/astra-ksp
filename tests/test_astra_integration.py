@@ -70,7 +70,25 @@ def _live_ctx():
     return ctx
 
 
+def _stub_codex(monkeypatch, *, approved=True, flaws=None, unavailable=False):
+    """Replace the Codex review with a stub so these tests NEVER spawn the real codex CLI / network.
+    Returns a calls list so a test can assert the (forced) review was invoked."""
+    from ksp_lab.astra import codex_review
+    calls = []
+
+    def fake_review(png_paths, *, context="", **kw):
+        calls.append({"pngs": list(png_paths), "context": context})
+        if unavailable:
+            return codex_review.CodexVerdict(approved=False, flaws=["codex unavailable: stubbed off"])
+        return codex_review.CodexVerdict(approved=approved, flaws=flaws or [])
+
+    monkeypatch.setattr(codex_review, "codex_review_three_view", fake_review)
+    return calls
+
+
 def test_launch_refuses_to_fly_when_design_gate_fails(monkeypatch):
+    # The Claude geometry gate fails BEFORE the Codex pass, so codex is irrelevant here; disable it.
+    monkeypatch.setenv("ASTRA_CODEX_DESIGN", "0")
     fake_dc = _install_fake_design_chart(monkeypatch, ok=False)
     fake_dr = _install_fake_deploy_relay(monkeypatch)
     ctx = _live_ctx()
@@ -89,6 +107,7 @@ def test_launch_refuses_to_fly_when_design_gate_fails(monkeypatch):
 def test_launch_flies_when_design_gate_passes(monkeypatch):
     fake_dc = _install_fake_design_chart(monkeypatch, ok=True)
     fake_dr = _install_fake_deploy_relay(monkeypatch)
+    codex_calls = _stub_codex(monkeypatch, approved=True)  # forced Codex pass APPROVES
     ctx = _live_ctx()
 
     r = primitives.run_primitive(ctx, "launch", {"name": "AI-Test", "crew": 0, "target_alt_km": 100.0})
@@ -96,8 +115,38 @@ def test_launch_flies_when_design_gate_passes(monkeypatch):
     assert r.ok
     assert r.marker == "launch_to_orbit"
     assert fake_dc.calls  # gate ran
+    assert codex_calls and codex_calls[0]["pngs"]  # Codex review was FORCED on the rendered PNG
     assert fake_dr.launched == ["AI-Test"]  # and only then did it fly
     assert r.data.get("design_png")  # the auditable PNG path is surfaced
+
+
+def test_launch_rejected_when_codex_objects(monkeypatch):
+    # Claude's gate passes, but the FORCED Codex review objects -> the launch is rejected, no flight.
+    fake_dc = _install_fake_design_chart(monkeypatch, ok=True)
+    fake_dr = _install_fake_deploy_relay(monkeypatch)
+    _stub_codex(monkeypatch, approved=False, flaws=["1. exposed upper-stage engine bell"])
+    ctx = _live_ctx()
+
+    r = primitives.run_primitive(ctx, "launch", {"name": "AI-Test", "crew": 0, "target_alt_km": 100.0})
+
+    assert not r.ok
+    assert r.marker == "codex_design_objection"
+    assert fake_dr.launched == []  # Codex's objection blocked the flight
+    assert r.data.get("codex_flaws")
+
+
+def test_launch_falls_back_to_claude_gate_when_codex_unavailable(monkeypatch):
+    # If Codex isn't usable, we MUST NOT block a flight that Claude's gate approved.
+    fake_dc = _install_fake_design_chart(monkeypatch, ok=True)
+    fake_dr = _install_fake_deploy_relay(monkeypatch)
+    _stub_codex(monkeypatch, unavailable=True)
+    ctx = _live_ctx()
+
+    r = primitives.run_primitive(ctx, "launch", {"name": "AI-Test", "crew": 0, "target_alt_km": 100.0})
+
+    assert r.ok
+    assert r.marker == "launch_to_orbit"
+    assert fake_dr.launched == ["AI-Test"]  # flew despite Codex being unavailable
 
 
 def test_launch_requirements_mirror_crew_and_boosters():
