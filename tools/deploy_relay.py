@@ -108,6 +108,98 @@ def _inter_stage_decouplers(vessel) -> list:
     return inter
 
 
+# --- FAIL-FAST ascent abort detection -------------------------------------------------------------
+# The launch loop used to poll for ~20 minutes (1200 s) waiting for apoapsis to reach the parking
+# target, even after the ascent had already FAILED: the vehicle broke up (part count collapsed to ~the
+# payload), or it was falling back below the atmosphere (apoapsis decaying, vertical speed negative), or
+# it had crashed (landed/splashed after liftoff). Nothing logged and no monitor fired — the process just
+# sat "alive" doing nothing until the timeout (this stranded the heavy tug for 20 minutes). The helper
+# below inspects a small rolling state-history and ABORTS loudly the moment a real failure mode is seen,
+# long before any timeout. It is a PURE function (no kRPC) so it can be unit-tested with a fake state
+# sequence.
+_FAILFAST_BAD_STREAK = 3          # consecutive bad polls before an abort fires (rides out a 1-frame transient)
+_FAILFAST_PARTS_FRAC = 0.5        # part count below this fraction of the post-staging count = broke up
+
+
+def _ascent_has_failed(state_history, *, post_staging_part_count: int, payload_part_count: int,
+                       atmosphere_top_m: float = 70_000.0, target_apoapsis_m: float = 100_000.0,
+                       bad_streak: int = _FAILFAST_BAD_STREAK):
+    """PURE ascent-failure predicate. Returns ``(failed: bool, reason: str)``.
+
+    ``state_history`` is a list of per-poll snapshots (oldest first), each a dict with keys:
+        part_count    (int)   live active-vessel part count
+        apoapsis_m    (float) apoapsis ALTITUDE in metres
+        vertical_speed_mps (float) surface-frame vertical speed (negative = falling)
+        situation     (str)   kRPC situation, e.g. "Vessel.Situation.flying" / "...landed"
+        engine_lit    (bool)  is any engine currently lit/active
+    Only the most recent poll plus a short tail are consulted. ``post_staging_part_count`` is the part
+    count right after the booster separated (the live vehicle that SHOULD reach orbit); ``payload_part_count``
+    is the bare comsat/crew payload count (what's left if it breaks up). Abort fires when ANY of these
+    failure modes holds for the LAST ``bad_streak`` consecutive polls (so a single-frame glitch is ignored):
+
+      1. PART-COUNT COLLAPSE: part_count < ~half the post-staging count (or down to roughly payload-only)
+         — the vehicle broke up.
+      2. FALLING BACK: below the atmosphere top, vertical speed negative, AND apoapsis strictly DECAYING
+         across the streak — it is descending and cannot reach orbit.
+      3. CRASHED: situation is landed/splashed AFTER liftoff (we only reach this loop post-liftoff).
+      4. DIVERGING: apoapsis strictly decreasing every poll across the streak while the engine is lit and
+         apoapsis is still well short of target — the burn is losing ground, not gaining it.
+    """
+    if not state_history:
+        return False, ""
+    n = max(1, int(bad_streak))
+    if len(state_history) < n:
+        return False, ""
+    tail = state_history[-n:]
+    cur = tail[-1]
+
+    def _sit(s) -> str:
+        return str(s.get("situation", "")).split(".")[-1].lower()
+
+    # 3. CRASHED — landed/splashed after liftoff. A single confirmed reading is decisive (you don't
+    #    "un-crash"), but require the streak so a pre-liftoff/pad frame can't trip it.
+    if all(_sit(s) in ("landed", "splashed") for s in tail):
+        return True, (f"situation '{_sit(cur)}' after liftoff — vehicle crashed "
+                      f"(apoapsis {cur.get('apoapsis_m', 0.0)/1000:.0f} km)")
+
+    # 1. PART-COUNT COLLAPSE — broke up. Threshold = max(half the post-staging count, payload+1) so a
+    #    normal booster separation (a controlled, expected drop) never trips it, but a break-up down to
+    #    the bare payload does.
+    if post_staging_part_count and post_staging_part_count > 0:
+        collapse_threshold = max(int(post_staging_part_count * _FAILFAST_PARTS_FRAC),
+                                 int(payload_part_count) + 1)
+        if all(int(s.get("part_count", post_staging_part_count)) < collapse_threshold for s in tail):
+            return True, (f"part count {int(cur.get('part_count', 0))} << {int(post_staging_part_count)} "
+                          f"(threshold {collapse_threshold}) — vehicle broke up")
+
+    near_target = cur.get("apoapsis_m", 0.0) >= 0.95 * target_apoapsis_m
+
+    # 2. FALLING BACK — below the atmosphere, descending, apoapsis decaying across the whole streak.
+    apo_strictly_decaying = all(
+        tail[i].get("apoapsis_m", 0.0) < tail[i - 1].get("apoapsis_m", 0.0) for i in range(1, len(tail))
+    )
+    if (not near_target
+            and apo_strictly_decaying
+            and all(s.get("apoapsis_m", 0.0) < atmosphere_top_m for s in tail)
+            and all(s.get("vertical_speed_mps", 0.0) < 0.0 for s in tail)):
+        return True, (f"apoapsis decaying {tail[0].get('apoapsis_m', 0.0)/1000:.0f}->"
+                      f"{cur.get('apoapsis_m', 0.0)/1000:.0f} km, vspd {cur.get('vertical_speed_mps', 0.0):.0f}, "
+                      f"below atmosphere — falling back")
+
+    # 4. DIVERGING — apoapsis strictly decreasing every poll while the engine is lit and still well short
+    #    of target. Distinct from (2): can be ABOVE the atmosphere yet still losing apoapsis under burn
+    #    (e.g. pointed wrong / tumbling), which never recovers to orbit.
+    if (not near_target
+            and apo_strictly_decaying
+            and all(s.get("engine_lit", False) for s in tail)
+            and cur.get("apoapsis_m", 0.0) < 0.7 * target_apoapsis_m):
+        return True, (f"apoapsis diverging {tail[0].get('apoapsis_m', 0.0)/1000:.0f}->"
+                      f"{cur.get('apoapsis_m', 0.0)/1000:.0f} km under power, still <{0.7*target_apoapsis_m/1000:.0f} km "
+                      f"— ascent losing ground")
+
+    return False, ""
+
+
 def _guarded_decouple(vessel, dec) -> bool:
     """Fire ``dec`` ONLY if the active (root/pod) side keeps an engine (``_root_side_keeps_engine``); a
     decoupler that would strand the engineless PAYLOAD (the tug's heat-shield / payload boundary) is NEVER
@@ -336,14 +428,66 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     inter_decs = _inter_stage_decouplers(kv)
     log(f"  ascent separators: {len(inter_decs)} inter-stage decoupler(s) to fire explicitly "
         f"(payload decoupler protected — never fired during ascent)")
+    # FAIL-FAST baselines (captured once, on the fully-stacked vehicle at liftoff): the part count that
+    # SHOULD survive to orbit (post-staging = full stack minus the booster stages we will drop) and the
+    # bare PAYLOAD count (what's left if it breaks up). post_staging is the full stack minus one part per
+    # inter-stage decoupler's booster subtree only as a floor; we don't know the exact subtree sizes
+    # offline, so we use the full liftoff count as the post-staging reference and let the half-fraction
+    # threshold absorb the normal staging drop. payload ~= the comsat/crew bus = stack minus everything
+    # below the payload decoupler; we approximate it as a small floor so the collapse threshold never
+    # dips below it. The atmosphere top comes from the launch body (Kerbin, 70 km).
+    try:
+        liftoff_part_count = len(kv.parts.all)
+    except Exception:
+        liftoff_part_count = 0
+    post_staging_part_count = liftoff_part_count
+    payload_part_count = 3                  # conservative floor: a comsat/crew bus is at least a few parts
+    atmosphere_top_m = KERBIN.atmosphere_top_m if KERBIN.atmosphere_top_m > 0 else 70_000.0
+    state_history: list = []                 # rolling per-poll snapshots for the fail-fast predicate
     t0 = time.monotonic()
     dry_count = 0
-    while time.monotonic() - t0 < 1200.0:
+    while time.monotonic() - t0 < 900.0:     # backstop only: the fail-fast checks abort real failures long before this
         # FULL thrust (no refuel-through-ascent). The consecutive-dry guard handles the crossfeed transient
         # so the booster flies at full thrust and only drops when GENUINELY spent.
         try:
             kv2 = ksc.active_vessel
             active = [e for e in kv2.parts.engines if e.active]
+            # FAIL-FAST snapshot + abort. Record a cheap per-poll state (part count, apoapsis, vertical
+            # speed, situation, engine-lit) and feed the rolling history to the PURE _ascent_has_failed
+            # predicate. If a real failure mode (break-up, falling back below the atmosphere, crash, or a
+            # diverging powered ascent) holds for _FAILFAST_BAD_STREAK consecutive polls, log it LOUD and
+            # RETURN False NOW — no more silent 20-minute polling. The reads are wrapped so a transient
+            # kRPC hiccup just skips this poll's snapshot rather than killing the loop.
+            try:
+                _vspd = 0.0
+                try:
+                    _fl = kv2.flight(kv2.orbit.body.reference_frame)
+                    _vspd = float(_fl.vertical_speed)
+                except Exception:
+                    _vspd = 0.0
+                state_history.append({
+                    "part_count": len(kv2.parts.all),
+                    "apoapsis_m": float(kv2.orbit.apoapsis_altitude),
+                    "vertical_speed_mps": _vspd,
+                    "situation": str(kv2.situation),
+                    "engine_lit": bool(active),
+                })
+                if len(state_history) > 8:
+                    del state_history[:-8]
+                _failed, _reason = _ascent_has_failed(
+                    state_history,
+                    post_staging_part_count=post_staging_part_count,
+                    payload_part_count=payload_part_count,
+                    atmosphere_top_m=atmosphere_top_m,
+                    target_apoapsis_m=100_000.0,
+                )
+                if _failed:
+                    log("mission_phase: launch_failed")
+                    log(f"  ABORT: {_reason}")
+                    log("RESULT: FAIL")
+                    c2.close(); return False
+            except Exception:
+                pass
             # Trigger on the BOTTOM (deepest) active engine being dry — the current booster. Keying on the
             # bottom (NOT "all active engines dry") is essential: MechJeb autostage may light an UPPER engine
             # WITHOUT separating, leaving a mixed [dead booster, live upper] set; an "all dry" test never
