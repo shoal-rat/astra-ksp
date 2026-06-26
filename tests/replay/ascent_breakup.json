@@ -1,0 +1,12 @@
+{
+  "machine": "ascent",
+  "description": "Vehicle broke up: part count collapses from 49 to ~the bare payload (8 << 49) and holds for 3 consecutive ticks -> ABORT (broke up). The single collapsed frame must not abort on its own; the streak does.",
+  "params": {"post_staging_part_count": 49, "payload_part_count": 3, "atmosphere_top_m": 70000.0, "target_apoapsis_m": 100000.0},
+  "expect": "broke up",
+  "ticks": [
+    {"alt": 11000, "apoapsis": 41000, "vertical_speed": 130, "part_count": 49, "engine_lit": true, "situation": "Vessel.Situation.flying"},
+    {"alt": 13000, "apoapsis": 42000, "vertical_speed": 60,  "part_count": 8,  "engine_lit": true, "situation": "Vessel.Situation.flying"},
+    {"alt": 12500, "apoapsis": 39000, "vertical_speed": -20, "part_count": 8,  "engine_lit": true, "situation": "Vessel.Situation.flying"},
+    {"alt": 11000, "apoapsis": 35000, "vertical_speed": -55, "part_count": 8,  "engine_lit": true, "situation": "Vessel.Situation.flying"}
+  ]
+}

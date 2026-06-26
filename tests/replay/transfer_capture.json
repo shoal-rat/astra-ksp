@@ -1,0 +1,14 @@
+{
+  "machine": "transfer",
+  "description": "Mun transfer: coast on the Kerbin-SOI arc -> cross into the Mun SOI and warp_to_periapsis (periapsis still far) -> time_to_periapsis drops under 60 s -> CAPTURE fires AT periapsis (not at the SOI edge) -> bound Mun orbit = ARRIVED. Asserts capture does NOT fire while still far from periapsis.",
+  "params": {"target_body": "Mun", "capture_ttp_s": 60.0, "min_safe_periapsis_m": 5000.0},
+  "expect": "CAPTURE",
+  "ticks": [
+    {"body": "Kerbin", "periapsis": 95000,  "apoapsis": 11200000, "ut": 1000, "time_to_periapsis": 99999},
+    {"body": "Kerbin", "periapsis": 95000,  "apoapsis": 11400000, "ut": 4000, "time_to_periapsis": 99999},
+    {"body": "Mun",    "periapsis": 42000,  "apoapsis": 380000,   "ut": 7000, "time_to_periapsis": 900},
+    {"body": "Mun",    "periapsis": 42000,  "apoapsis": 380000,   "ut": 7400, "time_to_periapsis": 420},
+    {"body": "Mun",    "periapsis": 42000,  "apoapsis": 380000,   "ut": 7700, "time_to_periapsis": 55},
+    {"body": "Mun",    "periapsis": 41000,  "apoapsis": 120000,   "ut": 7760, "time_to_periapsis": 1200}
+  ]
+}

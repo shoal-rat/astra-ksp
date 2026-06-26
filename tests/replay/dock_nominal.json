@@ -1,0 +1,16 @@
+{
+  "machine": "docking",
+  "description": "Orion chases the parked HLS: far gap closed with the main engine (rendezvous, >2500 m) -> inside fine-RCS range the chaser creeps in nulling relative speed (approach) -> ports magnetically mate (ports_state 'docked') -> DOCKED.",
+  "params": {"approach_range_m": 2500.0, "timeout_ticks": 12},
+  "expect": "DOCKED",
+  "ticks": [
+    {"distance_m": 18000, "rel_speed_mps": 120.0, "ports_state": "ready"},
+    {"distance_m": 9000,  "rel_speed_mps": 60.0,  "ports_state": "ready"},
+    {"distance_m": 3200,  "rel_speed_mps": 24.0,  "ports_state": "ready"},
+    {"distance_m": 1800,  "rel_speed_mps": 8.0,   "ports_state": "ready"},
+    {"distance_m": 400,   "rel_speed_mps": 3.0,   "ports_state": "approaching"},
+    {"distance_m": 55,    "rel_speed_mps": 1.4,   "ports_state": "approaching"},
+    {"distance_m": 8,     "rel_speed_mps": 0.5,   "ports_state": "approaching"},
+    {"distance_m": 0.4,   "rel_speed_mps": 0.1,   "ports_state": "docked"}
+  ]
+}

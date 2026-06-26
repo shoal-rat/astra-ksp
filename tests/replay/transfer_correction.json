@@ -1,0 +1,13 @@
+{
+  "machine": "transfer",
+  "description": "Transfer with an unsafe predicted encounter: the grid-search TMI leaves a sub-surface periapsis (impact) while still in the departure SOI, so the machine emits 'corrected' (course-correction) before it would warp into the SOI; once the corrected encounter is safe it coasts, then captures at the Mun periapsis.",
+  "params": {"target_body": "Mun", "capture_ttp_s": 60.0, "min_safe_periapsis_m": 5000.0},
+  "expect": "corrected",
+  "ticks": [
+    {"body": "Kerbin", "periapsis": 95000,  "apoapsis": 11200000, "ut": 1000, "time_to_periapsis": 99999},
+    {"body": "Kerbin", "periapsis": -40000, "apoapsis": 11400000, "ut": 4000, "time_to_periapsis": 99999},
+    {"body": "Kerbin", "periapsis": 30000,  "apoapsis": 11400000, "ut": 5000, "time_to_periapsis": 99999},
+    {"body": "Mun",    "periapsis": 28000,  "apoapsis": 360000,   "ut": 7000, "time_to_periapsis": 700},
+    {"body": "Mun",    "periapsis": 28000,  "apoapsis": 360000,   "ut": 7600, "time_to_periapsis": 40}
+  ]
+}

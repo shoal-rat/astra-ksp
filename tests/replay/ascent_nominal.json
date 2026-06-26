@@ -1,0 +1,15 @@
+{
+  "machine": "ascent",
+  "description": "Healthy ascent: full part count, apoapsis climbing past the 100 km target -> CIRCULARIZE. Includes one controlled booster separation (49 -> 30 parts) that must read as 'stage', not a break-up.",
+  "params": {"post_staging_part_count": 49, "payload_part_count": 3, "atmosphere_top_m": 70000.0, "target_apoapsis_m": 100000.0},
+  "expect": "CIRCULARIZE",
+  "ticks": [
+    {"alt": 1200,  "apoapsis": 18000,  "vertical_speed": 240, "part_count": 49, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 9000,  "apoapsis": 42000,  "vertical_speed": 210, "part_count": 49, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 22000, "apoapsis": 63000,  "vertical_speed": 180, "part_count": 49, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 38000, "apoapsis": 78000,  "vertical_speed": 150, "part_count": 30, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 52000, "apoapsis": 91000,  "vertical_speed": 110, "part_count": 30, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 66000, "apoapsis": 99000,  "vertical_speed": 70,  "part_count": 30, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 72000, "apoapsis": 101000, "vertical_speed": 35,  "part_count": 30, "engine_lit": true,  "situation": "Vessel.Situation.sub_orbital"}
+  ]
+}

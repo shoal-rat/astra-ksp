@@ -1,0 +1,14 @@
+{
+  "machine": "recovery",
+  "description": "Ocean splashdown: same safe-chute gate, but slow descent over water means the craft is slow (<250 m/s) while STILL HIGH (>5 km) for two ticks -> chutes must NOT arm there (AND gate); they arm only once also below 5 km. Terminal is LANDED via situation 'splashed'.",
+  "params": {"chute_safe_speed_mps": 250.0, "chute_safe_alt_m": 5000.0},
+  "expect": "LANDED",
+  "ticks": [
+    {"body": "Kerbin", "altitude": 40000, "surface_speed": 1400, "chutes_deployed": false, "situation": "Vessel.Situation.sub_orbital"},
+    {"body": "Kerbin", "altitude": 12000, "surface_speed": 180,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 7000,  "surface_speed": 150,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 3800,  "surface_speed": 120,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 600,   "surface_speed": 9,    "chutes_deployed": true,  "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 0,     "surface_speed": 5,    "chutes_deployed": true,  "situation": "Vessel.Situation.splashed"}
+  ]
+}

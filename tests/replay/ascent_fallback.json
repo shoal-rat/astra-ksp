@@ -1,0 +1,12 @@
+{
+  "machine": "ascent",
+  "description": "Falling back: below the 70 km atmosphere top, apoapsis decaying and vertical speed negative across 3 consecutive ticks -> ABORT (falling back). All ticks in the abort streak are sub-atmosphere (the engine has flamed out short), which distinguishes this from a powered 'diverging' abort. The classic 'sat alive doing nothing' suborbital decay.",
+  "params": {"post_staging_part_count": 49, "payload_part_count": 3, "atmosphere_top_m": 70000.0, "target_apoapsis_m": 100000.0},
+  "expect": "falling back",
+  "ticks": [
+    {"alt": 60000, "apoapsis": 68000, "vertical_speed": 4,   "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.flying"},
+    {"alt": 59000, "apoapsis": 66000, "vertical_speed": -40, "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.flying"},
+    {"alt": 57500, "apoapsis": 64500, "vertical_speed": -70, "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.flying"},
+    {"alt": 56000, "apoapsis": 63000, "vertical_speed": -83, "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.flying"}
+  ]
+}

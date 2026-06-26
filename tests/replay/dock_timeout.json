@@ -1,0 +1,16 @@
+{
+  "machine": "docking",
+  "description": "Rendezvous never converges: the relative geometry keeps the gap open (the chaser closes then drifts back out) and the ports never mate within the 8-tick budget -> ABORT (docking timeout).",
+  "params": {"approach_range_m": 2500.0, "timeout_ticks": 8},
+  "expect": "docking timeout",
+  "ticks": [
+    {"distance_m": 9000, "rel_speed_mps": 60.0, "ports_state": "ready"},
+    {"distance_m": 4200, "rel_speed_mps": 30.0, "ports_state": "ready"},
+    {"distance_m": 2100, "rel_speed_mps": 12.0, "ports_state": "ready"},
+    {"distance_m": 1600, "rel_speed_mps": 9.0,  "ports_state": "approaching"},
+    {"distance_m": 2300, "rel_speed_mps": 14.0, "ports_state": "ready"},
+    {"distance_m": 3100, "rel_speed_mps": 20.0, "ports_state": "ready"},
+    {"distance_m": 2600, "rel_speed_mps": 16.0, "ports_state": "ready"},
+    {"distance_m": 2900, "rel_speed_mps": 18.0, "ports_state": "ready"}
+  ]
+}

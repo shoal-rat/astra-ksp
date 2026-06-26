@@ -1,0 +1,12 @@
+{
+  "machine": "ascent",
+  "description": "Crashed back down: after liftoff the situation reads 'landed' (or splashed) for the streak -> ABORT (crashed). You don't un-crash, so a confirmed streak is decisive.",
+  "params": {"post_staging_part_count": 49, "payload_part_count": 3, "atmosphere_top_m": 70000.0, "target_apoapsis_m": 100000.0},
+  "expect": "crashed",
+  "ticks": [
+    {"alt": 8000, "apoapsis": 14000, "vertical_speed": -60, "part_count": 49, "engine_lit": true,  "situation": "Vessel.Situation.flying"},
+    {"alt": 400,  "apoapsis": 1000,  "vertical_speed": -90, "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.landed"},
+    {"alt": 0,    "apoapsis": 0,     "vertical_speed": 0,   "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.landed"},
+    {"alt": 0,    "apoapsis": 0,     "vertical_speed": 0,   "part_count": 49, "engine_lit": false, "situation": "Vessel.Situation.landed"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "machine": "recovery",
+  "description": "Kerbin reentry + recovery: hypersonic entry (chutes stay stowed while fast/high) -> chutes deploy ONLY once safe (<250 m/s AND <5 km) -> touchdown (landed) -> recovered to the space centre (RECOVERED). Asserts chutes never arm above the safe gate.",
+  "params": {"chute_safe_speed_mps": 250.0, "chute_safe_alt_m": 5000.0},
+  "expect": "RECOVERED",
+  "ticks": [
+    {"body": "Kerbin", "altitude": 68000, "surface_speed": 2100, "chutes_deployed": false, "situation": "Vessel.Situation.sub_orbital"},
+    {"body": "Kerbin", "altitude": 32000, "surface_speed": 900,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 9000,  "surface_speed": 320,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 4200,  "surface_speed": 210,  "chutes_deployed": false, "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 1500,  "surface_speed": 70,   "chutes_deployed": true,  "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 200,   "surface_speed": 8,    "chutes_deployed": true,  "situation": "Vessel.Situation.flying"},
+    {"body": "Kerbin", "altitude": 0,     "surface_speed": 4,    "chutes_deployed": true,  "situation": "Vessel.Situation.landed"},
+    {"body": "Kerbin", "altitude": 0,     "surface_speed": 0,    "chutes_deployed": true,  "situation": "Vessel.Situation.recovered"}
+  ]
+}
