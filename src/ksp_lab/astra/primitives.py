@@ -130,11 +130,21 @@ def select_vessel(ctx: PrimitiveContext, name: str) -> PrimitiveResult:
 
 
 def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshield: bool,
-                         landing, radial_boosters: int, max_core_engines: int):
+                         landing, radial_boosters: int, max_core_engines: int,
+                         mission_dv: float = 0.0, needs_legs: bool = False):
     """Build the SAME ShipRequirements deploy_relay.launch_to_lko sizes internally, so the design-chart
     gate (design_and_verify) reasons over the craft that will ACTUALLY be flown. Mirrors the req in
     deploy_relay.launch_to_lko (insertion Δv calculated for the target orbit, asparagus boosters,
-    crewed-vs-relay command/recovery) — kept in step with that proven path."""
+    crewed-vs-relay command/recovery) — kept in step with that proven path.
+
+    MISSION-AWARE (opt-in): when ``mission_dv > 0`` the craft is a SINGLE-VEHICLE deep-space mission (a
+    crewed Mun land-and-return), not a Kerbin-to-LKO-only launch. The same vehicle that boosts to LKO
+    must also carry the POST-LKO budget (TMI + capture + land + ascend + return + re-entry margin), so we
+    APPEND a vacuum ``mission`` Phase of ``mission_dv`` (sized with the standard vacuum reserve, and split
+    by design.py's add-a-stage if it exceeds the single-stage Δv ceiling). ``needs_legs`` forces landing
+    legs onto the bus (a Mun touchdown + a Kerbin re-entry both need them; chutes alone do not imply legs
+    on an airless body). When ``mission_dv == 0`` NOTHING is appended and the requirement is BYTE-FOR-BYTE
+    the same two-phase booster+insertion LKO craft as before — relay/Eve launches are unchanged."""
     import math
 
     from ..bodies import KERBIN
@@ -151,13 +161,21 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
     insertion_dv = 250.0 + dv_raise + dv_circ
     _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
     _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
+    phases = [Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,
+                    reserve_frac=default_reserve_frac(9.81)),
+              Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
+                    reserve_frac=default_reserve_frac(0.0))]
+    # MISSION PHASE (opt-in): a vacuum leg carrying the whole post-LKO Δv budget so the SAME craft can
+    # transfer, capture, land, ascend, return and de-orbit on its own propellant. Only appended when asked.
+    mission_dv = max(0.0, float(mission_dv))
+    if mission_dv > 0.0:
+        phases.append(Phase("mission", mission_dv, twr_body_g=0.0, min_twr=0.0,
+                            reserve_frac=default_reserve_frac(0.0)))
     return ShipRequirements(
         name=name, mission_type=_mission_type, crew=int(crew), payload_t=0.3,
-        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,
-                      reserve_frac=default_reserve_frac(9.81)),
-                Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
-                      reserve_frac=default_reserve_frac(0.0))],
-        landing=landing, needs_legs=False, needs_heatshield=bool(heatshield), needs_docking=False,
+        phases=phases,
+        landing=landing, needs_legs=bool(needs_legs), needs_heatshield=bool(heatshield),
+        needs_docking=False,
         max_engine_count=int(max_core_engines),
         radial_booster_count=int(radial_boosters),
     )
@@ -165,7 +183,8 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
 
 def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0, payload_t: float = 0.3,
            docking: bool = False, heatshield: bool = False, chutes: bool = False,
-           radial_boosters: int = 0, max_core_engines: int = 1, name: str = "AI-Craft") -> PrimitiveResult:
+           radial_boosters: int = 0, max_core_engines: int = 1, name: str = "AI-Craft",
+           mission_dv: float = 0.0, needs_legs: bool = False) -> PrimitiveResult:
     """Design + launch a craft to orbit the LAUNCH body (the body KSC sits on — Kerbin in stock).
 
     The design step is HARD-GATED on the three-view PNG: it calls design_chart.design_and_verify, which
@@ -173,11 +192,23 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
     inspectable proof), and runs the looks_like_a_rocket geometry gate. If that gate fails (or the craft
     is not a rocket), the primitive logs ``design_rejected`` + ``RESULT: FAIL`` and REFUSES to fly — the
     user's hard constraint that a craft is never launched without a PNG-verified rocket shape. Only on a
-    passing gate does it call deploy_relay.launch_to_lko (the proven ascent)."""
+    passing gate does it call deploy_relay.launch_to_lko (the proven ascent).
+
+    MISSION-AWARE sizing (opt-in, ADDITIVE): pass ``mission_dv`` (the POST-LKO Δv budget — TMI + capture +
+    land + ascend + return + re-entry, from the mission graph) and ``needs_legs`` to DESIGN one vehicle big
+    enough for the whole crewed Mun land-and-return, with landing legs + a heatshield/chutes. The design
+    gate then reasons over that full-mission craft. When ``mission_dv == 0`` (the default) behaviour is
+    EXACTLY as before — relay and Eve launches still get the LKO-only booster+insertion craft, unchanged.
+
+    NOTE (live-flight gap): mission-aware DESIGN sizes the vehicle correctly, but the downstream
+    transfer/land/ascend/recover primitives still wrap their existing flight machinery — see
+    docs/MUN_FLIGHT_LIVE_TODO.md for what the next LIVE session must verify (the upper stage actually
+    being used through the legs by MechJeb staging is NOT unit-testable offline)."""
     if ctx.dry_run:
+        extra = f", mission_dv={mission_dv:.0f}, legs={needs_legs}" if mission_dv > 0 else ""
         return _emit("launch", True, "launch_planned",
                      f"(dry-run) design+launch {name!r} to {target_alt_km:.0f} km, crew={crew}, "
-                     f"radial_boosters={radial_boosters}")
+                     f"radial_boosters={radial_boosters}{extra}")
     import deploy_relay
     landing = None
     if chutes:
@@ -197,7 +228,8 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
         import design_chart
         req = _launch_requirements(name, target_alt_km=target_alt_km, crew=crew, heatshield=heatshield,
                                    landing=landing, radial_boosters=radial_boosters,
-                                   max_core_engines=max_core_engines)
+                                   max_core_engines=max_core_engines,
+                                   mission_dv=mission_dv, needs_legs=needs_legs)
         out_dir = Path("docs")
         _design, png_path, design_ok, report = design_chart.design_and_verify(req, out_dir=out_dir)
     except Exception as exc:
@@ -615,7 +647,12 @@ _register(PrimitiveSpec(
      "chutes": {"type": "bool", "default": False, "desc": "parachutes for landing"},
      "radial_boosters": {"type": "int", "default": 0, "desc": "asparagus strap-on pods (heavy uppers)"},
      "max_core_engines": {"type": "int", "default": 1, "desc": "core-stage engine count"},
-     "name": {"type": "str", "default": "AI-Craft", "desc": "craft name"}},
+     "name": {"type": "str", "default": "AI-Craft", "desc": "craft name"},
+     "mission_dv": {"type": "float", "default": 0.0, "desc": "POST-LKO Δv budget (m/s) to size one "
+                    "vehicle for a full crewed land-and-return (TMI+capture+land+ascend+return+reentry); "
+                    "0 = a plain LKO-only launch (relay/Eve, unchanged)"},
+     "needs_legs": {"type": "bool", "default": False, "desc": "force landing legs (a Mun touchdown / "
+                    "Kerbin re-entry needs them even with chutes); pair with mission_dv>0"}},
     "deploy_relay.launch_to_lko",
 ))
 _register(PrimitiveSpec(

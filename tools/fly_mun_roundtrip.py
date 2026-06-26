@@ -3,11 +3,24 @@ interpreter (Claude stands in for the decomposer with a hand-built plan; the fli
 kRPC/MechJeb via the primitives, so it needs no ANTHROPIC_API_KEY).
 
 Flow: load the save autonomously (/load-save) -> connect kRPC+bridge -> VALIDATE the plan (mission graph
-+ plan_validator, the rigorous validator) -> fly each primitive FAIL-FAST -> save + write a flight log.
++ plan_validator, the rigorous validator) -> MAKE THE LAUNCH MISSION-AWARE (size ONE vehicle for the
+whole round-trip from the graph's post-LKO budget) -> fly each primitive FAIL-FAST -> save + flight log.
 
     PYTHONPATH=src python tools/fly_mun_roundtrip.py configs/local-ksp.yaml
 
 Everything is logged to C:/tmp/mun_flight.log AND stdout, so the long flight runs detached.
+
+================================ LIVE-FLIGHT STAGING GAPS (READ ME) ================================
+The launch DESIGN is now mission-aware: ``_mission_aware_launch_args`` (below) reads the mission graph,
+sums every NON-launch node's Δv into ``mission_dv``, and passes it + ``needs_legs`` into the launch step,
+so design_chart sizes ONE vehicle with enough Δv + legs + heatshield/chutes for the full Mun round-trip.
+
+What this does NOT (and cannot, offline) fix are the LIVE flight-staging gaps — the transfer/land/ascend
+primitives still wrap their existing flight machinery, and whether MechJeb actually flies the oversized
+upper stage through the legs / heatshield without stranding fuel is only observable in a LIVE game. Those
+gaps are written up as explicit watch-items in docs/MUN_FLIGHT_LIVE_TODO.md; the next live session MUST
+follow that checklist (the upper-stage-actually-used, MechJeb-stages-through-the-legs items in particular).
+====================================================================================================
 """
 from __future__ import annotations
 
@@ -18,6 +31,12 @@ import traceback
 from pathlib import Path
 
 LOG = Path("C:/tmp/mun_flight.log")
+
+# Margin folded on TOP of the graph's summed post-LKO Δv when sizing the launch vehicle's mission phase.
+# The graph's per-step costs are nominal Hohmann/vis-viva; a live grid-search capture + a sloppier node can
+# run a few hundred m/s over, so the vehicle leaves the pad with this slice banked. (design.py adds its own
+# per-stage + 5% mission reserves on top of this.)
+POST_LKO_MARGIN_FRAC = 0.05
 
 
 def log(m: str) -> None:
@@ -44,9 +63,76 @@ PLAN = [
 ]
 
 
+def _mission_aware_launch_args(plan: list[dict], *, launch_body: str = "Kerbin") -> dict:
+    """Derive the MISSION-AWARE launch args from the mission graph so ONE vehicle is sized for the whole
+    round-trip, not just LKO. Returns the dict to MERGE into the launch step's args:
+
+      * ``mission_dv``      = (Σ Δv of every NON-launch node) * (1 + POST_LKO_MARGIN_FRAC) — the post-LKO
+                              budget (TMI + capture + land + ascend + return + reentry) the SAME craft
+                              must carry on its own propellant, since launch flies it all the way home.
+      * ``needs_legs``      = True if any ``land``/``ascend`` is on a NON-atmospheric body (a propulsive
+                              touchdown needs legs even with chutes; chutes alone don't imply legs airless).
+      * ``heatshield`` /
+        ``chutes``          = True if the plan ``recover``s on a body WITH an atmosphere (Kerbin return:
+                              aerobrake + chute under a heatshield). These only ADD to the launch flags.
+
+    Returns ``{}`` (no mission-aware sizing) when the plan has no post-LKO nodes — a plain LKO launch is
+    left exactly as written."""
+    from ksp_lab.astra.mission_graph import build_mission_graph
+    from ksp_lab.bodies import body as lookup_body
+
+    g = build_mission_graph(plan, launch_body=launch_body)
+    post_lko_dv = sum(n.dv_mps for n in g.nodes if n.primitive != "launch")
+    if post_lko_dv <= 0.0:
+        return {}
+
+    needs_legs = False
+    needs_heatshield = False
+    needs_chutes = False
+    for n in g.nodes:
+        if n.primitive in ("land", "ascend"):
+            try:
+                if lookup_body(n.target_body).atmosphere_top_m <= 0:
+                    needs_legs = True          # airless touchdown -> legs (chutes don't help on the Mun)
+            except Exception:
+                pass
+        if n.primitive == "recover":
+            try:
+                if lookup_body(n.target_body).atmosphere_top_m > 0:
+                    needs_heatshield = True     # atmospheric re-entry -> heatshield + chutes
+                    needs_chutes = True
+            except Exception:
+                pass
+
+    args: dict = {"mission_dv": round(post_lko_dv * (1.0 + POST_LKO_MARGIN_FRAC), 1),
+                  "needs_legs": needs_legs}
+    if needs_heatshield:
+        args["heatshield"] = True
+    if needs_chutes:
+        args["chutes"] = True
+    return args
+
+
 def main() -> int:
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
     log(f"=== ASTRA Mun land-and-return experiment :: config={cfg_path} ===")
+
+    # MISSION-AWARE LAUNCH SIZING: enrich the launch step IN PLACE from the mission graph so the vehicle
+    # is built for the whole round-trip (post-LKO Δv + legs + heatshield/chutes), not just to LKO.
+    try:
+        from ksp_lab.astra.mission_graph import build_mission_graph as _bmg  # noqa: F401  (import check)
+        ma = _mission_aware_launch_args(PLAN, launch_body="Kerbin")
+        if ma:
+            for step in PLAN:
+                if step.get("primitive") == "launch":
+                    step.setdefault("args", {})
+                    # additive: explicit plan flags win; only fill what the planner left unset.
+                    for k, v in ma.items():
+                        step["args"].setdefault(k, v)
+                    log(f"MISSION-AWARE launch sizing -> {ma} (merged into launch args: {step['args']})")
+                    break
+    except Exception as exc:
+        log(f"mission-aware sizing skipped ({exc}); launch will size for LKO only")
 
     from ksp_lab.astra.agent import AstraAgent
     from ksp_lab.astra.mission_graph import build_mission_graph
