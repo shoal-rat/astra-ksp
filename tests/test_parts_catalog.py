@@ -5,8 +5,9 @@ Two things are under test here:
   1. PART 1 — the materialized catalog (src/ksp_lab/data/stock_parts.json) loads, covers far more of the
      stock roster than the old hand-list (>20 liquid engines, >10 LFO tanks, solid boosters, pods, ...),
      classifies parts into the role buckets the sizer queries, and the back-compat ``part()`` API still
-     resolves the curated, hand-validated names with their authoritative masses untouched. The design
-     sizer's engine/tank pools are now built FROM this catalog.
+     resolves the legacy names (through a pure alias rename) to their authoritative live-reconciled
+     masses. There is NO curated value tier; the design sizer's engine/tank pools are built FROM this
+     catalog (cfg-derived geometry + live physics), every part on equal footing.
   2. PART 2 — ``design_and_verify`` is the single entry point that renders a three-view PNG and runs the
      geometry gate, returning a structured pass/fail report (the PNG-appearance constraint).
 """
@@ -36,8 +37,8 @@ def test_materialized_catalog_json_exists_and_loads():
 
 
 def test_catalog_is_comprehensive_far_beyond_the_old_handlist():
-    """The whole catalog (materialized + curated) must dwarf the old ~50-part hand-list and carry deep
-    rocket-relevant coverage: many liquid engines, many LFO tanks, several solid boosters, pods, etc."""
+    """The whole materialized catalog must dwarf the old ~50-part hand-list and carry deep rocket-relevant
+    coverage: many liquid engines, many LFO tanks, several solid boosters, pods, etc. (no curated tier)."""
     assert len(parts.STOCK_PARTS) > 200, len(parts.STOCK_PARTS)
     summary = parts.catalog_summary()
     assert summary.get("liquid_engine", 0) >= 20, summary
@@ -138,10 +139,12 @@ def test_catalog_keys_on_the_live_dotted_part_name_form():
 def test_rocket_relevant_parts_reconciled_to_live_game_masses():
     """The 14 live mismatches were fixed by taking the running game's post-load physics. The marquee one:
     the Mk1 command pod's true dry mass is 0.706 t (the game reduces crewed-pod mass), not the old curated
-    0.84 t — and the catalog now carries the live value while keeping the curated 1.25 m draw diameter."""
+    0.84 t — PHYSICS from the live game, GEOMETRY derived from the cfg, with NO curated override left."""
     pod = parts.part("mk1pod.v2")
     assert pod.dry_mass_t == 0.706            # live AvailablePart.dryMassT, not the old curated 0.84
-    assert pod.diameter_m == 1.25             # curated draw geometry preserved (not the cfg bulkhead)
+    # 1.25 m is the cfg-DERIVED diameter (the pod's bulkheadProfiles = size1), not a curated literal. The
+    # taper gate that depends on it is now satisfied by the authoritative cfg geometry alone.
+    assert pod.diameter_m == 1.25 and pod.stack_size == "size1"
     # The RAPIER is a multimode engine; the catalog keeps its ROCKET mode (the rocket-relevant numbers),
     # NOT the air-breathing jet primary mode the live /part-database headlines (105 kN / 3200 s).
     rapier = parts.part("RAPIER")
@@ -283,3 +286,73 @@ def test_design_and_verify_returns_a_gate_result(tmp_path):
         # This relay launcher is a known-good shape, so when the PNG renders the gate passes (ok=True).
         assert ok is True
         assert report["failing_checks"] == []
+
+
+# --------------------------------------------------------------------------------------------------
+# REGRESSION: deleting the curated GEOMETRY must NOT break the renderer's monotonic-taper gate.
+#
+# When the catalog carries each part's TRUE cfg diameter (no curated 1.25 m draw override), the
+# 0.625 m Probodobodyne OKTO is its real 0.625 m. Rooting an UNCREWED bus on it wedged a 0.625 m "neck"
+# between the 1.25 m docking port / service bays above and below, inverting the taper gate (the tug
+# regression). The fix roots an uncrewed craft on the genuine 1.25 m RC-001S (probeStackSmall), so the
+# cfg-derived geometry reproduces a valid monotonic stack. These tests lock that in for all four canon
+# designs (relay / crew ferry / return tug / Mun lander+return) so the gate can never silently regress.
+# --------------------------------------------------------------------------------------------------
+def _four_canon_reqs():
+    from ksp_lab.design import LandingSite, Phase, ShipRequirements, default_reserve_frac
+    KERBIN_G, MUN_G = 9.81, 1.63
+    KERBIN_LAND = LandingSite(body_g=KERBIN_G, surface_rho=1.225, target_touchdown_mps=6.0)
+    relay = ShipRequirements(
+        name="relay-RA100", mission_type="relay_comsat", crew=0, payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=KERBIN_G, min_twr=1.3, reserve_frac=default_reserve_frac(KERBIN_G)),
+                Phase("insertion", 1300.0, reserve_frac=default_reserve_frac(0.0))], max_engine_count=1)
+    ferry = ShipRequirements(
+        name="crew-ferry", mission_type="crew_ferry", crew=3, payload_t=0.0,
+        phases=[Phase("booster", 3400.0, twr_body_g=KERBIN_G, min_twr=1.3, reserve_frac=default_reserve_frac(KERBIN_G)),
+                Phase("circularize", 1000.0, reserve_frac=default_reserve_frac(0.0))],
+        needs_heatshield=True, landing=KERBIN_LAND, max_engine_count=4)
+    tug = ShipRequirements(
+        name="return-tug", mission_type="return_tug", crew=0, payload_t=2.0,
+        phases=[Phase("booster", 3400.0, twr_body_g=KERBIN_G, min_twr=1.3, reserve_frac=default_reserve_frac(KERBIN_G)),
+                Phase("transfer", 1600.0, reserve_frac=default_reserve_frac(0.0))],
+        needs_docking=True, max_engine_count=4)
+    mun = ShipRequirements(
+        name="mun-lander-return", mission_type="mun_lander", crew=2, payload_t=0.0,
+        phases=[Phase("booster", 3400.0, twr_body_g=KERBIN_G, min_twr=1.4, reserve_frac=default_reserve_frac(KERBIN_G)),
+                Phase("mun_transfer", 1200.0, reserve_frac=default_reserve_frac(0.0)),
+                Phase("descent", 600.0, twr_body_g=MUN_G, min_twr=2.0, reserve_frac=default_reserve_frac(MUN_G, is_landing=True)),
+                Phase("ascent_return", 1400.0, reserve_frac=default_reserve_frac(0.0))],
+        needs_legs=True, needs_heatshield=True, landing=KERBIN_LAND, max_engine_count=4)
+    return {"relay": relay, "ferry": ferry, "tug": tug, "mun": mun}
+
+
+def test_four_canon_designs_pass_geometry_gate_on_cfg_derived_geometry():
+    """relay / crew ferry / return tug / Mun lander+return all size feasibly AND pass the looks_like_a_rocket
+    geometry gate using ONLY the cfg-derived part geometry (no curated diameters). The return tug is the
+    regression sentinel: its uncrewed + docking bus is exactly the stack the 0.625 m OKTO root used to neck."""
+    from ksp_lab.design import design_ship
+    import design_chart  # noqa: E402
+    for name, req in _four_canon_reqs().items():
+        design = design_ship(req)
+        assert design.feasible, (name, design.infeasible_reasons)
+        report = design_chart.looks_like_a_rocket(design)
+        assert report["looks_like_a_rocket"], (name, report["failing_checks"])
+        assert report["checks"]["monotonic taper (widest toward base)"], (name, "taper inverted")
+
+
+def test_uncrewed_bus_root_is_the_125m_probe_not_the_0625m_okto():
+    """The uncrewed root command part is the 1.25 m RC-001S (probeStackSmall), NOT the 0.625 m OKTO — so
+    the cfg-derived geometry keeps the bus a clean 1.25 m column. The hull above the upper stage must
+    contain no 0.625 m 'neck' (every load-bearing body part >= 1.25 m)."""
+    from ksp_lab.design import design_ship
+    import design_chart  # noqa: E402
+    tug = _four_canon_reqs()["tug"]
+    design = design_ship(tug)
+    geom = design_chart.assembly_geometry(design)
+    hull = [g for g in geom if not g["surface"] and g["role"] not in ("engine", "fin", "leg")
+            and g["name"] != "Decoupler.1"]
+    assert all("probeCoreOcto" not in g["name"] for g in hull), [g["name"] for g in hull]
+    assert any(g["name"] == "probeStackSmall" for g in hull), [g["name"] for g in hull]
+    # No load-bearing hull part is the 0.625 m class — the bus is a clean 1.25 m+ column.
+    necks = [g["name"] for g in hull if g["dia"] < 1.25 - 1e-6]
+    assert not necks, necks

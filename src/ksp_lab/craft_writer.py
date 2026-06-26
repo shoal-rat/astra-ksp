@@ -139,7 +139,10 @@ class CraftWriter:
     @staticmethod
     def _design_part_names(design: RocketDesign) -> set[str]:
         names = {"parachuteSingle", "Decoupler.1", "ServiceBay.125.v2"}
-        names.add("mk1pod.v2" if design.crewed else "probeCoreOcto.v2")
+        # Crewed -> Mk1 pod; uncrewed -> the 1.25 m RC-001S (probeStackSmall) root (see _build_nodes:
+        # the 0.625 m OKTO would invert the taper gate). Crewed adds probeStackSmall as an INLINE guidance
+        # unit too, so it is harvested in both modes.
+        names.add("mk1pod.v2" if design.crewed else "probeStackSmall")
         if design.crewed:
             names.add("probeStackSmall")  # 1.25 m inline control source for the headless crewed launch
             names.add("kv2Pod")  # genuine 1.25 m 2-seat pod so astronauts can be transferred between modules
@@ -340,7 +343,14 @@ class CraftWriter:
             uid -= 173
             return node
 
-        root = new_node("mk1pod.v2" if design.crewed else "probeCoreOcto.v2", 0)
+        # ROOT command part. Crewed -> the Mk1 pod (1.25 m). Uncrewed -> the RC-001S Remote Guidance Unit
+        # (probeStackSmall), a genuine 1.25 m ModuleCommand probe core, NOT the Probodobodyne OKTO
+        # (probeCoreOcto.v2). Now that the catalog carries the real cfg diameters, the OKTO is its true
+        # 0.625 m, so rooting an uncrewed bus on it wedges a 0.625 m "neck" between the 1.25 m docking
+        # port / service bays above and below — which inverts the monotonic-taper geometry gate (the tug
+        # regression). probeStackSmall keeps the whole uncrewed bus a clean 1.25 m column at the SAME
+        # 0.1 t dry mass, so the cfg-derived geometry reproduces a valid stack with no curated diameter.
+        root = new_node("mk1pod.v2" if design.crewed else "probeStackSmall", 0)
         nodes = [root]
 
         # CALCULATED parachute count: design.py sizes it for the target body's LIVE atmospheric density

@@ -46,7 +46,11 @@ def test_artemis_relay_live_craft_is_probe_controlled_render_stack(tmp_path: Pat
     text = path.read_text(encoding="utf-8")
 
     assert text.startswith("ship = AI-Mun-Relay-Test\n")
-    assert "probeCoreOcto.v2" in text  # probe-core command module (headless-controllable)
+    # Probe-core command module (headless-controllable). The uncrewed root is the 1.25 m RC-001S
+    # (probeStackSmall) — a real ModuleCommand probe core that keeps the bus a clean 1.25 m column —
+    # NOT the 0.625 m Probodobodyne OKTO, whose true cfg diameter would invert the taper geometry gate.
+    assert "probeStackSmall" in text  # probe-core command module (headless-controllable)
+    assert "probeCoreOcto" not in text  # not the 0.625 m OKTO (would neck the 1.25 m bus)
     assert "mk1pod" not in text  # not a crewed pod
     assert "SolidFuel" not in text  # liquid-only stages match the controller
     assert "Space Launch System Block 1B Cargo" not in text

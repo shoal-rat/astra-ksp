@@ -124,9 +124,9 @@ class StockPart:
     # Side-on lift/drag reference area (m^2) for an aero surface (fin/winglet), 0 for body parts. This
     # is the area the centre-of-pressure calculation places at the part's position to stabilise the stack.
     fin_area_m2: float = 0.0
-    # Catalog metadata (default-valued so the curated literals below need not pass it). ``category`` is
-    # the KSP part category (Engine/FuelTank/Coupling/Pods/...) and ``part_type`` is the lab's coarse
-    # role bucket the sizer queries on ("liquid_engine", "solid_booster", "fuel_tank", "decoupler", ...).
+    # Catalog metadata (default-valued, all populated by the cfg parser). ``category`` is the KSP part
+    # category (Engine/FuelTank/Coupling/Pods/...) and ``part_type`` is the lab's coarse role bucket the
+    # sizer queries on ("liquid_engine", "solid_booster", "fuel_tank", "decoupler", ...).
     category: str = ""
     part_type: str = ""
     crew_capacity: int = 0
@@ -551,7 +551,7 @@ CATALOG_JSON = DATA_DIR / "stock_parts.json"
 
 # Engine ASL thrust in KSP = maxThrust * (Isp_asl / Isp_vac) at sea level. The cfg's maxThrust is the
 # VACUUM thrust; thrust at the surface is throttled by the Isp ratio. We back that out so the catalog's
-# thrust_kn_asl is the real sea-level thrust the sizer uses for liftoff TWR (matching the curated values).
+# thrust_kn_asl is the real sea-level thrust the sizer uses for liftoff TWR (the value the running game reports).
 def _apply_asl_thrust(parts: list[StockPart]) -> list[StockPart]:
     out: list[StockPart] = []
     for p in parts:
@@ -805,7 +805,7 @@ def engines(diameter_m: float | None = None, atmospheric: bool | None = None,
     ``atmospheric=True`` sorts by sea-level thrust (booster role), ``atmospheric=False`` sorts by
     vacuum Isp then vacuum thrust (upper-stage role), ``None`` sorts by vacuum thrust.
     ``standard_stack_only`` drops radial/surface-mount engines (Thud, Twitch, Spider — no size token)
-    so the inline-stage pool stays clean; the curated anchors in design.py still guarantee coverage."""
+    so the inline-stage pool stays clean. There are no curated anchors — the whole catalog is the pool."""
     types = {"liquid_engine"} | ({"solid_booster"} if include_solid else set())
     pool = [p for p in STOCK_PARTS.values() if p.part_type in types and p.thrust_kn_vac > 0]
     if standard_stack_only:
@@ -827,7 +827,7 @@ def tanks(diameter_m: float | None = None, propellant: str = "lfo",
 
     ``standard_stack_only`` keeps only ROUND-STACK tanks whose bulkhead matched a size0..size4 token, so
     the design pool is not polluted by mk2/mk3 spaceplane fuselages and slant adapter tanks whose
-    diameter is only a draw-time 1.25 m fallback. The curated tanks pass (they carry a stack_size)."""
+    diameter is only a draw-time 1.25 m fallback. Standard cylinders pass (they carry a stack_size)."""
     pool = []
     for p in STOCK_PARTS.values():
         if p.part_type != "fuel_tank":
@@ -855,7 +855,10 @@ def catalog_summary() -> dict[str, int]:
 # Mass / estimate helpers (unchanged API).
 # --------------------------------------------------------------------------------------------------
 def payload_bus_mass(payload_mass_t: float, crewed: bool) -> float:
-    command = part("mk1pod.v2" if crewed else "probeCoreOcto.v2").wet_mass_t
+    # Command part: Mk1 pod (crewed) or the 1.25 m RC-001S probe core (probeStackSmall, uncrewed) — the
+    # SAME root craft_writer emits, so the mass estimate matches the built craft. probeStackSmall is the
+    # 1.25 m guidance unit (not the 0.625 m OKTO) that keeps the uncrewed bus a clean 1.25 m column.
+    command = part("mk1pod.v2" if crewed else "probeStackSmall").wet_mass_t
     recovery = part("parachuteSingle").wet_mass_t + (part("HeatShield1").wet_mass_t if crewed else 0.0)
     return command + recovery + max(0.0, payload_mass_t)
 
@@ -880,7 +883,7 @@ def estimate_design(design: RocketDesign) -> dict[str, float]:
     stage_wet = [stage_masses(stage)[1] for stage in design.stages]
     total_wet = payload + sum(stage_wet)
     total_cost = sum(part(stage.engine).cost + part(stage.tank).cost * stage.tank_count for stage in design.stages)
-    total_cost += part("mk1pod.v2" if design.crewed else "probeCoreOcto.v2").cost
+    total_cost += part("mk1pod.v2" if design.crewed else "probeStackSmall").cost
     total_cost += part("parachuteSingle").cost
     total_delta_v = 0.0
     first_twr = 0.0
