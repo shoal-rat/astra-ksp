@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "description": "ASTRA's structured, queryable failure-pattern rule base. Each rule turns one hard-won failure from the live KSP1 flights (the ~16-flight relay arc, the HLS/Orion drivers, and the crewed Eve round trip) into {marker, symptom, cause, fix, applicable_primitives, confidence, tags}. The agent consults these to diagnose a flight that ended on a given marker. Distilled from docs/GENERALIZED_AEROSPACE_METHODOLOGY.md (P1-P16), ledger.py SEED_RULES, and the bug regressions in tests/ + tools/. Markers are matched as substrings AND simple regex patterns; '|' separates alternative markers in one rule.",
+  "rules": [
+    {
+      "id": "decoupler-id-on-proxies-strand",
+      "marker": "payload decoupler|payload separator|stranded payload|wrong decoupler|crossed the decoupler|id() on proxy",
+      "symptom": "The part-tree walk that picks which decoupler to fire crosses the payload decoupler and mis-fires the payload/relay separator, jettisoning the bus and stranding the payload before it is parked.",
+      "cause": "Python id()/is on kRPC part proxies is unreliable: each .part/.parent access returns a FRESH proxy object, so id(parent) in seen (and 'is') never matches the same in-game part across calls, breaking the ancestor walk in tools/deploy_relay.py.",
+      "fix": "Walk the part tree with kRPC's OWN equality (par == ancestor), never Python id()/is, when deciding which decoupler is the payload separator. The shallowest decoupler from the root is the payload one; the deeper ones drop spent boosters.",
+      "applicable_primitives": ["launch", "commission_relay", "set_orbit", "select_vessel"],
+      "confidence": 0.95,
+      "tags": ["staging", "krpc", "proxy-identity", "decoupler", "strand"]
+    },
+    {
+      "id": "silent-launch-poll-no-failfast",
+      "marker": "launch poll timeout|ascent poll|silent poll|20 ?min|launch_hang|alive_but_failed",
+      "symptom": "After the ascent has already failed (vehicle broke up, fell back below the atmosphere, or crashed) the launch loop keeps polling for apoapsis to reach the parking target for ~20 minutes, logging nothing while the vehicle sits 'alive' — stranding the heavy tug.",
+      "cause": "The launch loop only checked for SUCCESS (apoapsis >= target) and had no fail-fast abort predicate, so a dead ascent looked indistinguishable from a slow one.",
+      "fix": "Add a pure _ascent_has_failed(history,...) predicate over a rolling state window and abort LOUDLY/immediately on: part-count collapse to ~payload, decaying apoapsis while falling back below the atmosphere, landed/splashed after liftoff, or apoapsis diverging under power. Require a multi-frame streak so a single glitchy poll never trips it.",
+      "applicable_primitives": ["launch", "ascend"],
+      "confidence": 0.9,
+      "tags": ["fail-fast", "ascent", "monitoring", "abort"]
+    },
+    {
+      "id": "ascent-part-count-collapse",
+      "marker": "part count collapse|part_count_collapse|broke up|break-up|broke_up",
+      "symptom": "Part count drops from the full stack (~49) to roughly the bare payload (~9) for several consecutive polls: the vehicle has structurally broken up on ascent.",
+      "cause": "Aero/structural break-up under power (over-control, overspeed, or staging fault) shed most of the stack; an expected booster separation (49->30) is NOT a collapse.",
+      "fix": "Treat a sustained drop to ~half the post-staging count (toward the payload count) across a streak as a break-up and abort; distinguish it from a normal booster drop, which stays well above the half-count threshold and keeps apoapsis rising.",
+      "applicable_primitives": ["launch", "ascend"],
+      "confidence": 0.85,
+      "tags": ["ascent", "structural", "fail-fast", "abort"]
+    },
+    {
+      "id": "ascent-stuck-on-pad-twr",
+      "marker": "ascent_stuck_on_pad|stuck_on_pad|stuck on pad|never left the pad|parking orbit FAILED|launch to parking orbit FAILED|FAILED to reach orbit",
+      "symptom": "The craft ignites but never leaves the pad (apoapsis stays a few tens of metres) even though the estimate said TWR > 1.",
+      "cause": "The mass estimator ignores accessory mass (heat shield, reaction wheels, nose, chute, fins, probe ~0.5-0.8 t), so the ACTUAL launch TWR ran below the estimate and dipped under 1 (P15).",
+      "fix": "Size the first stage to an ESTIMATED TWR margin that absorbs un-modeled accessory mass: target est launch TWR >= ~1.4. Lighten upper stages or add launch thrust until it clears.",
+      "applicable_primitives": ["launch", "ascend"],
+      "confidence": 0.9,
+      "tags": ["twr", "ascent", "mass-estimate", "design"]
+    },
+    {
+      "id": "stale-reference-frame-zero-velocity",
+      "marker": "velocity.*0|zeroed|stale frame|co-moving|surface frame|false stuck",
+      "symptom": "Vertical/surface speed reads 0 for the whole ascent, producing zeroed telemetry and a FALSE 'stuck on pad' even while the vehicle is climbing.",
+      "cause": "The default flight frame is the vessel's own co-moving surface frame, in which speeds collapse to 0 (P4).",
+      "fix": "Read motion in the central body's inertial frame, vessel.flight(vessel.orbit.body.reference_frame), and key the stuck-detector on apoapsis < ~1000 m (a quantity a stale read cannot fake), not a single mean-altitude sample.",
+      "applicable_primitives": ["launch", "ascend", "land"],
+      "confidence": 0.85,
+      "tags": ["reference-frame", "telemetry", "ascent", "data-altitude"]
+    },
+    {
+      "id": "headless-launch-empty-pod-no-control",
+      "marker": "no command|no crew|probe core|object reference|crew_count 0|empty pod|crew_capacity == 0",
+      "symptom": "Launch returns OK but the flight scene never appears, OR a 400 'Object reference not set'; on a crewed mission kRPC reports crew_count == 0 because the Mk1 pod lifted off empty.",
+      "cause": "The headless launch path skips crew assignment, so a bare crewed pod has no control source and the sim blocks with an un-dismissable 'no crew/probe core' prompt; the crewed craft also needs a kerbal actually seated (P1).",
+      "fix": "Every autonomously launched vehicle must carry a probe/avionics core (e.g. probeCoreOcto.v2) as a guaranteed headless control source; fly crew analogues as crewed=False to launch. For a real crewed mission, board a kerbal via the bridge /spawn-crew endpoint into the free Mk1 seat AND verify crew_count == 1 before flying.",
+      "applicable_primitives": ["launch", "transfer_crew", "recover"],
+      "confidence": 0.9,
+      "tags": ["control-source", "crew", "headless-launch", "spawn-crew"]
+    },
+    {
+      "id": "craft-generation-extraneous-headers",
+      "marker": "finalizeanalytics|nullreference|null reference|won't launch|will not launch|launch finalization",
+      "symptom": "Every generated craft NullReferences at launch finalization regardless of which parts it carries.",
+      "cause": "The generator emitted a top-level ACTIONGROUPS{} block and Override* header fields that real authored craft omit (likely tightened by KSPCommunityFixes), and hand-rolled minimal parts lacked persisted module state (P2).",
+      "fix": "Generate to the EXACT schema of known-good authored files: render() must drop top-level ACTIONGROUPS/Override* headers and splice each part's real MODULE/RESOURCE body harvested from stock Ships/VAB craft, not hand-roll minimal stubs.",
+      "applicable_primitives": ["launch"],
+      "confidence": 0.85,
+      "tags": ["craft-generation", "serialization", "design"]
+    },
+    {
+      "id": "decoupler-fires-on-pad",
+      "marker": "split|decoupled at launch|suborbital_cross_feed|splits on the pad|separation at ignition",
+      "symptom": "The craft splits apart on the pad at ignition.",
+      "cause": "Each inter-stage decoupler was assigned the SAME activation stage as the engine it sits above, so it fired at ignition (P3).",
+      "fix": "A separator activates exactly one stage LATER than the stage it tops: decoupler inverse-stage = render_index - 1. Put a decoupler above the launch and transfer stages; none above the stage that must stay with the payload/lander; keep crossfeed off.",
+      "applicable_primitives": ["launch", "transfer"],
+      "confidence": 0.9,
+      "tags": ["staging", "decoupler", "design"]
+    },
+    {
+      "id": "out-of-fuel-false-stage-into-next",
+      "marker": "out_of_fuel|staged_to_continue|node.*fuel|out of fuel at 30",
+      "symptom": "A burn declares '<phase>_out_of_fuel' at ~30% aggregate fuel.",
+      "cause": "The burn loop broke the instant active thrust < 1 N — before its own staging check — while the spent TOP stage read empty and full stages sat below it, decoupled (P6).",
+      "fix": "On thrust loss during any burn, FIRST attempt to stage into the next fueled element and continue; only declare empty when no fueled stage remains. Trust per-part resources_in_decouple_stage, not the aggregate.",
+      "applicable_primitives": ["transfer", "set_orbit", "ascend"],
+      "confidence": 0.85,
+      "tags": ["staging", "node-burn", "data-altitude", "fuel"]
+    },
+    {
+      "id": "tmi-falling-apoapsis-misaligned",
+      "marker": "tmi.*wrong|apoapsis.*falling|injection.*direction|prograde burn lowers|energy falls",
+      "symptom": "A prograde trans-lunar/trans-target injection burn LOWERS apoapsis instead of raising it.",
+      "cause": "The burn ignited off-axis because attitude was not truly aligned to the node vector; a finite injection can only move energy one way, so falling energy means mis-alignment, not wrong sign (P7).",
+      "fix": "If the first seconds of a burn move orbital energy the wrong way, re-align to node.remaining_burn_vector at low throttle and resume — do NOT flip the burn vector. Never let a correction drive the return periapsis into the atmosphere; abort safely after a few tries.",
+      "applicable_primitives": ["transfer", "set_orbit"],
+      "confidence": 0.85,
+      "tags": ["burn-direction", "alignment", "tmi", "attitude"]
+    },
+    {
+      "id": "attitude-authority-wasted-dv",
+      "marker": "off-axis|wasted|capture.*fail|tumbl|missed SOI|>1 km/s wasted",
+      "symptom": "TMI/capture burns ignite off-axis; ~50% of runs miss SOI and >1 km/s is wasted without capturing.",
+      "cause": "A command core alone cannot rotate a heavy upper stack fast enough to track a maneuver/retrograde marker before a finite burn — the master recurring root cause of wasted Δv (P8/P9).",
+      "fix": "Give heavy upper stages dedicated INLINE reaction-wheel torque sized to the stack (~3x asasmodule1-2) BEFORE any finite burn; and hold energy-removal burns on the engine gimbal (autopilot) re-pointed each control tick, never on reaction wheels alone.",
+      "applicable_primitives": ["transfer", "set_orbit", "launch"],
+      "confidence": 0.9,
+      "tags": ["attitude", "reaction-wheels", "gimbal", "design", "capture"]
+    },
+    {
+      "id": "deorbit-precision-cap-timeout",
+      "marker": "deorbit_timeout|deorbit.*slow|burn times out|precision cap",
+      "symptom": "A deorbit/large lowering burn reusing a precision-apsis routine times out at ~1% fuel spent.",
+      "cause": "That routine capped throttle at 0.18 for fine apsis tweaks; on a low-thrust vehicle the cap plus a short burn limit cannot complete a large energy change (P12).",
+      "fix": "Parameterize throttle/time by burn CLASS: full authority for large energy changes (max_throttle=1.0, longer max_burn_s), capped proportional only for precision/terminal apsis tweaks.",
+      "applicable_primitives": ["set_orbit", "land"],
+      "confidence": 0.85,
+      "tags": ["throttle-profile", "deorbit", "burn-class"]
+    },
+    {
+      "id": "deorbit-wrong-direction-sas-sleep",
+      "marker": "wrong_direction|deorbit_wrong|sas.*sleep|aligned without checking",
+      "symptom": "A deorbit burn fires in the wrong direction after a 'SAS + fixed sleep' shortcut returns 'aligned'.",
+      "cause": "A fixed sleep does not verify the craft actually pointed at the node; SAS alone with no alignment-error wait reports aligned before it is.",
+      "fix": "Always autopilot-align to the maneuver node AND wait on a bounded alignment-error before igniting; never SAS + a fixed sleep that returns 'aligned' without checking.",
+      "applicable_primitives": ["set_orbit", "land", "transfer"],
+      "confidence": 0.8,
+      "tags": ["alignment", "deorbit", "autopilot"]
+    },
+    {
+      "id": "landing-hoverslam-crash",
+      "marker": "landed_unstable|hard_contact|landing_out_of_fuel|crash|suicide-burn bounce|tilted touchdown|lateral slide",
+      "symptom": "The lander touches down hard/unstable, runs out of fuel on descent, bounces under a bang-bang suicide burn, or slides/tips with residual lateral speed (recurring across ~12 landing trials).",
+      "cause": "A fixed suicide-burn safety margin forces near-full throttle in the hover regime (bouncing the lander) and attitude was released before lateral motion was killed; or the descent engine never became the active stage (P13/P16).",
+      "fix": "Freefall (engine off) until total speed reaches v_ref(h)=sqrt(2*(0.92*a_max-g)*h), then full-throttle brake on surface-retrograde; BELOW a terminal altitude (~120 m, earlier if still fast) hand off to a capped proportional hover controller (descend 3->2->1.2->0.7 m/s), stay retrograde until horizontal speed < ~3.5 m/s, do not cut throttle while sliding. Needs a controllable lander whose descent engine IS the active stage after jettison, with legs + reaction wheels.",
+      "applicable_primitives": ["land", "ascend"],
+      "confidence": 0.85,
+      "tags": ["landing", "hoverslam", "terminal-control", "design"]
+    },
+    {
+      "id": "transfer-node-not-found-phasing",
+      "marker": "transfer_node_not_found|transfer.*not_found|no.*encounter|no candidate|phase angle unfavorable",
+      "symptom": "No transfer node / SOI encounter is found in the searched window.",
+      "cause": "The target body's phase angle was unfavorable in the searched window; finite-burn + patched-conic phasing is the dominant predeploy variance (P11).",
+      "fix": "Search ~3 orbital periods ahead (not 1) for a transfer node, and/or simply retry — a relaunch gets fresh phasing. Seed the search from Hohmann/phase-angle math, then refine with the sim's predictor; do not brute-force a 10k-node live search.",
+      "applicable_primitives": ["transfer", "set_orbit"],
+      "confidence": 0.8,
+      "tags": ["transfer", "phasing", "variance", "node-search"]
+    },
+    {
+      "id": "relay-band-fight-low-periapsis",
+      "marker": "relay.*periapsis|periapsis.*high|relay.*reject|fighting precision|forcing low periapsis",
+      "symptom": "TMI/capture fights finite-burn precision to hit a low periapsis a relay does not actually need.",
+      "cause": "The success criterion was over-tight for the payload's real mission (P10).",
+      "fix": "Target the orbit the payload WANTS: accept a relay-band capture (apoapsis 250-2150 km, periapsis >= 50 km) directly instead of fighting finite-burn precision for a low periapsis. Define the success band by the payload's functional need.",
+      "applicable_primitives": ["commission_relay", "set_orbit", "transfer"],
+      "confidence": 0.8,
+      "tags": ["functional-band", "relay", "capture", "success-criterion"]
+    },
+    {
+      "id": "eve-capture-hohmann-down-dry",
+      "marker": "ran.*dry|capture.*dry|hohmann-down|hohmann down|low circular capture|150 ?km capture|out_of_fuel_capture",
+      "symptom": "The interplanetary capture runs the vehicle DRY: it captured into a LOW circular orbit (a costly Hohmann-down from the natural ~7,600 km encounter) — Δv the budget never paid for.",
+      "cause": "Capturing into a tight low circular orbit costs hundreds of m/s the design budget was never sized for; the natural arrival is a high, fast encounter (BUG 2 of the crewed Eve round trip).",
+      "fix": "Capture into a LOOSE bound ellipse (low periapsis, apoapsis ~0.30*SOI) with a single retrograde burn at periapsis (~146 m/s) — no circularize, no Hohmann-down. The same low periapsis makes the return ejection Oberth-cheap.",
+      "applicable_primitives": ["transfer", "set_orbit"],
+      "confidence": 0.9,
+      "tags": ["capture", "eve", "loose-ellipse", "dv-budget", "oberth"]
+    },
+    {
+      "id": "mechjeb-autostage-drops-heatshield",
+      "marker": "autostage.*heat|heat.*autostage|autostager fired|payload/heat-shield decoupler|decoupler mid-capture|stranded crew pod",
+      "symptom": "During an in-space capture/burn MechJeb's autostager blindly fires the payload/heat-shield decoupler, jettisoning the heat shield (or the crew pod) mid-capture and stranding the crew.",
+      "cause": "MechJeb autostages during ANY burn, including an interplanetary capture burn; on a crewed/heat-shield craft it cannot tell the payload decoupler from a spent-stage one (BUG 2 in-space safety).",
+      "fix": "Disable MechJeb's autostager (POST /mj-disable or its autostage flag) BEFORE any interplanetary/in-space leg so the explicit guarded ascent loop is the SOLE stager and no decoupler ever fires in space.",
+      "applicable_primitives": ["transfer", "set_orbit", "dock", "rendezvous"],
+      "confidence": 0.85,
+      "tags": ["mechjeb", "autostage", "decoupler", "heatshield", "in-space-safety"]
+    },
+    {
+      "id": "vessel-localized-suffix-mismatch",
+      "marker": "vessel_not_found|stranded\\?|localized suffix|name mismatch|飞船|探测器|exact-name match",
+      "symptom": "select_vessel cannot find the launched craft and reports it stranded, even though the vehicle is alive in orbit.",
+      "cause": "KSP appended a localized suffix to the live vessel name (e.g. the Chinese '飞船'/'探测器'), so an exact-name match failed to find a craft that is actually present.",
+      "fix": "Match vessel names tolerantly (vessel_names_match): case-insensitive, allowing a localized suffix set off by a separator, but NOT cross-matching different craft (AI-Relay-1 must not match AI-Relay-2/AI-Relay-12). Never strand on an exact-string miss alone.",
+      "applicable_primitives": ["select_vessel", "rendezvous", "dock", "recover"],
+      "confidence": 0.9,
+      "tags": ["vessel-name", "localization", "select_vessel", "strand"]
+    },
+    {
+      "id": "geometry-gate-protruding-payload",
+      "marker": "three-view geometry gate|geometry gate|looks_like_a_rocket|protruding payload|payload protrudes|too-tall booster|exposed engine|naked engine",
+      "symptom": "The generated craft fails the three-view geometry gate: payload appendages (Clamp-O-Tron, RCS, antenna/solar) protrude during ascent, the booster is too tall/thin, or an upper-stage engine sits naked mid-stack.",
+      "cause": "render() did not enclose all payload appendages in a fairing, clamp radial-pod height to the core tank, or wrap exposed upper-stage engines in an interstage shroud, so the three-view gate rejects the shape before launch.",
+      "fix": "Size the payload fairing to ENCLOSE every payload appendage, clamp radial booster pods to the launch-stage core tank height (top-at/below the stage top, engines at the base), and wrap each exposed upper-stage engine in an interstage shroud so the geometry gate confirms a rocket-shaped, fully-housed stack.",
+      "applicable_primitives": ["launch"],
+      "confidence": 0.8,
+      "tags": ["geometry-gate", "fairing", "interstage-shroud", "design", "render"]
+    },
+    {
+      "id": "crewed-pod-design-not-crewable",
+      "marker": "no crewable pod|crew_capacity == 0|wrong crewed mass|no mk1pod|probe design written|re-derived crew=0",
+      "symptom": "The written 'crewed' craft has no crewable pod (root probeCoreOcto, no mk1pod), so kRPC reports crew_capacity == 0 and /spawn-crew has no free seat; the design's crewed masses were also off.",
+      "cause": "launch_to_lko re-derived a crew=0 PROBE design and wrote THAT, hardcoding crew=0 with no way to request a crewable pod, so the crew/heatshield/landing requirements never reached the renderer.",
+      "fix": "Thread crew/needs_heatshield/landing through launch_to_lko (default crew=0 keeps relay callers unchanged) so a crewed launch renders a craft with a real mk1pod + forward HeatShield1; use the correct crewed-pod masses so Δv/TWR estimates close.",
+      "applicable_primitives": ["launch", "transfer_crew", "recover"],
+      "confidence": 0.85,
+      "tags": ["crew", "design", "craft-generation", "mass-estimate"]
+    },
+    {
+      "id": "return-craft-no-heatshield",
+      "marker": "reentry|burn up|no heat shield|chuteless|headless return.*no shield",
+      "symptom": "An uncrewed/headless return craft reenters with no heat shield and burns up.",
+      "cause": "Heat-shield generation was gated on 'crewed', but the return craft flies crewed=False to launch headless (P14).",
+      "fix": "Decouple 'needs reentry protection' from 'carries crew': gate the heat shield + parachute on the RETURN requirement (render adds HeatShield1 when crewed OR heatshield flag set).",
+      "applicable_primitives": ["recover", "transfer", "land"],
+      "confidence": 0.85,
+      "tags": ["reentry", "heatshield", "design", "return"]
+    },
+    {
+      "id": "handrolled-reentry-mechjeb",
+      "marker": "recovery_timeout|kerbin_recovery|chute.*fail|tumble.*reentry|hand.?roll|warp_to.*hang|guessed chute|splashed.*fast",
+      "symptom": "Hand-flown reentry/parachute timing kills the crew: guessed chute altitudes, loop timeouts, and a warp_to(periapsis) hang.",
+      "cause": "Reentry and chute deployment were hand-rolled with magic constants (chute-arm 14 km, deorbit pe 24-32 km, 240/400 s timeouts) instead of delegated to MechJeb.",
+      "fix": "Never hand-fly reentry or chute timing. Call /mj-land (tools/mj_land_vessel.py): make the capsule active, hand the WHOLE descent to MechJeb's Landing Autopilot (it computes deorbit, deceleration, and chute timing), monitor only, and warp-assist the high coast to ~80 km. Jettison a full stack to a bare heat-shielded capsule first.",
+      "applicable_primitives": ["recover", "land"],
+      "confidence": 0.85,
+      "tags": ["reentry", "mechjeb", "chute", "delegation", "return"]
+    },
+    {
+      "id": "did-not-escape-soi-return",
+      "marker": "did not escape Eve SOI|did not escape Kerbin SOI|did not escape.*SOI|EVE EJECT FAILED|RETURN EJECT FAILED|eject.*no node",
+      "symptom": "After the return/outbound ejection burn the vehicle is still bound to the departure body's SOI (still orbiting Eve/Kerbin) — the ejection produced no escape, or MechJeb's interplanetary transfer produced no node.",
+      "cause": "The ejection node was not produced or not fully executed (no encounter from the loose ellipse, or autostage/alignment fault), so the craft never went hyperbolic out of the SOI.",
+      "fix": "Re-plan the interplanetary ejection node and verify it escapes (orbit body changes to the Sun and periapsis-altitude check passes) before warping on; eject from the SAME low periapsis (Oberth-cheap), retry the grid-search node if none appears, and confirm time_to_soi_change after a short settle.",
+      "applicable_primitives": ["transfer", "set_orbit", "recover"],
+      "confidence": 0.8,
+      "tags": ["soi-escape", "ejection", "eve", "return", "node-search"]
+    },
+    {
+      "id": "circularize-coast-runaway-thrust",
+      "marker": "escape on coast|unthrottleable thrust|burning during coast|coast escape|circularize.*escape",
+      "symptom": "During the post-ascent coast the orbit keeps rising and escapes, because a stage with unthrottleable thrust kept burning.",
+      "cause": "An unthrottleable engine kept producing thrust through the 'coast', and warp/rails left on hid that no real circularization was happening.",
+      "fix": "Force throttle to 0 and MEASURE actual thrust during the coast; hold a retrograde guard if thrust persists, and force rails+warp off and verify thrust early so the circularization burn is real.",
+      "applicable_primitives": ["set_orbit", "launch", "ascend"],
+      "confidence": 0.75,
+      "tags": ["circularization", "thrust", "warp", "coast"]
+    },
+    {
+      "id": "stationary-orbit-outside-soi",
+      "marker": "outside_SOI|sync radius.*SOI|stationary.*impossible|synchronous_alt.*outside|keostationary unreachable",
+      "symptom": "A requested stationary / synchronous relay orbit is physically unreachable (e.g. Mun-stationary radius 2.97 Mm > SOI 2.43 Mm).",
+      "cause": "The body's synchronous radius lies outside its SOI, so a stationary orbit cannot exist there; some 'ideal' geometries are simply infeasible.",
+      "fix": "Detect when sync radius > SOI and SUBSTITUTE a high elliptical relay / sub-synchronous constellation ring (functional-band thinking) instead of chasing the impossible stationary orbit.",
+      "applicable_primitives": ["commission_relay", "set_orbit", "transfer"],
+      "confidence": 0.8,
+      "tags": ["orbit-feasibility", "relay", "constellation", "soi"]
+    }
+  ]
+}

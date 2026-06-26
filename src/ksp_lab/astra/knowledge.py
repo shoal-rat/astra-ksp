@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .ledger import ExperienceLedger
+from .rule_base import RuleBase
 
 
 @dataclass(slots=True)
@@ -30,6 +31,12 @@ class KnowledgeBase:
     def __init__(self, ledger: ExperienceLedger, project_root: str | Path | None = None):
         self.ledger = ledger
         self.project_root = Path(project_root) if project_root else Path.cwd()
+        # The structured, queryable failure rule base is consulted FIRST by diagnose(). If the packaged
+        # JSON is somehow unavailable, fall back silently to the ledger's hardcoded seed rules.
+        try:
+            self.rule_base: RuleBase | None = RuleBase.load()
+        except (OSError, ValueError, KeyError):
+            self.rule_base = None
 
     def methodology_text(self) -> str:
         for rel in _METHODOLOGY_CANDIDATES:
@@ -42,7 +49,17 @@ class KnowledgeBase:
         return ""
 
     def diagnose(self, marker: str, *, log_tail: str = "") -> Diagnosis:
-        """Match a flight's ending marker (and optional log tail) to a known fix."""
+        """Match a flight's ending marker (and optional log tail) to a known fix.
+
+        Consults the STRUCTURED rule base (rule_base.py / failure_rules.json) FIRST — it is richer
+        (symptom/cause/fix, primitive-scoped, confidence-ranked) — and falls back to the ledger's
+        hardcoded seed rules, then to an explicit 'unknown'. The Diagnosis shape is unchanged so
+        callers are unaffected: a structured hit reports principle=<cause>, fix=<fix>, confidence='known'."""
+        if self.rule_base is not None:
+            hit = self.rule_base.diagnose(marker, log_tail)
+            if hit is not None:
+                return Diagnosis(hit.cause, hit.fix, "known")
+
         haystack = f"{marker} {log_tail}".lower()
         for rule in self.ledger.seed_rules():
             pattern = rule["match"]
