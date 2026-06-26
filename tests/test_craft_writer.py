@@ -302,3 +302,132 @@ def test_fairing_xsection_shell_is_overridden_to_wrap_this_payload():
     text = CraftWriter().render(design, part_bodies={"fairingSize1": donor})
     assert "ModuleProceduralFairing" in text          # real module preserved
     assert text.count("XSECTION") == 4                # donor's 3 sections replaced by the computed 4
+
+
+def test_replace_xsections_consumes_nested_attachedflag_blocks_without_orphaning_braces():
+    # REGRESSION (live launch failure): the harvested interstage-shroud body comes from the Ariane 5 craft,
+    # whose XSECTION blocks NEST ATTACHEDFLAG { ... } sub-blocks. The old `[^}]*` regex stopped at the FIRST
+    # nested `}` (the first ATTACHEDFLAG's close), so it replaced one truncated XSECTION and left the donor's
+    # remaining XSECTIONs + orphaned ATTACHEDFLAG blocks + a stray closing brace in place. That stray `}`
+    # closed the ModuleProceduralFairing MODULE and the PART early, leaving junk lines that KSP parsed as
+    # PART fields -> KSPUtil.GetPartName(null) -> NullReferenceException in ShipConstruct.LoadShip, so the
+    # craft would not load or launch. _replace_xsections must remove the WHOLE run of XSECTIONs (nested
+    # children and all) and splice only the computed shell.
+    donor = (
+        "\tEVENTS\n\t{\n\t}\n"
+        "\tMODULE\n\t{\n\t\tname = ModuleProceduralFairing\n\t\tuseClamshell = True\n"
+        "\t\tXSECTION\n\t\t{\n\t\t\th = 0\n\t\t\tr = 1.25\n"
+        "\t\t\tATTACHEDFLAG\n\t\t\t{\n\t\t\t\tattachedFlagPartIDs = 4294465114,4294473850\n\t\t\t\tpanelIndex = 0\n\t\t\t}\n"
+        "\t\t\tATTACHEDFLAG\n\t\t\t{\n\t\t\t\tattachedFlagPartIDs = 4294465113,4294473849\n\t\t\t\tpanelIndex = 1\n\t\t\t}\n\t\t}\n"
+        "\t\tXSECTION\n\t\t{\n\t\t\th = 3\n\t\t\tr = 1.25\n"
+        "\t\t\tATTACHEDFLAG\n\t\t\t{\n\t\t\t\tattachedFlagPartIDs = \n\t\t\t\tpanelIndex = 2\n\t\t\t}\n\t\t}\n"
+        "\t\tXSECTION\n\t\t{\n\t\t\th = 6.79\n\t\t\tr = 0.375\n"
+        "\t\t\tATTACHEDFLAG\n\t\t\t{\n\t\t\t\tattachedFlagPartIDs = \n\t\t\t\tpanelIndex = 3\n\t\t\t}\n\t\t}\n"
+        "\t\tUPGRADESAPPLIED\n\t\t{\n\t\t}\n\t}"
+    )
+    shell = "\t\tXSECTION\n\t\t{\n\t\t\th = 0.0000\n\t\t\tr = 1.6000\n\t\t}\n\t\tXSECTION\n\t\t{\n\t\t\th = 2.5000\n\t\t\tr = 0.2000\n\t\t}"
+    out = CraftWriter._replace_xsections(donor, shell)
+    # Every donor ATTACHEDFLAG (and its orphan-prone partner) is gone — only the computed shell remains.
+    assert "ATTACHEDFLAG" not in out, "nested ATTACHEDFLAG blocks leaked past the XSECTION replacement"
+    assert out.count("XSECTION") == 2, "donor's 3 nested XSECTIONs must be replaced by the computed 2"
+    # The real module wrapper survives on both sides of the spliced shell.
+    assert "ModuleProceduralFairing" in out and "UPGRADESAPPLIED" in out
+    # Braces are balanced (no stray `}` that would close the MODULE/PART early).
+    assert out.count("{") == out.count("}"), "brace imbalance after XSECTION replacement"
+
+
+def _legged_mun_design():
+    """The mission-aware crewed Mun land-and-return vehicle (crew=1, heat shield + Kerbin chutes, landing
+    legs, a multi-stage stack whose upper engine gets an interstage shroud harvested from Ariane 5). This
+    is the exact design class that failed to LOAD into KSP before the XSECTION fix."""
+    from ksp_lab.design import (LandingSite, Phase, ShipRequirements, default_reserve_frac, design_ship)
+
+    req = ShipRequirements(
+        name="AI-Mun-Legged-Test", mission_type="mun_landing_return", crew=1, payload_t=0.3,
+        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3, reserve_frac=default_reserve_frac(9.81)),
+                Phase("insertion", 250.0, twr_body_g=0.0, min_twr=0.0, reserve_frac=default_reserve_frac(0.0)),
+                Phase("mission", 4126.0, twr_body_g=0.0, min_twr=0.0, reserve_frac=default_reserve_frac(0.0))],
+        landing=LandingSite(body_g=9.81, surface_rho=1.225, target_touchdown_mps=6.0),
+        needs_legs=True, needs_heatshield=True, needs_docking=False, max_engine_count=1)
+    return design_ship(req)
+
+
+def _craft_structure_errors(text: str) -> list[str]:
+    """Validate the craft is structurally loadable: every PART brace-balanced, no blank `part = `, and
+    every srfN/attN/link reference resolves to a real part id in the file. Mirrors what KSP's
+    ShipConstruct.LoadShip needs so KSPUtil.GetPartName never receives a null/orphaned part id."""
+    import re as _re
+
+    lines = text.split("\n")
+    errors: list[str] = []
+    part_ids: set[str] = set()
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("part = "):
+            val = s[len("part = "):].strip()
+            if not val:
+                errors.append(f"blank 'part =' line: {ln!r}")
+            part_ids.add(val)
+    # Per-PART brace balance (a stray brace closes the PART early -> orphaned junk -> GetPartName null-ref).
+    i, n = 0, len(lines)
+    while i < n:
+        if lines[i].strip() == "PART" and i + 1 < n and lines[i + 1].strip() == "{":
+            depth, j = 0, i + 1
+            while j < n:
+                s = lines[j].strip()
+                if s == "{":
+                    depth += 1
+                elif s == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if depth != 0:
+                errors.append(f"PART starting at line {i + 1} is not brace-balanced (depth {depth})")
+            i = j + 1
+        else:
+            i += 1
+    # Every attachment/link reference points at a real part id (in range, correctly formatted).
+    for lineno, ln in enumerate(lines, 1):
+        s = ln.strip()
+        if s.startswith("srfN = srfAttach,"):
+            ref = s[len("srfN = srfAttach,"):].strip()
+            if ref and ref not in part_ids:
+                errors.append(f"line {lineno}: srfN -> unknown part id {ref!r}")
+        elif s.startswith("attN = "):
+            rhs = s[len("attN = "):]
+            if "," in rhs:
+                target = rhs.split(",", 1)[1].strip()
+                # target = <partid>_<pos> where pos looks like 0|y|0
+                ref = target.rsplit("_", 1)[0] if "|" in target else target
+                if ref and ref not in part_ids:
+                    errors.append(f"line {lineno}: attN -> unknown part id {ref!r}")
+        elif s.startswith("link = "):
+            ref = s[len("link = "):].strip()
+            if ref and ref not in part_ids:
+                errors.append(f"line {lineno}: link -> unknown part id {ref!r}")
+    return errors
+
+
+def test_legged_craft_emits_valid_attachment_references_and_no_orphaned_xsections():
+    # REGRESSION (the live "/launch -> HTTP 400 GetPartName NullReference" failure on the mission-aware Mun
+    # craft): a legged, multi-stage craft harvests an interstage shroud (fairingSize2/3) from Ariane 5,
+    # whose XSECTIONs nest ATTACHEDFLAG blocks. Render it the SAME way the live launch does — with harvested
+    # part bodies — and assert the output is structurally loadable.
+    from ksp_lab.craft_writer import CraftWriter as _CW
+
+    design = _legged_mun_design()
+    assert design.landing_legs, "this regression needs a legged design"
+    bodies = _CW()._part_body_library(
+        design, "C:/Program Files (x86)/Steam/steamapps/common/Kerbal Space Program/saves/默认/Ships/VAB")
+    if not bodies or "fairingSize2" not in bodies:
+        pytest.skip("live KSP craft library (with the Ariane 5 interstage fairing) not available offline")
+    text = _CW().render(design, part_bodies=bodies)
+    # The landing legs and fins are present and surface-attached (the new radial parts that exposed the bug).
+    assert "part = landingLeg1_" in text, "legged craft is missing its landing legs"
+    assert "srfN = srfAttach" in text, "radial parts must be surface-attached"
+    # No orphaned interstage-fairing XSECTION children leaked into the craft.
+    assert "ATTACHEDFLAG" not in text, "donor interstage-fairing ATTACHEDFLAG blocks leaked into the craft"
+    # Every attachment reference resolves, every PART is brace-balanced, no blank `part =`.
+    errors = _craft_structure_errors(text)
+    assert not errors, "structural defects that would null-ref KSPUtil.GetPartName on load:\n" + "\n".join(errors)

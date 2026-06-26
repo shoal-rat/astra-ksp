@@ -1025,7 +1025,12 @@ class CraftWriter:
         if body and node.fairing_xsections:
             # Replace the harvested fairing's XSECTION shell (sized for the donor craft) with the
             # computed ogive that wraps THIS payload, keeping it inside the ModuleProceduralFairing.
-            body = re.sub(r"(?:\n\t\tXSECTION\n\t\t\{[^}]*\})+", "\n" + node.fairing_xsections, body, count=1)
+            # A donor XSECTION can contain nested ATTACHEDFLAG { ... } sub-blocks (e.g. the Ariane 5
+            # interstage fairing harvested for the shroud), so the run of XSECTIONs is removed with a
+            # BRACE-BALANCED scan — NOT a flat `[^}]*` regex, which stopped at the first nested `}` and
+            # left orphaned ATTACHEDFLAG blocks + stray closing braces that closed the PART early and
+            # null-ref'd KSPUtil.GetPartName on load (the legged-Mun launch failure).
+            body = self._replace_xsections(body, node.fairing_xsections)
         if body and node.part_name == "Size3To2Adapter.v2":
             # The ADTP-2-3 is used here as an aerodynamic structural adapter, not as unplanned fuel
             # storage. Remove stock RESOURCE blocks so the live vessel mass matches the calculated dry
@@ -1040,6 +1045,60 @@ class CraftWriter:
             lines.extend(self._resources(p))
         lines.append("}")
         return lines
+
+    @staticmethod
+    def _replace_xsections(body: str, new_xsections: str) -> str:
+        """Replace the harvested fairing's contiguous run of ``XSECTION { ... }`` blocks with the
+        computed ``new_xsections`` shell, using a BRACE-BALANCED scan so a donor XSECTION that nests
+        ``ATTACHEDFLAG { ... }`` sub-blocks (the Ariane 5 interstage fairing) is consumed whole.
+
+        The previous flat regex ``(?:\\n\\t\\tXSECTION\\n\\t\\t\\{[^}]*\\})+`` matched only up to the
+        FIRST ``}`` — the closing brace of the first nested ATTACHEDFLAG, not the XSECTION's own brace —
+        so it replaced one truncated XSECTION and left the rest of the donor serialization in place. The
+        orphaned tail had unbalanced braces that closed the ModuleProceduralFairing MODULE and the PART
+        early, leaving the remaining lines as junk PART fields: KSP then null-ref'd in
+        ``KSPUtil.GetPartName`` while ``ShipConstruct.LoadShip`` parsed the .craft, so the craft would
+        not load or launch. This scanner finds the start of the first ``XSECTION`` line, walks forward
+        counting ``{``/``}`` to swallow every consecutive XSECTION block (with any nested children), and
+        splices the computed shell in their place. Indentation (two tabs) matches the donor body so the
+        shell sits correctly inside the MODULE block. If no XSECTION is found the body is returned
+        unchanged."""
+        lines = body.split("\n")
+        start = None
+        for idx, ln in enumerate(lines):
+            if ln.strip() == "XSECTION":
+                start = idx
+                break
+        if start is None:
+            return body
+        i = start
+        end = start  # exclusive index just past the last consumed XSECTION block
+        n = len(lines)
+        while i < n and lines[i].strip() == "XSECTION":
+            # The next non-blank line must open the block. Walk braces to its matching close.
+            j = i + 1
+            depth = 0
+            opened = False
+            while j < n:
+                s = lines[j].strip()
+                if s == "{":
+                    depth += 1
+                    opened = True
+                elif s == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if not opened or j >= n:
+                break  # malformed donor — stop here rather than over-consume
+            end = j + 1
+            i = end
+        # Splice: keep everything before the first XSECTION and after the last consumed block, with the
+        # computed shell (no leading newline — it is inserted as its own joined lines) in between.
+        head = lines[:start]
+        tail = lines[end:]
+        replacement = new_xsections.split("\n")
+        return "\n".join(head + replacement + tail)
 
     @staticmethod
     def _node_position(part_name: str, node_name: str) -> str:
