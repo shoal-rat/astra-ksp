@@ -333,6 +333,41 @@ def test_no_radial_boosters_by_default():
 
 
 # --------------------------------------------------------------------------------------------------
+# CODEX FLAW #1/#2 — radial booster pod HEIGHT CLAMP (Falcon-Heavy rule): a pod may not be taller than its
+# host launch (core) stage, so it cannot tower into the upper stage / payload (the hammerhead/cage).
+# --------------------------------------------------------------------------------------------------
+def test_radial_booster_pod_is_not_taller_than_the_launch_core_stage():
+    """A strap-on pod's total stack height (engine + tank column) must be <= the launch CORE stage's stack
+    height — the Falcon-Heavy reference: the side boosters reach ~the top of the first stage and no higher,
+    leaving the upper stage + payload clear above. The old sizer made 24 m pods on a 7 m core (a cage)."""
+    from tools.design_eve_two_ship import crew_ferry, return_tug
+    for req in (crew_ferry(), return_tug()):
+        d = design_ship(req)
+        rb = d.radial_boosters
+        assert rb is not None, d.notes
+        core = d.stages[0]                          # fire order -> stages[0] is the launch (booster) core
+        core_h = part(core.tank).height_m * core.tank_count + part(core.engine).height_m
+        pod_h = part(rb.tank).height_m * rb.tank_count + part(rb.engine).height_m
+        assert pod_h <= core_h + 1e-6, (req.name, pod_h, core_h)
+        # And the physics still CLOSES after the clamp: launchable (combined TWR) + Δv beyond requirement.
+        assert d.feasible is True, d.infeasible_reasons
+        assert d.estimates["total_delta_v_mps"] >= d.estimates["required_delta_v_mps"] * 1.05, d.estimates
+        assert d.estimates["launch_twr"] >= 1.4, d.estimates
+
+
+def test_clamped_boosters_keep_the_core_covering_the_remaining_dv():
+    """When the height clamp shortens the pods so they carry LESS than the nominal 45% share, the asparagus
+    fixed-point must grow the CORE to cover the remainder — the total Δv still meets the requirement+reserve
+    (the core 'covers the rest'), so a clamped design never silently ships short of orbit."""
+    from tools.design_eve_two_ship import return_tug
+    d = design_ship(return_tug())
+    assert d.feasible is True, d.infeasible_reasons
+    # The boosters deliver SOME ascent Δv, and the core carries the (larger, post-clamp) remainder.
+    assert d.estimates["booster_delta_v_mps"] > 0.0, d.estimates
+    assert d.estimates["total_delta_v_mps"] >= d.estimates["required_delta_v_mps"] * 1.05, d.estimates
+
+
+# --------------------------------------------------------------------------------------------------
 # FUEL RESERVE — per-stage role reserves + the mission-level contingency, made visible in estimates.
 # --------------------------------------------------------------------------------------------------
 def test_design_estimates_expose_the_fuel_reserve():

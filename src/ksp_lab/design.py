@@ -352,6 +352,10 @@ def _size_one(eng_name: str, tank_name: str, dv: float, mass_above_t: float, pha
         "twr": round(achieved_twr, 2), "stage_dv": round(actual_dv, 0), "m0_t": round(m0, 2),
         "wet_t": round(wet, 2), "parts": n_eng + tanks, "fineness": round(fineness, 2),
         "twr_ok": twr_ok,
+        # dv_ok = the stage is properly TANKED (reaches its Δv at a finite tank count), independent of TWR.
+        # The asparagus launch core is allowed to hang at low solo TWR (boosters lift it), but must still be
+        # dv_ok; every other stage must be fully `ok` (dv AND solo TWR).
+        "dv_ok": tanks < 9000 and actual_dv >= dv * 0.995,
         "ok": tanks < 9000 and actual_dv >= dv * 0.995 and twr_ok,
     }
 
@@ -441,19 +445,36 @@ def _size_stage(dv: float, mass_above_t: float, phase: Phase, max_engine_count: 
 BOOSTER_DV_SHARE = 0.45            # fraction of the launch-phase Δv the strap-ons carry before drop
 
 
+def _launch_core_stack_height(core_metrics: dict) -> float:
+    """Height of the LAUNCH (first-firing) core stage's tank+engine stack — the Falcon-Heavy reference
+    ceiling for a strap-on pod. A radial booster must reach AT MOST the top of this stack and NO higher,
+    so the core's upper stage + payload stay clear above the pods (no hammerhead/cage). Computed from the
+    core's chosen tank height * count + its engine height (the same stack the renderer draws)."""
+    return part(core_metrics["tank"]).height_m * core_metrics["tanks"] + part(core_metrics["engine"]).height_m
+
+
 def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float, count: int,
                           max_engine_count: int = 8, dv_share: float = BOOSTER_DV_SHARE,
                           target_twr: float = 0.0, use_full_catalog: bool = False
                           ) -> tuple[RadialBoosterSpec | None, dict]:
     """Size `count` symmetric strap-on pods so (core + boosters) liftoff TWR >= the floor AND the pods
     carry ~`dv_share` of the launch-phase Δv. All counts from the rocket equation + TWR; see the block
-    comment above for the model. `core_metrics` is the launch stage's own `_size_one` dict."""
+    comment above for the model. `core_metrics` is the launch stage's own `_size_one` dict.
+
+    HEIGHT CLAMP (Falcon-Heavy rule): a pod's total stack height (engine + tank column) must NOT exceed
+    the launch-stage CORE stack height — the side boosters reach ~the top of the first (booster) stage and
+    no higher, leaving the core's upper stage + payload clear ABOVE them. So the dv-share sizes the pod,
+    but the tank count is then CLAMPED to whatever fits under that height ceiling. If the clamped pods
+    cannot deliver the full share, the core covers the rest (it was sized for 1-share but always carries
+    its own per-role reserve); the metrics report the ACTUAL clamped booster_dv so the estimate/feasibility
+    gate see the real (possibly reduced) contribution and a caller can add MORE pods rather than taller ones."""
     if count <= 0:
         return None, {}
     core_wet = core_metrics["wet_t"]
     core = part(core_metrics["engine"])
     core_thrust_n = (core.thrust_kn_asl * core_metrics["engine_count"]) * 1000.0
     g = phase.twr_body_g or astro.G0
+    core_stack_h = _launch_core_stack_height(core_metrics)
     # The COMBINED (core + strap-ons) liftoff must clear a real launch floor. The launch-phase min_twr can
     # be a low CORE figure (the core alone is allowed to hang at ~1.3 because the strap-ons do the lifting);
     # the assembled rocket still needs >= 1.4 at the pad. Size the pods to the larger of the two so the
@@ -461,6 +482,12 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
     twr_floor = target_twr or max(phase.min_twr or 0.0, 1.4)
     dv_target = phase.design_dv() * max(0.0, dv_share)
     dec = part("radialDecoupler2")
+
+    def _height_cap_tanks(eng, tank) -> int:
+        """Most whole pod tanks that keep the pod (engine + tank column) at/under the core stack height."""
+        avail = core_stack_h - eng.height_m
+        return max(1, int(avail // tank.height_m)) if tank.height_m > 0 else 1
+
     # Evaluate ONE booster engine: pair it with the widest tank no wider than the engine's own diameter
     # (a booster pod is a clean single stack), solve the tank count for dv_target, check the combined
     # liftoff TWR, and return a candidate dict (or None if it cannot lift the stack even strapped on).
@@ -471,6 +498,7 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
             return None
         tank_name = _unit_tank_for_engine(eng_name)
         tank = part(tank_name)
+        height_cap = _height_cap_tanks(eng, tank)
         # Solve the whole-tank count so N pods deliver dv_target at liftoff against the FULL wet stack
         # (mass_above + core + all N pods) — a conservative parallel-burn estimate. Fixed-point iterate.
         tanks = 1
@@ -485,6 +513,10 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
             if need == tanks:
                 break
             tanks = need
+        # FALCON-HEAVY HEIGHT CLAMP: a pod may not be taller than the launch core stack. Clamp the
+        # tank column to the height cap (add more PODS or thrust for more Δv, never a taller pod).
+        clamped = tanks > height_cap
+        tanks = min(tanks, height_cap)
         pod_dry = eng.dry_mass_t + tank.dry_mass_t * tanks + dec.dry_mass_t
         pod_wet = eng.wet_mass_t + tank.wet_mass_t * tanks + dec.wet_mass_t
         m0 = mass_above_t + core_wet + count * pod_wet
@@ -495,12 +527,15 @@ def _size_radial_boosters(phase: Phase, core_metrics: dict, mass_above_t: float,
         # Δv the boosters actually deliver (rocket equation, booster propellant vs the full liftoff mass).
         m1 = m0 - count * (pod_wet - pod_dry)
         booster_dv = astro.rocket_dv(eng.isp_asl_s or eng.isp_vac_s, m0, m1)
+        pod_height = eng.height_m + tank.height_m * tanks
         return {
             "engine": eng_name, "engine_count": 1, "tank": tank_name, "tanks": tanks,
             "count": count, "diameter_m": tank.diameter_m, "pod_wet_t": round(pod_wet, 2),
             "pod_dry_t": round(pod_dry, 2), "combined_twr": round(combined_twr, 2),
             "booster_dv": round(booster_dv, 0), "liftoff_mass_t": round(m0, 2),
             "total_wet_t": round(count * pod_wet, 2),
+            "pod_height_m": round(pod_height, 2), "core_stack_h_m": round(core_stack_h, 2),
+            "height_clamped": clamped, "height_cap_tanks": height_cap,
         }
 
     # Search the WHOLE booster-engine catalog (every stock sea-level engine, no curated tier) and keep the
@@ -533,12 +568,6 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
     is retained for API compatibility but is now a no-op (the full catalog is always used).
     """
     bus = _bus_mass(req)
-    # Chute count is sized for the landing mass = bus + the top (landing) stage dry + a fuel reserve.
-    # Approximate landing mass with the bus alone first; refine after stages are sized (one pass is
-    # enough because chute mass is tiny relative to the stack).
-    mass_above = bus
-    stages_rev: list[StageSpec] = []
-    metrics_rev: list[dict] = []
     # ADD-A-STAGE: split any phase that exceeds the single-stage Δv ceiling into equal-Δv sub-stages
     # BEFORE sizing, so no single stage is asked for more Δv than its engine+tank can physically deliver.
     phases = _split_phases(req.phases)
@@ -548,15 +577,7 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
     # Process phases last-firing first (top stage first) so each lower stage carries the wet mass of
     # the ones above it. Track the widest diameter seen so far as a FLOOR for the next (lower) stage —
     # this guarantees a monotonic non-increasing-upward taper (the base is always the widest).
-    dia_floor = 1.25                                # the payload bus rides on a 1.25 m core
-    launch_mass_above = bus                          # mass above the LAUNCH (first-firing) stage, for boosters
-    # ASPARAGUS Δv SPLIT: when strap-on boosters are requested, the CORE launch stage only has to deliver
-    # the REMAINDER of the launch-phase Δv — the boosters carry `BOOSTER_DV_SHARE` of it in parallel, then
-    # drop. Sizing the core for (1 - share) of the launch Δv is what makes the asparagus rocket lighter
-    # than a single core (the user's "the core then covers the rest"). The boosters are sized to actually
-    # deliver that share below; the core flies on its remaining propellant after they separate.
     launch_phase_name = phases[0].name if phases else None
-    core_dv_factor = (1.0 - BOOSTER_DV_SHARE) if req.radial_booster_count > 0 else 1.0
     # MISSION-LEVEL RESERVE: fold the whole-mission contingency (req.mission_reserve_frac, default 5%) into
     # ONE phase — the first vacuum transfer/capture leg (the re-taskable stage). It is applied to a single
     # stage so the contingency is banked exactly once, on top of that stage's own per-role reserve.
@@ -565,52 +586,88 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
     if mission_reserve_phase is not None:
         log.append(f"mission reserve: +{mission_reserve*100:.0f}% contingency folded into the '{mission_reserve_phase}' "
                    f"vacuum stage (for unforeseen needs, on top of its per-role reserve)")
-    for phase in reversed(phases):
-        # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
-        # burn-to-depletion (a real rocket never plans to land on empty tanks). The first-firing (launch)
-        # stage carries only its core share when boosters are present.
-        is_launch = phase.name == launch_phase_name
-        carries_mission_reserve = phase.name == mission_reserve_phase
-        mission_factor = (1.0 + mission_reserve) if carries_mission_reserve else 1.0
-        size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0) * mission_factor
-        spec, metrics = _size_stage(size_dv, mass_above, phase, req.max_engine_count, dia_floor,
-                                    use_full_catalog=use_full_catalog)
-        dia_floor = max(dia_floor, spec.diameter_m)
-        stages_rev.append(spec)
-        metrics_rev.append(metrics)
-        # The launch phase fires first -> it is the LAST one sized in this reversed loop, so when the
-        # loop ends `mass_above` (pre-this-stage) is exactly the mass riding above the launch stage.
-        launch_mass_above = mass_above
-        mass_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
-        mr_note = f" +{mission_reserve*100:.0f}% mission" if carries_mission_reserve else ""
-        log.append(
-            f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve{mr_note} -> size {size_dv:.0f}) "
-            f"twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} + {metrics['tanks']} {metrics['tank']} "
-            f"= {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
-        )
-    stages = list(reversed(stages_rev))  # back to fire order (launch first)
 
-    # RADIAL BOOSTERS: if requested, size N symmetric strap-on pods on the launch (first-firing) stage so
-    # the combined liftoff TWR clears the floor and the pods carry a chunk of the ascent Δv (see
-    # _size_radial_boosters). The launch stage was sized last in the loop above, so its metrics are
-    # metrics_rev[-1] and the mass above it is launch_mass_above.
+    # ASPARAGUS Δv SPLIT (with the Falcon-Heavy height clamp). When strap-on boosters are requested, the
+    # CORE launch stage only has to deliver the REMAINDER of the launch-phase Δv — the boosters carry the
+    # rest in parallel, then drop. Sizing the core for (1 - share) of the launch Δv is what makes the
+    # asparagus rocket lighter than a single core. BUT the pods are now HEIGHT-CLAMPED to the core stack
+    # (no tower/cage), so a clamped pod may deliver LESS than the nominal 45% share. We therefore solve a
+    # small FIXED POINT: size the core for (1 - share), size the clamped boosters, measure the Δv they
+    # ACTUALLY deliver, recompute share = delivered/launch_dv, and resize — converging in 2-3 passes so the
+    # core always covers exactly the remainder the (height-limited) boosters cannot. This keeps the physics
+    # closing after the clamp: shorter pods => smaller share => a bigger core, never a Δv shortfall.
+    def _size_all(core_dv_factor: float):
+        nonlocal log
+        stages_rev_l: list[StageSpec] = []
+        metrics_rev_l: list[dict] = []
+        pass_log: list[str] = []
+        dia_floor = 1.25                             # the payload bus rides on a 1.25 m core
+        m_above = bus
+        launch_m_above = bus
+        for phase in reversed(phases):
+            # Size the stage for the requirement PLUS its fuel reserve, so it carries propellant beyond
+            # burn-to-depletion. The first-firing (launch) stage carries only its core share with boosters.
+            is_launch = phase.name == launch_phase_name
+            carries_mission_reserve = phase.name == mission_reserve_phase
+            mission_factor = (1.0 + mission_reserve) if carries_mission_reserve else 1.0
+            size_dv = phase.design_dv() * (core_dv_factor if is_launch else 1.0) * mission_factor
+            spec, metrics = _size_stage(size_dv, m_above, phase, req.max_engine_count, dia_floor,
+                                        use_full_catalog=use_full_catalog)
+            dia_floor = max(dia_floor, spec.diameter_m)
+            stages_rev_l.append(spec)
+            metrics_rev_l.append(metrics)
+            launch_m_above = m_above
+            m_above += metrics["wet_t"] + part("Decoupler.1").wet_mass_t
+            mr_note = f" +{mission_reserve*100:.0f}% mission" if carries_mission_reserve else ""
+            pass_log.append(
+                f"{phase.name}: need {phase.dv_mps:.0f}m/s (+{phase.reserve_frac*100:.0f}% reserve{mr_note} -> size {size_dv:.0f}) "
+                f"twr>={phase.min_twr} -> {metrics['engine_count']}x {metrics['engine']} + {metrics['tanks']} {metrics['tank']} "
+                f"= {metrics['stage_dv']:.0f}m/s, twr {metrics['twr']}, m0 {metrics['m0_t']}t"
+            )
+        rb_l: RadialBoosterSpec | None = None
+        bm_l: dict = {}
+        if req.radial_booster_count > 0 and phases:
+            rb_l, bm_l = _size_radial_boosters(
+                phases[0], metrics_rev_l[-1], launch_m_above, req.radial_booster_count,
+                req.max_engine_count, use_full_catalog=use_full_catalog)
+        return stages_rev_l, metrics_rev_l, pass_log, rb_l, bm_l
+
     radial_boosters: RadialBoosterSpec | None = None
     booster_metrics: dict = {}
     if req.radial_booster_count > 0 and phases:
-        launch_phase = phases[0]
-        radial_boosters, booster_metrics = _size_radial_boosters(
-            launch_phase, metrics_rev[-1], launch_mass_above, req.radial_booster_count,
-            req.max_engine_count, use_full_catalog=use_full_catalog)
+        launch_design_dv = phases[0].design_dv()
+        # Iterate the asparagus split to convergence. Start from the nominal share, then track the share
+        # the height-clamped pods ACTUALLY deliver. Clamp the share to [0, 0.9] so the core never vanishes.
+        core_dv_factor = 1.0 - BOOSTER_DV_SHARE
+        for _ in range(5):
+            stages_rev, metrics_rev, pass_log, radial_boosters, booster_metrics = _size_all(core_dv_factor)
+            delivered = float(booster_metrics.get("booster_dv", 0.0)) if radial_boosters is not None else 0.0
+            eff_share = min(0.9, max(0.0, delivered / launch_design_dv)) if launch_design_dv > 0 else 0.0
+            new_factor = 1.0 - eff_share
+            if abs(new_factor - core_dv_factor) <= 0.02:
+                core_dv_factor = new_factor
+                stages_rev, metrics_rev, pass_log, radial_boosters, booster_metrics = _size_all(core_dv_factor)
+                break
+            core_dv_factor = new_factor
+        log.extend(pass_log)
         if radial_boosters is not None:
+            clamp_note = (f", pod height {booster_metrics.get('pod_height_m')}m <= core stack "
+                          f"{booster_metrics.get('core_stack_h_m')}m"
+                          + (" (CLAMPED to fit)" if booster_metrics.get("height_clamped") else ""))
             log.append(
                 f"radial boosters: {radial_boosters.count}x [{radial_boosters.engine_count}x {radial_boosters.engine} "
                 f"+ {radial_boosters.tank_count} {radial_boosters.tank}] on {radial_boosters.decoupler} "
                 f"-> combined liftoff TWR {booster_metrics['combined_twr']}, +{booster_metrics['booster_dv']:.0f} m/s "
-                f"ascent Δv, liftoff mass {booster_metrics['liftoff_mass_t']}t (jettison when spent)"
+                f"ascent Δv ({(1.0-core_dv_factor)*100:.0f}% of launch Δv; core carries the rest), "
+                f"liftoff mass {booster_metrics['liftoff_mass_t']}t (jettison when spent){clamp_note}"
             )
         else:
             log.append(f"radial boosters: requested {req.radial_booster_count} but no booster engine could "
                        f"close the combined liftoff TWR — single core")
+    else:
+        stages_rev, metrics_rev, pass_log, radial_boosters, booster_metrics = _size_all(1.0)
+        log.extend(pass_log)
+    stages = list(reversed(stages_rev))  # back to fire order (launch first)
 
     n_chute = parachute_count(req, bus + (part("Decoupler.1").wet_mass_t * 0))  # bus-dominated landing mass
     if req.landing is not None:
@@ -646,8 +703,22 @@ def design_ship(req: ShipRequirements, use_full_catalog: bool = False) -> Rocket
     # FEASIBILITY GATE — REJECT (do not silently ship) a rocket that cannot fly. This is the fix for the
     # pad-hang / fall-back failures: the physics was always computed; it just was never enforced.
     metrics = list(reversed(metrics_rev))
+    # ASPARAGUS CORE TWR EXEMPTION: with strap-on boosters, the LAUNCH (first-firing) core is deliberately
+    # sized to hang at LOW standalone TWR — the height-clamped pods carry the liftoff thrust in parallel, so
+    # the COMBINED liftoff TWR (checked below via est["launch_twr"], which _size_radial_boosters guarantees
+    # >= 1.4) is the real launchability test. So for the booster-assisted core, require only that it meets
+    # its Δv and is tanked (not its solo TWR); every other stage must still pass its full Δv+TWR `ok`.
+    boosters_present = design.radial_boosters is not None and design.radial_boosters.count > 0
     reasons: list[str] = []
-    bad_stages = [design.stages[i].role for i, m in enumerate(metrics) if not m.get("ok", True)]
+    bad_stages = []
+    for i, m in enumerate(metrics):
+        # The booster-assisted launch core (stages[0]) only needs to be Δv+tanked (dv_ok) — its solo TWR is
+        # intentionally low because the strap-ons carry the liftoff thrust (combined TWR checked below). A
+        # normal stage needs full `ok` (Δv AND its own TWR).
+        is_launch_core = boosters_present and i == 0
+        stage_ok = m.get("dv_ok", True) if is_launch_core else m.get("ok", True)
+        if not stage_ok:
+            bad_stages.append(design.stages[i].role)
     if bad_stages:
         reasons.append(f"stage(s) {bad_stages} cannot meet their Δv+TWR within the engine/cluster cap "
                        f"(under-thrust or under-tanked)")

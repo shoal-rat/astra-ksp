@@ -87,6 +87,12 @@ class CraftNode:
     # For a payload-fairing base: the computed ModuleProceduralFairing XSECTION shell (an ogive that
     # wraps the payload above it). _render_part splices this in place of the harvested craft's XSECTIONS.
     fairing_xsections: str | None = None
+    # INTERSTAGE SHROUD: an upper-stage ENGINE that sits above a lower stage is left as a bare bell
+    # mid-stack unless it is wrapped in an interstage shroud (the cylindrical tube between two stage
+    # diameters, e.g. an Atlas/Delta interstage). When set on an engine node, this records the shroud's
+    # outer radius + the y it extends UP to (the upper tank base), so the chart draws the tube and the
+    # geometry gate can confirm the exposed engine is housed, not naked. (h_top, r)
+    interstage_shroud: tuple[float, float] | None = None
 
     @property
     def craft_id(self) -> str:
@@ -160,6 +166,13 @@ class CraftWriter:
         )
         if (not design.crewed and not design.landing_legs) or _crewed_reentry_capsule:
             names.add("fairingSize1")
+        # INTERSTAGE SHROUD (flaw #4): any multi-stage design wraps each exposed upper-stage engine in an
+        # interstage tube at the LOWER stage's diameter — harvest the 2.5 m / 3.75 m procedural fairing
+        # bases so the shroud emits with full module state (mirrors the payload-fairing harvest). Stages
+        # are in fire order (stages[0] = bottom booster); stage i (i>=1) sits above stage i-1.
+        for i in range(1, len(design.stages)):
+            lower_dia = design.stages[i - 1].diameter_m
+            names.add("fairingSize2" if lower_dia < 3.0 else "fairingSize3")
         if design.landing_legs:
             names.add("landingLeg1")
         if design.docking_port:
@@ -445,9 +458,26 @@ class CraftWriter:
             and (part_bodies is None or "fairingSize1" in part_bodies))
         if has_fairing:
             payload_top = max(n.y + part(n.part_name).height_m / 2.0 for n in nodes if not n.is_surface)
+            # The bus rides radially-mounted accessories on `root` at bus_y = root.y - 0.05; the tallest
+            # (solar wing, h~1 m) reaches ABOVE the probe-core top. Fold that into payload_top so the shroud
+            # is tall enough to enclose the solar wings (they were poking out the nose otherwise).
+            bus_acc_top = root.y - 0.05 + self._bus_vertical_halfspan(part_bodies)
+            payload_top = max(payload_top, bus_acc_top)
             fb = new_node("fairingSize1", 0)
             self._attach(current, fb, "bottom", "top")
-            base_r = part(current.part_name).diameter_m / 2.0
+            # FAIRING ENCLOSURE (Codex flaw #3): the shroud must CONTAIN every payload appendage, not just
+            # the stack column. The bus rides radially-mounted hardware — the RA-100 dish, solar wings,
+            # battery, RTG, and (when docking) the RCS quad + monoprop tank — that reach OUTSIDE the bus
+            # core radius. Compute that radial extent from the SAME geometry the accessory placement uses
+            # below (_bus_radial_extent / _rcs_radial_extent), and size the fairing base radius to swallow
+            # it, so nothing pokes through the shroud. The old base_r = bus-part-radius left the antenna +
+            # solar sticking out past the shell (the protruding hardware Codex saw).
+            stack_payload_r = max((part(n.part_name).diameter_m / 2.0
+                                   for n in nodes if not n.is_surface and n.y > fb.y), default=0.0)
+            appendage_r = self._bus_radial_extent(root, part_bodies)
+            if design.docking_port:
+                appendage_r = max(appendage_r, self._rcs_radial_extent(root, part_bodies))
+            base_r = max(part(current.part_name).diameter_m / 2.0, stack_payload_r, appendage_r) + 0.10
             shell_h = max(1.0, payload_top - (fb.y + part("fairingSize1").height_m / 2.0))
             tip = shell_h + base_r * 2.6                     # ogive nose extends above the payload
             xs = [(0.0, base_r), (shell_h * 0.6, base_r), (shell_h, base_r * 0.8), (tip, 0.2)]
@@ -534,6 +564,33 @@ class CraftWriter:
                     nodes.append(sat)
                     if render_index == n_stages:
                         launch_stage_nodes.append(sat)
+            # INTERSTAGE SHROUD (Codex flaw #4): an upper-stage engine that sits ABOVE a lower stage is a
+            # bare bell mid-stack unless it is wrapped in an interstage tube (Atlas/Delta/Saturn interstage).
+            # Any stage with render_index < n_stages has a lower stage beneath it, so shroud its engine: a
+            # cylinder at the LOWER stage's diameter from the engine's bottom up to the engine top (the base
+            # of this stage's own tank). The lower stage is the NEXT one in the top-down render order, so its
+            # diameter is rendered_stages[render_index].diameter_m. The lower stage decouples before this
+            # engine fires (the inter-stage TD-12 below), so the shroud drops WITH the spent lower stage.
+            if render_index < n_stages:
+                lower_dia = rendered_stages[render_index].diameter_m
+                shroud_r = max(part(stage.engine).diameter_m, lower_dia) / 2.0
+                shroud_top = engine.y + part(stage.engine).height_m / 2.0  # up to the tank base above
+                engine.interstage_shroud = (shroud_top, shroud_r)
+                # Emit the shroud as a procedural fairing base SURFACE-attached to the engine (so the
+                # load-bearing attN stack chain is untouched), with a computed cylinder-XSECTION shell that
+                # wraps the bell up to the tank base. It rides the lower stage's inverse-stage so it drops
+                # with that stage when it separates (the engine is then clear to fire). Gated on can_emit so
+                # the offline/minimal render and the harvested-body launch stay in lock-step.
+                shroud_part = "fairingSize2" if lower_dia < 3.0 else "fairingSize3"
+                if part_bodies is None or shroud_part in part_bodies:
+                    eng_bot = engine.y - part(stage.engine).height_m / 2.0
+                    shroud = new_node(shroud_part, max(0, render_index))
+                    self._attach_surface(engine, shroud, (0.0, eng_bot, 0.0))
+                    sh_h = max(0.6, shroud_top - eng_bot)
+                    xs = [(0.0, shroud_r), (sh_h, shroud_r)]  # straight interstage tube (no nose taper)
+                    shroud.fairing_xsections = "\n".join(
+                        f"\t\tXSECTION\n\t\t{{\n\t\t\th = {h:.4f}\n\t\t\tr = {r:.4f}\n\t\t}}" for h, r in xs)
+                    nodes.append(shroud)
             current = engine
             prev_dia = stage.diameter_m  # the next (lower) stage compares its diameter to this one
 
@@ -616,7 +673,7 @@ class CraftWriter:
         # Avionics / power / comms bus on the command part: a satellite needs a comm link, power
         # generation, and storage to function and stay controllable away from Kerbin. Mounted
         # radially on the command module so it adds negligible ascent drag.
-        bus_radius = part(root.part_name).height_m * 0.6 + 0.25
+        bus_radius = self._bus_mount_radius(root)
         bus_y = root.y - 0.05
         bus_layout = [
             # RA-100 relay (not the weak Communotron 16): keeps signal to Kerbin from Duna and lets the
@@ -647,7 +704,7 @@ class CraftWriter:
         # pod plus a monopropellant tank. A docking craft must translate laterally to align ports —
         # reaction wheels rotate but cannot translate, and the main engine only pushes axially.
         if design.docking_port and can_emit("RCSBlock"):
-            rcs_r = part(root.part_name).height_m * 0.5 + 0.18
+            rcs_r = self._rcs_mount_radius(root)
             rcs_y = root.y - 0.02
             sqrt_half = 0.70710678
             rcs_layout = [
@@ -800,6 +857,50 @@ class CraftWriter:
         design.max_q_kpa = round(astro.max_dynamic_pressure(1.225) / 1000.0, 1)
 
         return nodes
+
+    # --- bus accessory geometry (shared by the placement below AND the fairing-enclosure sizing) ------
+    # The radially-mounted avionics/power/comms bus and the docking RCS quad sit at fixed radii on the
+    # command pod. The fairing must enclose them, so both the placement and the fairing sizing read the
+    # SAME formulas here — change one and the shroud follows, so the payload can never poke through again.
+    @staticmethod
+    def _bus_mount_radius(root: CraftNode) -> float:
+        return part(root.part_name).height_m * 0.6 + 0.25
+
+    @staticmethod
+    def _rcs_mount_radius(root: CraftNode) -> float:
+        return part(root.part_name).height_m * 0.5 + 0.18
+
+    @classmethod
+    def _bus_accessory_names(cls, part_bodies: dict[str, str] | None) -> list[str]:
+        present = (lambda n: part_bodies is None or n in part_bodies)
+        return [
+            "RelayAntenna100" if present("RelayAntenna100") else "longAntenna",
+            "batteryBank" if present("batteryBank") else "batteryBankMini",
+            "solarPanels5", "rtg",
+        ]
+
+    @classmethod
+    def _bus_radial_extent(cls, root: CraftNode, part_bodies: dict[str, str] | None) -> float:
+        """Outermost radius the bus avionics/power/comms accessories reach (mount radius + part radius)."""
+        r0 = cls._bus_mount_radius(root)
+        return max((r0 + part(n).diameter_m / 2.0 for n in cls._bus_accessory_names(part_bodies)
+                    if part_bodies is None or n in part_bodies), default=r0)
+
+    @classmethod
+    def _bus_vertical_halfspan(cls, part_bodies: dict[str, str] | None) -> float:
+        """Half-height of the TALLEST bus accessory — how far above the mount plane the bus hardware
+        reaches (the solar wing is the tallest). Used to make the payload fairing tall enough to enclose it."""
+        return max((part(n).height_m / 2.0 for n in cls._bus_accessory_names(part_bodies)
+                    if part_bodies is None or n in part_bodies), default=0.0)
+
+    @classmethod
+    def _rcs_radial_extent(cls, root: CraftNode, part_bodies: dict[str, str] | None) -> float:
+        """Outermost radius the docking RCS quad + monoprop tank reach."""
+        r0 = cls._rcs_mount_radius(root)
+        ext = r0 + part("RCSBlock").diameter_m / 2.0 if (part_bodies is None or "RCSBlock" in part_bodies) else r0
+        if part_bodies is None or "rcsTankRadialLong" in part_bodies:
+            ext = max(ext, r0 + part("rcsTankRadialLong").diameter_m / 2.0)
+        return ext
 
     @staticmethod
     def _attach(parent: CraftNode, child: CraftNode, parent_node: str, child_node: str, up: bool = False) -> None:

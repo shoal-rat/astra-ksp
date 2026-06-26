@@ -123,3 +123,94 @@ def test_symmetric_check_ignores_engine_decoupler_radii_for_even_pods():
     rep = design_chart.looks_like_a_rocket(design)
     assert rep["checks"]["symmetric strap-on boosters"]
     assert rep["looks_like_a_rocket"], rep["checks"]
+
+
+# ==================================================================================================
+# CODEX MULTIMODAL REVIEW — the four geometry flaws the OLD gate was blind to. Each new check must
+# (a) PASS on a sound real rocket and (b) REJECT the bad geometry that produced the flaw.
+# ==================================================================================================
+def _ferry():
+    from tools.design_eve_two_ship import crew_ferry
+    from ksp_lab.design import design_ship
+    return design_ship(crew_ferry())
+
+
+def test_gate_passes_the_fixed_ferry_and_tug_with_all_new_checks():
+    # The Codex-flagged ferry/tug now pass the gate INCLUDING the four new checks (boosters not taller than
+    # the host stage, payload enclosed, interstage shroud, plus the existing slender/taper/base checks).
+    from tools.design_eve_two_ship import crew_ferry, return_tug
+    from ksp_lab.design import design_ship
+    for req in (crew_ferry(), return_tug()):
+        rep = design_chart.looks_like_a_rocket(design_ship(req))
+        assert rep["looks_like_a_rocket"], (req.name, rep["checks"])
+        assert rep["checks"]["boosters no taller than host stage"]
+        assert rep["checks"]["payload fully enclosed (nothing protrudes the fairing)"]
+        assert rep["checks"]["upper-stage engine has interstage shroud"]
+
+
+def test_gate_rejects_boosters_taller_than_the_host_stage():
+    # FLAW #1/#2: a pod that towers above its host launch stage into the upper stage is a hammerhead/cage.
+    # Tamper the ferry geometry to raise the pod tops above the launch-stage top and confirm the check fails.
+    design = _ferry()
+    rb = design.radial_boosters
+    names = {rb.engine, rb.tank, rb.decoupler}
+    geom = design_chart.assembly_geometry(design)
+    ok_clean, _ = design_chart._booster_height_ok(geom, names)
+    assert ok_clean is True, "the fixed ferry pods sit at/below the host stage"
+    # Raise every booster part 30 m so the pods tower into the upper stage / payload.
+    tall = []
+    for g in geom:
+        g2 = dict(g)
+        if g["surface"] and g["name"] in names:
+            g2["y"] += 30.0; g2["top"] += 30.0; g2["bot"] += 30.0
+        tall.append(g2)
+    ok_tall, _ = design_chart._booster_height_ok(tall, names)
+    assert ok_tall is False, "a pod towering above the host stage must FAIL the height gate"
+
+
+def test_gate_rejects_payload_protruding_outside_the_fairing():
+    # FLAW #3: payload hardware sticking out past the fairing shell must fail the enclosure check. The
+    # fixed relay encloses everything; push an accessory outside the shell radius and confirm rejection.
+    design = _relay_comsat()
+    geom = design_chart.assembly_geometry(design)
+    ok_clean, m = design_chart._payload_enclosed_ok(geom)
+    assert ok_clean is True, m
+    # Shove the antenna far outside the fairing radius.
+    tampered = []
+    for g in geom:
+        g2 = dict(g)
+        if g["name"] == "RelayAntenna100":
+            g2["x"] = 5.0
+        tampered.append(g2)
+    ok_bad, m2 = design_chart._payload_enclosed_ok(tampered)
+    assert ok_bad is False, m2
+    assert m2["max_radial_overshoot_m"] > 0.0
+
+
+def test_gate_rejects_an_exposed_upper_stage_engine_without_an_interstage_shroud():
+    # FLAW #4: an upper-stage engine sitting above a lower stage with NO shroud is a bare bell mid-stack.
+    # The fixed relay shrouds it; strip the shroud and confirm the check fails.
+    design = _relay_comsat()
+    geom = design_chart.assembly_geometry(design)
+    ok_clean, m = design_chart._interstage_shroud_ok(geom)
+    assert ok_clean is True, m
+    # Remove the interstage_shroud from every upper-stage engine.
+    stripped = []
+    for g in geom:
+        g2 = dict(g)
+        if g["role"] == "engine":
+            g2["interstage_shroud"] = None
+        stripped.append(g2)
+    ok_bad, m2 = design_chart._interstage_shroud_ok(stripped)
+    assert ok_bad is False, m2
+    assert m2["unshrouded"] >= 1
+
+
+def test_relay_emits_an_interstage_shroud_part_in_the_craft():
+    # FLAW #4 (craft): the interstage shroud must also be a real part in the .craft (a procedural fairing
+    # base at the lower stage diameter), not chart-only — so the launched vessel houses the upper engine.
+    from ksp_lab.craft_writer import CraftWriter
+    design = _relay_comsat()
+    text = CraftWriter().render(design, part_bodies=None)
+    assert ("part = fairingSize2" in text) or ("part = fairingSize3" in text), \
+        "multi-stage craft must carry an interstage shroud part wrapping the upper engine"

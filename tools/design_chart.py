@@ -9,6 +9,7 @@ in the same coordinate system.
 from __future__ import annotations
 
 import math
+import re
 import sys
 from html import escape
 from pathlib import Path
@@ -83,16 +84,45 @@ def assembly_geometry(design, part_bodies: dict | None = None) -> list[dict]:
             "top": float(y) + p.height_m / 2.0,
             "bot": float(y) - p.height_m / 2.0,
             "fairing_xsections": n.fairing_xsections,
+            # INTERSTAGE SHROUD wrapping this engine, (shroud_top_y, shroud_radius), or None. Set by
+            # craft_writer on every upper-stage engine that sits above a lower stage (flaw #4).
+            "interstage_shroud": getattr(n, "interstage_shroud", None),
+            "stage_index": getattr(n, "stage_index", 0),
         })
     # A payload fairing's ogive shell extrudes UPWARD from its base over every part above it (the
     # payload bus). Record that shell extent on the fairing dict so the chart can draw the real shroud
     # ENCLOSING the payload — not the tiny 0.42 m base part, which made the payload look exposed.
+    #
+    # SHELL RADIUS comes from the craft_writer's computed XSECTIONS (the ogive cross-sections), which now
+    # size the base to swallow the radially-mounted bus hardware (RA-100/solar/RTG/RCS). Parse the max
+    # section radius so the drawn shroud — and the gate's "payload housed" check — use the REAL enclosing
+    # radius, not just the 0.625 m base part. ``encloses_r`` = the outermost radius of any payload part
+    # the shroud must contain (stack parts AND surface-mounted accessories above the fairing base).
     for f in out:
         if f["role"] == "fairing" and not f["surface"]:
-            enclosed = [g for g in out if not g["surface"] and g["role"] != "fairing" and g["y"] > f["y"]]
+            # The shroud must contain EVERY payload part above its base — the stack column AND the
+            # radially-mounted bus hardware (solar wings/antenna/RTG/battery). Including the surface parts
+            # in shell_top is what makes the ogive shoulder rise ABOVE the solar wings instead of letting
+            # them poke through the nose (the protrusion Codex flagged).
+            enclosed = [g for g in out if g["y"] > f["y"] and g["role"] != "fairing"]
             f["shell_top"] = max((g["top"] for g in enclosed), default=f["top"])
-            f["encloses"] = max((g["dia"] for g in enclosed), default=f["dia"])
+            f["encloses"] = max((g["dia"] for g in enclosed if not g["surface"]), default=f["dia"])
+            f["shell_r"] = _fairing_shell_radius(f)
+            # Outermost radius any enclosed payload part reaches (centre offset + half its drawn width).
+            f["encloses_r"] = max(
+                (math.hypot(g["x"], g["z"]) + g["draw_dia"] / 2.0 for g in enclosed),
+                default=f["dia"] / 2.0)
     return out
+
+
+def _fairing_shell_radius(fairing: dict) -> float:
+    """The fairing shroud's outer radius = the max ``r`` across its computed ogive XSECTIONS (the shell the
+    craft_writer sized to enclose the payload). Falls back to the base part radius if no sections parsed."""
+    xs = fairing.get("fairing_xsections")
+    if not xs:
+        return max(fairing["dia"] / 2.0, fairing.get("encloses", fairing["dia"]) / 2.0)
+    radii = [float(m) for m in re.findall(r"r\s*=\s*([\d.]+)", xs)]
+    return max(radii) if radii else fairing["dia"] / 2.0
 
 
 def stack_geometry(design, part_bodies: dict | None = None) -> list[dict]:
@@ -159,6 +189,66 @@ def _boosters_are_symmetric(geom: list[dict], booster_names: set, expected_count
     return all(abs(g - target) <= 0.35 * target for g in gaps)
 
 
+def _booster_height_ok(geom: list[dict], booster_names: set) -> tuple[bool, dict]:
+    """FALCON-HEAVY RULE (Codex flaw #1/#2): a radial strap-on pod must reach AT MOST the top of its HOST
+    launch (booster) stage and NO higher — it may not tower into / overlap the upper stage or payload. The
+    host launch stage is the stack stage whose nodes sit at the HIGHEST inverse-stage index (the bumped
+    launch_istg). Returns (ok, metrics): ok iff the pod cluster's top is at/below the launch-stage top (with
+    a small tolerance), so the core's upper stage + payload stay clear ABOVE the boosters."""
+    pods = [g for g in geom if g["surface"] and g["name"] in booster_names]
+    if not pods:
+        return True, {}
+    stack = [g for g in geom if not g["surface"]]
+    launch_istg = max((g.get("stage_index", 0) for g in stack), default=0)
+    launch_nodes = [g for g in stack if g.get("stage_index", 0) == launch_istg]
+    if not launch_nodes:
+        return True, {}
+    launch_top = max(g["top"] for g in launch_nodes)
+    pod_top = max(g["top"] for g in pods)
+    ok = pod_top <= launch_top + 0.30                       # ~one decoupler height of slack
+    return ok, {"pod_top_y": round(pod_top, 2), "launch_stage_top_y": round(launch_top, 2)}
+
+
+def _payload_enclosed_ok(geom: list[dict]) -> tuple[bool, dict]:
+    """FAIRING ENCLOSURE (Codex flaw #3): for every payload fairing, NO enclosed part — stack column or the
+    radially-mounted bus hardware (antenna/solar/RTG/battery/RCS) — may extend outside the shroud: not past
+    its radius (shell_r) and not above its ogive shoulder (shell_top). A capsule-top (no fairing) craft is
+    vacuously enclosed (the nose-part rule governs it). Returns (ok, metrics)."""
+    fairings = [g for g in geom if g["role"] == "fairing" and not g["surface"]]
+    if not fairings:
+        return True, {}
+    worst_r = worst_dy = 0.0
+    ok = True
+    for f in fairings:
+        shell_r = f.get("shell_r", f["dia"] / 2.0)
+        shell_top = f.get("shell_top", f["top"])
+        enclosed = [g for g in geom if g["y"] > f["y"] and g["role"] != "fairing"]
+        for g in enclosed:
+            reach_r = math.hypot(g["x"], g["z"]) + g["draw_dia"] / 2.0
+            worst_r = max(worst_r, reach_r - shell_r)
+            worst_dy = max(worst_dy, g["top"] - shell_top)
+            if reach_r > shell_r + 1e-6 or g["top"] > shell_top + 1e-6:
+                ok = False
+    return ok, {"max_radial_overshoot_m": round(worst_r, 2), "max_vertical_overshoot_m": round(worst_dy, 2)}
+
+
+def _interstage_shroud_ok(geom: list[dict]) -> tuple[bool, dict]:
+    """INTERSTAGE SHROUD (Codex flaw #4): every upper-stage ENGINE that sits above a lower stage must be
+    wrapped in an interstage shroud (so it is not a bare bell mid-stack). An engine sits above a lower stage
+    iff its inverse-stage index is LESS than the bottom (booster) engine's — i.e. it is not the base engine.
+    Each such engine must carry an `interstage_shroud`. The base engine (at the highest engine inverse-stage)
+    fires at liftoff with nothing below it, so it needs none. Returns (ok, metrics)."""
+    engines = [g for g in geom if g["role"] == "engine" and not g["surface"]]
+    if len(engines) <= 1:
+        return True, {}
+    base_istg = max(g.get("stage_index", 0) for g in engines)
+    upper = [g for g in engines if g.get("stage_index", 0) < base_istg]
+    if not upper:
+        return True, {}
+    missing = sum(1 for g in upper if not g.get("interstage_shroud"))
+    return missing == 0, {"upper_engines": len(upper), "unshrouded": missing}
+
+
 def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
     """Calculate vehicle proportions and return a hard PASS/FAIL report.
 
@@ -221,6 +311,14 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
     drag_loss = float(getattr(design, "ascent_drag_loss_mps", 0.0) or 0.0)
     landed_ok = (not bool(getattr(design, "landing_legs", False))) or bool(getattr(design, "landed_stable", True))
 
+    # NEW GEOMETRY GATES (Codex multimodal review) — the picture must now PROVE the four flaws are absent:
+    #  (1/2) a radial booster may not tower above / overlap the upper stage (Falcon-Heavy height rule);
+    #  (3)   every payload part is inside the fairing shroud (nothing protrudes radius or nose);
+    #  (4)   every exposed upper-stage engine is wrapped in an interstage shroud (no bare bell mid-stack).
+    booster_height_ok, booster_height_m = _booster_height_ok(geom, booster_names)
+    payload_enclosed_ok, payload_enc_m = _payload_enclosed_ok(geom)
+    interstage_ok, interstage_m = _interstage_shroud_ok(geom)
+
     checks = {
         # Real launchers run L/D ~8 (Saturn V ~11) to ~19 (Falcon 9 = 18.9). Cap at 19: accepts a
         # legitimately tall slender stack (a single-launch propulsive interplanetary round-trip) while
@@ -228,7 +326,9 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
         "slender body (4 <= L/D <= 19)": 4.0 <= fineness <= 19.0,
         "monotonic taper (widest toward base)": taper_ok,
         "payload housed (fairing or capsule top)": top_part["name"] in NOSE_PARTS or any(b["role"] == "fairing" for b in body),
+        "payload fully enclosed (nothing protrudes the fairing)": payload_enclosed_ok,
         "engine at the base": bottom_part["role"] == "engine",
+        "upper-stage engine has interstage shroud": interstage_ok,
         "controlled ascent margin": active_control_stable,
         # The envelope check now passes the CORE protrusion bound AND (if any) a SYMMETRIC strap-on
         # cluster — so 4 even radial boosters read as a real rocket, while a lopsided overhang still fails.
@@ -238,6 +338,8 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
     if boosters_present:
         # Surface the strap-on verdict explicitly so a bad (asymmetric) cluster is visible in the report.
         checks["symmetric strap-on boosters"] = boosters_symmetric
+        # FALCON-HEAVY HEIGHT: the pods must not reach above their host launch stage into the upper stage.
+        checks["boosters no taller than host stage"] = booster_height_ok
     return {
         "length_m": round(length, 2),
         "origin_length_m": round(origin_length, 2),
@@ -250,6 +352,9 @@ def looks_like_a_rocket(design, part_bodies: dict | None = None) -> dict:
         "static_margin_m": round(static_margin_m, 2),
         "static_margin_calibers": round(static_margin_cal, 2),
         "ascent_drag_loss_mps": drag_loss,
+        "booster_height": booster_height_m,
+        "payload_enclosure": payload_enc_m,
+        "interstage": interstage_m,
         "checks": checks,
         "looks_like_a_rocket": all(checks.values()),
     }
@@ -285,12 +390,19 @@ def _draw_side_part(g: dict, cx: float, yy, scale: float, front: bool = False) -
     w = max(1.0, g["draw_dia"] * scale)
     stroke = "#475569"
 
+    if role == "fairing" and g["surface"]:
+        # A SURFACE-attached fairing base is an INTERSTAGE shroud (emitted for the .craft). The shroud
+        # itself is drawn around its host engine via that engine's `interstage_shroud` tube, so skip it
+        # here to avoid drawing a spurious payload-style ogive mid-stack.
+        return ""
     if role == "fairing":
         # Draw the real ogive SHROUD: a cylinder as wide as the payload it encloses, from the fairing
         # base up over the bus to a rounded nose above it. Semi-transparent so the enclosed payload shows
-        # faintly INSIDE — proving it is housed, not riding exposed on the nose.
-        shell_dia = max(g["dia"], g.get("encloses", g["dia"]))
-        half = shell_dia * scale / 2.0
+        # faintly INSIDE — proving it is housed, not riding exposed on the nose. The shell radius is the
+        # craft_writer's computed XSECTION radius (sized to swallow the radial bus hardware), so the drawn
+        # shroud truly contains the antenna/solar/RTG/RCS instead of clipping them.
+        shell_r = g.get("shell_r", max(g["dia"], g.get("encloses", g["dia"])) / 2.0)
+        half = shell_r * scale
         base_y = yy(g["bot"])
         shoulder_m = g.get("shell_top", g["top"])
         shoulder_y = yy(shoulder_m)
@@ -321,11 +433,27 @@ def _draw_side_part(g: dict, cx: float, yy, scale: float, front: bool = False) -
     if role == "engine":
         half_t = w * 0.34
         half_b = w * 0.50
-        return (
+        bell = (
             f'<polygon points="{local_cx-half_t:.1f},{top_y:.1f} {local_cx+half_t:.1f},{top_y:.1f} '
             f'{local_cx+half_b:.1f},{top_y+h:.1f} {local_cx-half_b:.1f},{top_y+h:.1f}" '
             f'fill="{fill}" stroke="#991b1b"/>'
         )
+        shroud = g.get("interstage_shroud")
+        if shroud:
+            # INTERSTAGE SHROUD: a semi-transparent grey tube wrapping the exposed upper-stage engine, from
+            # the engine bottom up to the upper tank base, at the lower-stage radius — so the bell is HOUSED
+            # mid-stack, not a bare engine. Drawn behind the bell (returned first).
+            shroud_top_m, shroud_r = shroud
+            half_s = shroud_r * scale
+            s_top_y = yy(shroud_top_m)
+            s_bot_y = yy(g["bot"])
+            tube = (
+                f'<rect x="{local_cx-half_s:.1f}" y="{s_top_y:.1f}" width="{2*half_s:.1f}" '
+                f'height="{max(1.0, s_bot_y - s_top_y):.1f}" rx="2" fill="#cbd5e1" stroke="#64748b" '
+                f'stroke-dasharray="3 2" opacity="0.45"/>'
+            )
+            return tube + bell
+        return bell
     if role == "fin":
         half = max(8.0, w * 0.7)
         return (
