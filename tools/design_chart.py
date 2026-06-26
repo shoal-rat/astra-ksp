@@ -209,16 +209,55 @@ def _booster_height_ok(geom: list[dict], booster_names: set) -> tuple[bool, dict
     return ok, {"pod_top_y": round(pod_top, 2), "launch_stage_top_y": round(launch_top, 2)}
 
 
+# DOCKING SERVICE HARDWARE that must be shrouded for ascent: the docking port + its RCS translation quad +
+# the radial monoprop tank. Exposed on the narrow payload body the Clamp-O-Tron + RCS blocks + arms stick
+# out past the upper stack — exactly the "top service hardware protrudes outside the fairing/capsule
+# envelope" flaw Codex flagged on the crewed ferry + tug. A vehicle carrying these MUST ride in a launch
+# fairing (which jettisons in orbit, exposing the port for docking). NOTE: the low, tight avionics bus
+# (antenna/solar/RTG/battery) is NOT in this mandatory set — a finished comsat/lander legitimately flies it
+# under a nose cone — but when a fairing IS present, the in-fairing overshoot check below still requires the
+# shroud to contain that bus hardware too (so a too-small shroud clipping the solar wings still fails).
+DOCKING_SERVICE_HARDWARE = {"dockingPort2", "RCSBlock", "rcsTankRadialLong"}
+
+
 def _payload_enclosed_ok(geom: list[dict]) -> tuple[bool, dict]:
-    """FAIRING ENCLOSURE (Codex flaw #3): for every payload fairing, NO enclosed part — stack column or the
-    radially-mounted bus hardware (antenna/solar/RTG/battery/RCS) — may extend outside the shroud: not past
-    its radius (shell_r) and not above its ogive shoulder (shell_top). A capsule-top (no fairing) craft is
-    vacuously enclosed (the nose-part rule governs it). Returns (ok, metrics)."""
+    """FAIRING ENCLOSURE (Codex flaw #3 + final flaw): every payload appendage above the upper stage must be
+    HOUSED — either inside a payload fairing shroud, or (for a finished comsat with no service hardware on the
+    nose) trivially absent. Two ways this fails:
+
+      (a) a fairing is present but an enclosed part — the stack column OR the radially-mounted bus hardware
+          (antenna/solar/RTG/battery/RCS) — pokes OUTSIDE the shroud: past its radius (shell_r) or above its
+          ogive shoulder (shell_top); OR
+      (b) the top bus carries SERVICE HARDWARE (a docking port, RCS quad, radial antenna/solar/RTG/...) but
+          there is NO fairing enclosing it — so the Clamp-O-Tron + RCS + antenna stick out naked on ascent
+          (exactly the crewed ferry/tug flaw). A docking/service payload MUST ride in a launch fairing.
+
+    A plain capsule-top craft with no docking service hardware and no fairing is vacuously enclosed (the
+    nose-part rule governs it). Returns (ok, metrics)."""
     fairings = [g for g in geom if g["role"] == "fairing" and not g["surface"]]
+    # (b) Detect un-shrouded DOCKING service hardware (Clamp-O-Tron + RCS quad + monoprop tank). Such a part
+    # is "naked" when no payload fairing's shroud both reaches it in radius AND rises above it (i.e. it is
+    # not contained by ANY fairing). With no fairing at all, every docking-service part is naked.
+    naked: list[dict] = []
+    for g in geom:
+        if g["name"] not in DOCKING_SERVICE_HARDWARE:
+            continue
+        reach_r = math.hypot(g["x"], g["z"]) + g["draw_dia"] / 2.0
+        housed = any(
+            g["y"] > f["y"]
+            and reach_r <= f.get("shell_r", f["dia"] / 2.0) + 1e-6
+            and g["top"] <= f.get("shell_top", f["top"]) + 1e-6
+            for f in fairings
+        )
+        if not housed:
+            naked.append(g)
     if not fairings:
-        return True, {}
+        # No fairing: ok ONLY if there is no top service hardware to shroud (a finished comsat/capsule top).
+        ok = not naked
+        return ok, {"unshrouded_service_parts": len(naked),
+                    "max_radial_overshoot_m": 0.0, "max_vertical_overshoot_m": 0.0}
     worst_r = worst_dy = 0.0
-    ok = True
+    ok = not naked
     for f in fairings:
         shell_r = f.get("shell_r", f["dia"] / 2.0)
         shell_top = f.get("shell_top", f["top"])
@@ -229,7 +268,9 @@ def _payload_enclosed_ok(geom: list[dict]) -> tuple[bool, dict]:
             worst_dy = max(worst_dy, g["top"] - shell_top)
             if reach_r > shell_r + 1e-6 or g["top"] > shell_top + 1e-6:
                 ok = False
-    return ok, {"max_radial_overshoot_m": round(worst_r, 2), "max_vertical_overshoot_m": round(worst_dy, 2)}
+    return ok, {"unshrouded_service_parts": len(naked),
+                "max_radial_overshoot_m": round(worst_r, 2),
+                "max_vertical_overshoot_m": round(worst_dy, 2)}
 
 
 def _interstage_shroud_ok(geom: list[dict]) -> tuple[bool, dict]:

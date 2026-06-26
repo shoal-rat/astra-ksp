@@ -206,6 +206,43 @@ def test_gate_rejects_an_exposed_upper_stage_engine_without_an_interstage_shroud
     assert m2["unshrouded"] >= 1
 
 
+def test_gate_rejects_unshrouded_top_docking_hardware():
+    # CODEX FINAL FLAW: a docking vehicle whose Clamp-O-Tron + RCS quad + monoprop tank ride EXPOSED on the
+    # nose (no enclosing fairing) must FAIL the enclosure gate — the top service hardware protrudes past the
+    # narrow payload body. The fixed ferry encloses them in a fairing; strip the fairing and confirm rejection.
+    from tools.design_eve_two_ship import crew_ferry
+    from ksp_lab.design import design_ship
+
+    design = design_ship(crew_ferry())
+    geom = design_chart.assembly_geometry(design)
+    ok_clean, m = design_chart._payload_enclosed_ok(geom)
+    assert ok_clean is True, m                                  # faired ferry: docking hardware housed
+    # Remove the fairing -> the docking port + RCS + monoprop tank are now naked on the nose.
+    no_fairing = [g for g in geom if g["role"] != "fairing"]
+    ok_bad, m2 = design_chart._payload_enclosed_ok(no_fairing)
+    assert ok_bad is False, m2
+    assert m2["unshrouded_service_parts"] >= 1                  # at least the docking port reads as naked
+
+
+def test_gate_passes_the_docking_ferry_and_tug_with_the_enclosure_check():
+    # The crewed ferry + return tug (docking port + RCS + bus) now PASS the full gate — their top service
+    # hardware is housed in a launch fairing (matching the relay Codex approved), nothing protrudes.
+    from tools.design_eve_two_ship import crew_ferry, return_tug
+    from ksp_lab.design import design_ship
+
+    for req in (crew_ferry(), return_tug()):
+        d = design_ship(req)
+        assert d.docking_port is True
+        rep = design_chart.looks_like_a_rocket(d)
+        assert rep["looks_like_a_rocket"], (req.name, rep["checks"])
+        assert rep["checks"]["payload fully enclosed (nothing protrudes the fairing)"]
+        # The craft really carries a payload fairing shroud (not just chart-only).
+        from ksp_lab.craft_writer import CraftWriter
+
+        text = CraftWriter().render(d, part_bodies=None)
+        assert "part = fairingSize1" in text, f"{req.name} must carry an enclosing payload fairing"
+
+
 def test_relay_emits_an_interstage_shroud_part_in_the_craft():
     # FLAW #4 (craft): the interstage shroud must also be a real part in the .craft (a procedural fairing
     # base at the lower stage diameter), not chart-only — so the launched vessel houses the upper engine.

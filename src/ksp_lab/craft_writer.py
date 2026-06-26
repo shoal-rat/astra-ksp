@@ -157,14 +157,18 @@ class CraftWriter:
         # Payload fairing harvest. An uncrewed no-legs probe comsat rides in one; a CREWED REENTRY CAPSULE
         # (heat-shield + chutes, no docking port) ALSO rides in one (the blunt exposed pod+heat-shield was
         # the +0.12 Cd ascent penalty that made the crew vehicle draggy/unstable and burn all its Δv
-        # suborbital). The fairing shrouds the pod+heat-shield+chutes through max-Q, then jettisons in orbit
-        # leaving them intact for the Kerbin-return reentry (see has_fairing in _build_nodes + the deploy
-        # fairing jettison). Mirror the has_fairing predicate so harvest and emission stay in lock-step.
+        # suborbital); and a DOCKING / SERVICE PAYLOAD (docking port + RCS + bus hardware on top) rides in
+        # one too so the Clamp-O-Tron + RCS + antenna/solar do not protrude during ascent. The fairing
+        # shrouds the top through max-Q, then jettisons in orbit leaving everything intact (exposing the
+        # docking port for rendezvous, the heat-shield+chutes for reentry). See has_fairing in
+        # _build_nodes + the deploy fairing jettison. Mirror that predicate so harvest+emission stay in
+        # lock-step.
         _crewed_reentry_capsule = bool(
             design.crewed and design.heatshield and not design.docking_port
             and int(round(design.estimates.get("parachutes", 0))) > 0
         )
-        if (not design.crewed and not design.landing_legs) or _crewed_reentry_capsule:
+        if ((not design.crewed and not design.landing_legs)
+                or _crewed_reentry_capsule or design.docking_port):
             names.add("fairingSize1")
         # INTERSTAGE SHROUD (flaw #4): any multi-stage design wraps each exposed upper-stage engine in an
         # interstage tube at the LOWER stage's diameter — harvest the 2.5 m / 3.75 m procedural fairing
@@ -439,7 +443,7 @@ class CraftWriter:
         # (computed XSECTIONS) wraps everything above it into a pointed nose and is jettisoned in orbit
         # before the dish + solar deploy. The base diameter matches the payload body.
         #
-        # Two payloads ride faired:
+        # Three payloads ride faired:
         #  - an UNCREWED, no-legs probe comsat (the relay), and
         #  - a CREWED REENTRY CAPSULE: a crewed vehicle that returns by heat-shield + chutes (no docking
         #    port, no propulsive landing legs). The blunt EXPOSED Mk1 pod + forward heat-shield was the
@@ -447,14 +451,26 @@ class CraftWriter:
         #    unstable — it tumbled the gravity turn and burned all ~10 km/s of Δv suborbital. Shrouding the
         #    capsule in the same ogive the relay uses brings Cd back to ~0.23. The fairing is jettisoned in
         #    orbit (deploy_relay/crewed_eve_roundtrip fairing jettison), which removes ONLY the shell and
-        #    leaves the pod + heat-shield + chutes intact for the Kerbin-return reentry. A crewed Starship
-        #    lander (docking_port, propulsive legs, 0 chutes) keeps its OWN nose and is NOT faired here.
+        #    leaves the pod + heat-shield + chutes intact for the Kerbin-return reentry, and
+        #  - a DOCKING / SERVICE PAYLOAD (Codex final flaw): any vehicle whose top bus carries a DOCKING
+        #    PORT (+ the RCS quad + monoprop tank) — the crew ferry and the return tug. Without a fairing
+        #    the Clamp-O-Tron + RCS blocks + radial antenna/solar/RTG STUCK OUT past the narrow payload
+        #    body during ascent (the "top service hardware protrudes" flaw). They must ride inside the same
+        #    ogive the relay uses; the fairing is jettisoned IN ORBIT (eve_two_ship_return jettison ->
+        #    deploy_relay.jettison_payload_fairings), which removes ONLY the shell and EXPOSES the docking
+        #    port (+ heat shield + chutes on the tug) for the in-orbit rendezvous/dock and reentry. A crewed
+        #    Starship-style propulsive lander (docking_port + legs but mid-mission descent) is the natural
+        #    candidate too — its top hardware is shrouded for launch and bared at the same in-orbit jettison.
         crewed_reentry_capsule = bool(
             design.crewed and design.heatshield and not design.docking_port
             and int(round(design.estimates.get("parachutes", 0))) > 0
         )
+        # A docking / service payload: the top bus carries a docking port and (always, with it) the radial
+        # RCS quad + monoprop tank + the avionics bus, so the ENTIRE top must be shrouded for ascent.
+        docking_service_payload = bool(design.docking_port)
         has_fairing = (
-            ((not design.crewed and not design.landing_legs) or crewed_reentry_capsule)
+            ((not design.crewed and not design.landing_legs)
+             or crewed_reentry_capsule or docking_service_payload)
             and (part_bodies is None or "fairingSize1" in part_bodies))
         if has_fairing:
             payload_top = max(n.y + part(n.part_name).height_m / 2.0 for n in nodes if not n.is_surface)
@@ -463,6 +479,13 @@ class CraftWriter:
             # is tall enough to enclose the solar wings (they were poking out the nose otherwise).
             bus_acc_top = root.y - 0.05 + self._bus_vertical_halfspan(part_bodies)
             payload_top = max(payload_top, bus_acc_top)
+            # The DOCKING PORT is stack-attached ABOVE `root` (top node, up=True) further down in this
+            # method, so it is not yet in `nodes` here. Fold its top into payload_top analytically (same
+            # _attach geometry: root top + the port's own height) so the shroud rises ABOVE the Clamp-O-Tron
+            # — otherwise the docking port poked out the nose (the "top service hardware protrudes" flaw).
+            if design.docking_port:
+                dock_top = root.y + part(root.part_name).height_m / 2.0 + part("dockingPort2").height_m
+                payload_top = max(payload_top, dock_top)
             fb = new_node("fairingSize1", 0)
             self._attach(current, fb, "bottom", "top")
             # FAIRING ENCLOSURE (Codex flaw #3): the shroud must CONTAIN every payload appendage, not just
@@ -822,7 +845,11 @@ class CraftWriter:
 
         if design.docking_port and can_emit("dockingPort2"):
             # Clamp-O-Tron on the nose = the mating surface for an in-orbit rendezvous (Orion<->HLS
-            # crew transfer). It IS the streamlined nose, so no separate nose cone. inverse-stage 0.
+            # crew transfer). For ASCENT it is NOT the exposed nose — a docking-service payload is now
+            # SHROUDED in the payload fairing built above (has_fairing is True when design.docking_port),
+            # so the Clamp-O-Tron + RCS + bus hardware ride inside the ogive and nothing protrudes. The
+            # fairing is jettisoned in orbit (deploy_relay.jettison_payload_fairings), exposing this port
+            # for the in-orbit dock. No separate nose cone either way. inverse-stage 0.
             dock = new_node("dockingPort2", 0)
             self._attach(root, dock, "top", "bottom", up=True)
             nodes.append(dock)

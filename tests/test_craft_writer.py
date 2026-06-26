@@ -5,6 +5,7 @@ import pytest
 from ksp_lab.craft_writer import CraftValidationError, CraftWriter, resolve_craft_path
 from ksp_lab.mission import MissionPlanner
 from ksp_lab.optimizer import HistoryOptimizer
+from ksp_lab.parts import part
 
 
 def test_craft_writer_outputs_parts(tmp_path: Path):
@@ -222,6 +223,67 @@ def test_crewed_reentry_capsule_rides_in_a_fairing_keeping_pod_heatshield_chutes
         #    not the ~0.35 unfaired blunt-capsule value, and the ascent margin gate stays True.
         assert design.drag_cd <= 0.26, f"faired crewed Cd should be near the relay ~0.23, got {design.drag_cd}"
         assert design.ascent_stable is True
+
+
+def _docking_ferry_design():
+    """The crewed Eve ferry: crew=1, docking port + RCS, 4 strap-ons, no heat shield (rides the tug home).
+    Its top bus carries the Clamp-O-Tron + RCS quad + monoprop tank + avionics — the docking service
+    hardware that must ride inside a launch fairing."""
+    from tools.design_eve_two_ship import crew_ferry
+    from ksp_lab.design import design_ship
+
+    return design_ship(crew_ferry())
+
+
+def test_docking_vehicle_rides_in_a_fairing_enclosing_its_top_service_hardware():
+    # CODEX FINAL FLAW: on a docking vehicle (crew ferry / return tug) the TOP service hardware — the
+    # Clamp-O-Tron docking port + RCS quad + monoprop tank + radial bus — stuck OUT past the narrow payload
+    # body during ascent. It must now ride inside the same launch fairing the relay uses, sized so NOTHING
+    # protrudes the ogive radius or rises above its shoulder. The fairing jettisons in orbit (exposing the
+    # docking port for the dock), so the docking port + RCS + bus parts are all STILL present.
+    design = _docking_ferry_design()
+    assert design.docking_port is True
+    part_bodies = {
+        "fairingSize1": (
+            "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleProceduralFairing\n"
+            "\t\tXSECTION\n\t\t{\n\t\t\th = 0\n\t\t\tr = 0.625\n\t\t}\n\t}"
+        ),
+        "mk1pod.v2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleCommand\n\t}",
+        "dockingPort2": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleDockingNode\n\t}",
+        "RCSBlock": "\tEVENTS\n\t{\n\t}\n\tMODULE\n\t{\n\t\tname = ModuleRCSFX\n\t}",
+        "rcsTankRadialLong": "\tEVENTS\n\t{\n\t}\n\tRESOURCE\n\t{\n\t\tname = MonoPropellant\n\t}",
+    }
+    from ksp_lab.craft_writer import CraftWriter as _CW
+
+    for pb in (None, part_bodies):
+        nodes = _CW()._build_nodes(design, part_bodies=pb)
+        names = [n.part_name for n in nodes]
+        # 1) A launch fairing now shrouds the docking/service payload for ascent.
+        assert "fairingSize1" in names, "docking vehicle is missing its ascent payload fairing"
+        # The fairing's ogive shell IS the nose, so there is NO separate nose cone.
+        assert "noseCone" not in names, "a faired docking vehicle must not also carry a nose cone"
+        # 2) The docking port + RCS + monoprop tank survive inside the shroud (jettison only removes the
+        #    shell, exposing them in orbit for the dock).
+        assert "dockingPort2" in names, "docking vehicle lost its docking port"
+        assert names.count("RCSBlock") >= 4, "docking vehicle lost its RCS translation quad"
+        assert "rcsTankRadialLong" in names, "docking vehicle lost its monoprop tank"
+        # 3) The fairing shell radius (max XSECTION r) must swallow the OUTERMOST top appendage that is
+        #    actually carried for this part_bodies set — the docking RCS quad/monoprop tank and the bus
+        #    hardware — so nothing pokes through the ogive.
+        fb = next(n for n in nodes if n.part_name == "fairingSize1")
+        root = next(n for n in nodes if n.part_name == "mk1pod.v2")
+        import re as _re
+
+        shell_r = max(float(m) for m in _re.findall(r"r = ([\d.]+)", fb.fairing_xsections or ""))
+        appendage_r = max(
+            CraftWriter._bus_radial_extent(root, pb), CraftWriter._rcs_radial_extent(root, pb))
+        assert shell_r >= appendage_r, (
+            f"fairing shell r={shell_r} must enclose the top appendages (reach {appendage_r:.2f})")
+        # And the shell must rise above the docking port top (root top + port height).
+        dock_top = root.y + part("mk1pod.v2").height_m / 2.0 + part("dockingPort2").height_m
+        shell_top = fb.y + part("fairingSize1").height_m / 2.0 + max(
+            float(m) for m in _re.findall(r"h = ([\d.]+)", fb.fairing_xsections or ""))
+        assert shell_top >= dock_top, "fairing shoulder must rise above the docking port"
 
 
 def test_fairing_xsection_shell_is_overridden_to_wrap_this_payload():
