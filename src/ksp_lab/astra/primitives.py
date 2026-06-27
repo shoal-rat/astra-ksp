@@ -484,8 +484,19 @@ def _land_via_mechjeb(ctx: PrimitiveContext, v, body_name: str) -> PrimitiveResu
     the high coast (MechJeb won't fast-warp a long descent ellipse) and wait for touchdown; NO hand-rolled
     chute/burn timing (the class of code that killed crew). Legs are deployed for the final touchdown."""
     sc = ctx.sc
+    # Do NOT deploy legs yet: extended legs in a high-speed atmospheric ENTRY rip off / drag-break the craft
+    # (a contributor to the Duna entry break-up). Keep them retracted for the entry; MechJeb's landing AP
+    # (DeployGears) lowers them for the final touchdown. Point retrograde first for a stable, heat-shield-
+    # trailing entry attitude before handing to MechJeb.
     try:
-        v.control.legs = True
+        v.control.legs = False
+    except Exception:
+        pass
+    try:
+        from krpc.services import spacecenter as _spc
+        v.control.speed_mode = _spc.SpeedMode.surface
+        v.control.sas = True
+        v.control.sas_mode = _spc.SASMode.retrograde
     except Exception:
         pass
     try:

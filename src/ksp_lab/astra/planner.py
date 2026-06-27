@@ -111,13 +111,20 @@ def decompose(command: str, target_body: str, *, launch_body: str = "Kerbin") ->
                      + (" -> commission relay" if intent["relay"] else "") + ".")
         return steps, rationale
 
-    # 2. TRANSFER + capture at the destination. Aerocapture where the body has air (cheap arrival before a
-    #    chute-assisted descent); a precise circular low orbit to deorbit from on an airless body.
-    capture_mode = "aerocapture" if _has_atmosphere(tb) else "circular"
-    cap = _capture_alt_km(tb)
+    # 2. TRANSFER + capture at the destination. A LANDER captures PROPULSIVELY to a STABLE orbit (circular),
+    #    NOT by aerocapture into a FOREIGN atmosphere: the craft would enter engine-first, UNPROTECTED (its
+    #    heat shield faces the home-return reentry, not this arrival), and break up at orbital speed — the
+    #    crewed Duna craft did exactly that. Capture above the air, then deorbit gently. (Only the home-body
+    #    RETURN aerocaptures — there the heat shield protects the reentry.) On an airless body, capture to a
+    #    low circular orbit to deorbit from.
+    capture_mode = "circular"
+    if _has_atmosphere(tb):
+        cap = round(float(tb.atmosphere_top_m) * 1.25 / 1000.0, 0)   # stable parking orbit ABOVE the air
+    else:
+        cap = round(_capture_alt_km(tb), 0)
     steps.append({"primitive": "transfer",
                   "args": {"target_body": target_body, "capture_mode": capture_mode,
-                           "capture_alt_km": round(cap, 0)}})
+                           "capture_alt_km": cap}})
 
     if intent["land"]:
         steps.append({"primitive": "land", "args": {}})
@@ -189,5 +196,13 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
             step.setdefault("args", {})
             for k, v in merged.items():
                 step["args"].setdefault(k, v)
+            # A HEAVY interplanetary craft (large post-LKO budget — a propulsive capture at a far planet)
+            # makes a several-hundred-tonne rocket a single-core booster cannot lift (liftoff TWR < 1.2).
+            # Strap on asparagus RADIAL BOOSTERS so the liftoff TWR clears the floor; design.py sizes them
+            # and the core flies on lighter after they drop. Scale the count with the post-LKO budget.
+            if post_lko_dv > 4200.0:
+                step["args"]["radial_boosters"] = max(int(step["args"].get("radial_boosters", 0)), 4)
+            elif post_lko_dv > 3200.0:
+                step["args"]["radial_boosters"] = max(int(step["args"].get("radial_boosters", 0)), 2)
             break
     return merged
