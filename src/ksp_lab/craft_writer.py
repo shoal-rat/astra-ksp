@@ -369,25 +369,26 @@ class CraftWriter:
         # vehicle. An uncrewed probe keeps the original nose-stacked first chute (its comsat rides in a
         # fairing, so the gate passes on the fairing branch regardless).
         stack_first_chute = (not design.crewed) and (not design.docking_port)
-        # KEEP THE EVA HATCH CLEAR. The Mk1 Command Pod's hatch faces +Z; packing chutes evenly on all four
-        # sides (and the utility bus) walls it shut, so a crew member cannot EVA to plant a flag (FlightEVA
-        # spawnEVA returns null — "no free hatch") — this stranded the crew ON Duna unable to plant the flag.
-        # Mount the radial chutes in the hemisphere OPPOSITE the hatch (centred on -Z), leaving a clear ~90deg
-        # wedge in FRONT of the +Z hatch for the kerbal to step out. (An uncrewed probe never EVAs.)
-        _HATCH_AZ = math.pi / 2.0          # +Z, the Mk1 hatch
-        _BACK_AZ = _HATCH_AZ + math.pi     # -Z, opposite the hatch
-        _BACK_SPAN = math.pi               # spread chutes across the back 180deg only
+        # KEEP THE EVA HATCH CLEAR. Packing chutes (and the utility bus) around the pod walls its hatch shut,
+        # so a crew member cannot EVA to plant a flag (FlightEVA spawnEVA returns null — "no free hatch") —
+        # this stranded the crew ON Duna unable to plant the flag. LIVE-MEASURED on the landed craft: the
+        # accessories spanned azimuth -180..0 deg yet the EVA still failed, so the Mk1 hatch sits in that
+        # -180..0 hemisphere. Cluster the radial chutes in the OPPOSITE (+Z) hemisphere, az +20..+160 (well
+        # clear of the +/-X boundaries), leaving the whole -180..0 hatch hemisphere open. (Uncrewed probe
+        # never EVAs.)
+        _PARTS_AZ = math.pi / 2.0          # +Z hemisphere centre (the measured-clear side)
+        _PARTS_SPAN = math.radians(140.0)  # +20..+160 deg — avoids the +/-X edges of the hatch hemisphere
         for i in range(n_chute):
             chute = new_node("parachuteSingle", 0)
             if i == 0 and stack_first_chute:
                 # First chute on the nose unless the docking port reserves it (uncrewed probe only).
                 self._attach(root, chute, "top", "bottom", up=True)
             else:
-                # Crewed capsule: cluster chutes in the back hemisphere so the +Z hatch stays clear.
+                # Crewed capsule: cluster chutes in the +Z hemisphere so the -180..0 hatch side stays clear.
                 if n_chute <= 1:
-                    ang = _BACK_AZ
+                    ang = _PARTS_AZ
                 else:
-                    ang = _BACK_AZ - _BACK_SPAN / 2.0 + _BACK_SPAN * i / (n_chute - 1)
+                    ang = _PARTS_AZ - _PARTS_SPAN / 2.0 + _PARTS_SPAN * i / (n_chute - 1)
                 self._attach_surface(root, chute, (chute_r * math.cos(ang), root.y, chute_r * math.sin(ang)))
             nodes.append(chute)
 
@@ -753,18 +754,20 @@ class CraftWriter:
         _ant = ("RelayAntenna100" if (part_bodies is None or "RelayAntenna100" in part_bodies) else "longAntenna")
         _bat = ("batteryBank" if (part_bodies is None or "batteryBank" in part_bodies) else "batteryBankMini")
         if design.crewed:
-            # CREWED LANDER: keep the +Z EVA hatch clear (a kerbal must step out to plant a flag — see the
-            # chute placement). The stock bus put a solar panel squarely on +Z and the RTG in the +Z
-            # quadrant, walling the hatch shut. Here every accessory sits on the SIDES (+/-X, 90deg off the
-            # hatch) or in the BACK (-Z), leaving the +Z wedge open. Panels go back-diagonal so neither lands
-            # in the 50-130deg hatch wedge.
-            _r7 = bus_radius * 0.71
+            # CREWED LANDER: keep the EVA hatch clear (a kerbal must step out to plant a flag — see the chute
+            # placement). LIVE-MEASURED: the Mk1 hatch is in the -180..0 azimuth hemisphere, so cluster EVERY
+            # bus accessory in the OPPOSITE +Z hemisphere (az 45..135), matching the chutes — leaving the
+            # whole -180..0 hatch side open. (The stock bus put a panel on +Z and the RTG in the +Z quadrant
+            # but spread the rest across -X/-Z, walling the hatch shut.)
+            _r71 = bus_radius * 0.71    # cos/sin 45deg
+            _r42 = bus_radius * 0.42    # cos 65deg
+            _r91 = bus_radius * 0.91    # sin 65deg
             bus_layout = [
-                (_ant, (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),          # +X side
-                (_bat, (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),         # -X side
-                ("solarPanels5", (-_r7, bus_y, -_r7), (0.0, 0.0, 0.0, 1.0)),     # back-left (~225deg)
-                ("solarPanels5", (_r7, bus_y, -_r7), (0.0, 1.0, 0.0, 0.0)),      # back-right (~315deg)
-                ("rtg", (0.0, bus_y - 0.18, -bus_radius), (0.0, 0.0, 0.0, 1.0)), # -Z back, behind the hatch
+                (_ant, (_r71, bus_y, _r71), (0.0, 0.0, 0.0, 1.0)),                # ~45deg
+                (_bat, (-_r71, bus_y, _r71), (0.0, 0.0, 0.0, 1.0)),               # ~135deg
+                ("solarPanels5", (_r42, bus_y, _r91), (0.0, 0.0, 0.0, 1.0)),      # ~65deg
+                ("solarPanels5", (-_r42, bus_y, _r91), (0.0, 1.0, 0.0, 0.0)),     # ~115deg
+                ("rtg", (0.0, bus_y - 0.18, bus_radius), (0.0, 0.0, 0.0, 1.0)),   # +Z, opposite the hatch
             ]
         else:
             bus_layout = [
