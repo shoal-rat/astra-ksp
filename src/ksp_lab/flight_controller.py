@@ -1280,21 +1280,25 @@ class KrpcFlightController:
     ) -> float:
         if remaining_delta_v_mps <= 0.0 or thrust_n <= 0.0 or vessel_mass_kg <= 0.0:
             return 0.0
+        # DYNAMIC, acceleration-aware throttle (replaces the old fixed 0.05/0.25/1.0 ladder + the starved
+        # 0.004–0.025 correction cap). The engine gives ``accel`` m/s^2 at full throttle; the FEATHER BAND is
+        # the Δv it covers in ~T seconds at full throttle. Above the band: burn FULL (no weak under-throttle
+        # that drags a burn past its node). Inside the band: throttle DOWN proportional to the Δv remaining so
+        # the burn lands ON the node instead of overshooting — the precision a low-TWR craft needs. Scales
+        # with the craft's real thrust/mass, so the same law works for a 60 kN Terrier and a heavy upper.
+        accel = thrust_n / max(1.0, vessel_mass_kg)
         if phase == "mun_transfer_correction":
-            acceleration = thrust_n / vessel_mass_kg
-            target_acceleration = float(self.config.get("correction_target_accel_mps2", 0.10))
-            throttle = target_acceleration / max(0.05, acceleration)
-            if remaining_delta_v_mps < 4.0:
-                throttle *= 0.5
-            return min(
-                float(self.config.get("correction_max_throttle", 0.025)),
-                max(float(self.config.get("correction_min_throttle", 0.004)), throttle),
-            )
-        if remaining_delta_v_mps < 8.0:
-            return 0.05
-        if remaining_delta_v_mps < 25.0:
-            return 0.25
-        return 1.0
+            # A mid-course CORRECTION re-aims the encounter periapsis; full throttle would slam past the
+            # closest approach, but the old micro-cap (≤0.025) was so weak it could not move a 12 Mm orbit
+            # inside the node window. Use a gentle-but-REAL proportional throttle bounded to [0.12, 0.45].
+            feather_dv = max(1.5, accel * 2.5)
+            return min(0.45, max(0.12, remaining_delta_v_mps / feather_dv))
+        # Main maneuver burn (TMI, capture node, apsis, return): full until the last ~2.5 s of Δv, then
+        # feather to a 0.05 floor so the final metres-per-second land precisely on the node.
+        feather_dv = max(2.0, accel * 2.5)
+        if remaining_delta_v_mps >= feather_dv:
+            return 1.0
+        return min(1.0, max(0.05, remaining_delta_v_mps / feather_dv))
 
     def _tmi_apoapsis_cap_m(self, planned_safe_mun_transfer: bool) -> float:
         if planned_safe_mun_transfer:

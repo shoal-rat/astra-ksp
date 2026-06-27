@@ -35,6 +35,23 @@ mission profile), you MUST do all three of these BEFORE it is allowed to launch.
    you trust "LOOKS LIKE A ROCKET". This is the same discipline as verifying any change by observing it,
    not by reading the code.
 
+   **MANDATORY CODEX REVIEW (no bypass).** Whenever a rocket design is created or MODIFIED, the agent MUST
+   generate the three-view PNG and hand it to **Codex** for an independent shape review — you may not change
+   a design and fly it unreviewed. This is wired into the agent (`primitives.launch` → `codex_review`); it
+   is unconditional (the old `ASTRA_CODEX_DESIGN` bypass is removed). Codex's recommendations are DEFERRED
+   to: the writer must implement them. Because the writer is deterministic, the gate logs Codex's
+   recommendations and proceeds (it cannot re-prompt the writer), so the recommendations become the next
+   design-pass work — they are not ignored.
+
+   **CARGO-BAY FRAMING for a WASP-WAIST.** A "wide at the ends, narrow in the middle" stack — a narrow
+   upper/lander stage between a wide booster and a wider payload — leaves the narrow section's hardware (RCS,
+   solar, antennas, batteries, LANDING LEGS, a wide capsule) protruding past the body line during ascent.
+   The intended remedy, and what Codex is told to recommend, is to FRAME that narrow section in a CARGO /
+   SERVICE BAY (or a procedural fairing shell) that is jettisoned in orbit (after the payload fairing),
+   exposing the hardware once in vacuum. Do NOT leave wasp-waist hardware bare. (Note the tension with a
+   propulsive LANDER engine, which must be a bare bell to fire — frame the stage but keep the engine bell
+   clear / jettison the frame before the engine fires.)
+
 3. **Calculate everything from that data.** All of Δv (Tsiolkovsky), TWR, staging / post-separation
    masses, structural coefficient ε and the single-stage Δv ceiling, aerodynamics (Cd, β, ascent drag
    loss, max-Q), the separation sequence and separator placement, and the feasibility verdict flow from

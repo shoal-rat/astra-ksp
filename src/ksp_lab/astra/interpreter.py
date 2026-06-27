@@ -65,22 +65,41 @@ class Interpreter:
         (vessel orbits, resources) — the agent passes it for a live run; for a dry-run it's None and the
         LLM plans from the static (bodies+catalog) context.
 
-        HARD-REQUIRES the LLM: if ANTHROPIC_API_KEY is unset, raises immediately; if the Claude call or
-        its parse fails, the error propagates (wrapped in LLMUnavailableError). There is NO offline
-        fallback — failures are surfaced, never masked."""
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        AUTONOMOUS by design: when ANTHROPIC_API_KEY is set, the Claude mission-architect decomposes
+        (richest reasoning). When it is NOT set, ASTRA still decomposes AUTONOMOUSLY via the general,
+        body-agnostic planner (``planner.decompose``) — a single GENERAL algorithm that computes every
+        step's parameters from the bodies table + physics for ANY destination. This is NOT a per-mission
+        script (those are forbidden); it is the key-free autonomous path so the agent is never blocked on
+        an external service. The LLM path, if a key is present, can override it with deeper reasoning."""
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            try:
+                return self._interpret_llm(command, planning_ctx)
+            except LLMUnavailableError:
+                raise
+            except Exception as exc:  # network / parse / empty-plan -> fail loudly, do NOT silently degrade
+                raise LLMUnavailableError(
+                    f"ASTRA mission-architect failed for {command!r}: {exc} — no offline fallback."
+                ) from exc
+        return self._interpret_general(command)
+
+    def _interpret_general(self, command: str) -> MissionPlan:
+        """Decompose with the general body-agnostic planner (no LLM). Reads the destination + goal type and
+        emits the ordered primitives with physics-computed parameters for ANY body."""
+        from . import planner
+
+        target = self._default_target_body(command.lower())
+        steps, rationale = planner.decompose(command, target)
+        steps = _validate_steps(steps)
+        if not steps:
             raise LLMUnavailableError(
-                "ASTRA requires ANTHROPIC_API_KEY — no offline fallback. Set the key so the Claude "
-                "mission-architect can decompose the command."
+                f"general decomposer produced no executable steps for {command!r} (target {target})."
             )
-        try:
-            return self._interpret_llm(command, planning_ctx)
-        except LLMUnavailableError:
-            raise
-        except Exception as exc:  # network / parse / empty-plan -> fail loudly, do NOT silently degrade
-            raise LLMUnavailableError(
-                f"ASTRA mission-architect failed for {command!r}: {exc} — no offline fallback."
-            ) from exc
+        mission = self.planner.interpret(command)
+        return MissionPlan(
+            command=command, target_body=target, steps=steps, mission=mission,
+            source="general", rationale=rationale,
+            notes="Decomposed by ASTRA's general body-agnostic planner (no LLM key).",
+        )
 
     # ----- body parsing (a small default-only helper for when the LLM omits target_body) -----
     @staticmethod

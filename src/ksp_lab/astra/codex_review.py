@@ -27,6 +27,9 @@ fall back to Claude's gate rather than blocking a flight when Codex simply is no
 """
 from __future__ import annotations
 
+import glob
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
@@ -34,6 +37,31 @@ from typing import Callable, Iterator
 
 # The default Codex CLI executable name. Overridable per-call for tests / alternate installs.
 CODEX_BIN = "codex"
+
+
+def _resolve_codex_bin(codex_bin: str) -> str:
+    """Resolve the Codex CLI to a directly-executable path.
+
+    On Windows ``npm i -g @openai/codex`` installs ``codex`` (bash shim), ``codex.cmd`` and ``codex.ps1``,
+    none of which Python's ``subprocess`` can launch from the bare name ``codex`` (a .cmd needs a shell;
+    the extensionless shim is a bash script). The package also vendors the REAL native ``codex.exe``, which
+    subprocess CAN exec directly — prefer it. Order: an explicit existing path -> the vendored native exe
+    (Windows) -> PATH resolution (handles PATHEXT). Falls back to the original name so a missing CLI still
+    degrades gracefully via the caller's 'codex unavailable' handling."""
+    if os.sep in codex_bin and os.path.exists(codex_bin):
+        return codex_bin
+    if os.name == "nt":
+        for root in (os.environ.get("APPDATA", ""), os.environ.get("ProgramFiles", ""),
+                     os.environ.get("ProgramData", "")):
+            if not root:
+                continue
+            pattern = os.path.join(root, "npm", "node_modules", "@openai", "codex", "**", "codex.exe")
+            for hit in glob.glob(pattern, recursive=True):
+                low = hit.replace("\\", "/").lower()
+                if "vendor" in low and "/bin/" in low:
+                    return hit
+    found = shutil.which(codex_bin)
+    return found or codex_bin
 
 # The marker Codex is instructed to emit for an image it has no objections to. Matched case-insensitively
 # and tolerant of the em-dash vs hyphen the model might use ("APPROVED — no objections").
@@ -54,6 +82,12 @@ Critique each image for these failure modes, in order:
      nose/engine overhangs the core.
   4. EXPOSED ENGINES — upper-stage or interstage engine bells left naked in the airstream with no shroud.
   5. PAYLOAD HOUSING — payload not enclosed by a fairing that actually covers it.
+  6. WASP-WAIST FRAMING — a WIDE-AT-THE-ENDS, NARROW-IN-THE-MIDDLE profile (an upper stage narrower than
+     the stage below it) that carries equipment — RCS blocks, solar panels, antennas, batteries, landing
+     legs, a wide capsule — protruding PAST the narrowing. Such hardware must be CONTAINED within a CARGO
+     BAY / SERVICE BAY (or a procedural fairing shell) during ascent and aerobrake, then exposed in orbit.
+     If you see an unframed wasp-waist with protruding hardware, RECOMMEND framing it in a cargo bay (this
+     is the lab's intended remedy) rather than only noting the protrusion.
 
 For EACH image, respond on its own line:
   * If you have NO objections to that image, write exactly:  APPROVED — no objections
@@ -150,7 +184,7 @@ def codex_review_three_view(
     if context:
         prompt = f"{prompt}\nADDITIONAL CONTEXT: {context}\n"
 
-    cmd = _build_command(paths, codex_bin=codex_bin)
+    cmd = _build_command(paths, codex_bin=_resolve_codex_bin(codex_bin))
     try:
         proc = runner(
             cmd,

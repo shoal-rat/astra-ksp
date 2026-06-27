@@ -27,13 +27,18 @@ def _stub_llm(monkeypatch, steps, *, target_body, rationale="stub plan"):
 # ----------------------------------------------------------------------------------------------------
 # INTERPRETER HARD-REQUIRES THE LLM — no offline/heuristic fallback at all.
 # ----------------------------------------------------------------------------------------------------
-def test_interpret_raises_without_api_key(monkeypatch):
-    # With no ANTHROPIC_API_KEY there is NO offline fallback: interpret() must raise loudly, not return a
-    # heuristic plan.
+def test_interpret_falls_back_to_general_decomposer_without_api_key(monkeypatch):
+    # With no ANTHROPIC_API_KEY, ASTRA decomposes AUTONOMOUSLY via the general body-agnostic planner — a
+    # single GENERAL algorithm (NOT a per-mission script), so the agent is never blocked on the API.
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    with pytest.raises(LLMUnavailableError) as ei:
-        Interpreter().interpret("put a communications satellite in high Mun orbit")
-    assert "ANTHROPIC_API_KEY" in str(ei.value)
+    plan = Interpreter().interpret("land a crew on the Mun, plant a flag, and return")
+    assert plan.source == "general"
+    assert plan.target_body == "Mun"
+    prims = [s["primitive"] for s in plan.steps]
+    assert prims[0] == "launch" and "land" in prims and "ascend" in prims and "recover" in prims
+    # the launch is mission-sized for the whole round trip (post-LKO Δv + legs threaded in)
+    launch_args = plan.steps[0]["args"]
+    assert launch_args.get("mission_dv", 0) > 1000.0 and launch_args.get("needs_legs") is True
 
 
 def test_interpret_raises_when_llm_call_fails(monkeypatch):

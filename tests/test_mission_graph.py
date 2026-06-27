@@ -92,8 +92,10 @@ def test_duna_planet_transfer_node_carries_window_and_dv():
     # time of flight, and a wait bound (the synodic period). The window math is present even offline.
     graph = build_mission_graph(_duna_round_trip_steps(crew=0))
     duna = next(n for n in graph.nodes if n.primitive == "transfer" and n.target_body == "Duna")
-    # Kerbin->Duna ejection+capture is ~1.6-2.2 km/s; tof ~300 days.
-    assert 1200.0 < duna.dv_mps < 2600.0, duna.dv_mps
+    # Kerbin->Duna ejection ~1.1 km/s + capture. With AEROCAPTURE (the round-trip steps arrive behind a
+    # heat shield) the capture is a cheap post-aerobrake circularization (~120 m/s), so the leg is ~1.1-1.3
+    # km/s; a fully propulsive capture would be ~1.6-1.7 km/s. Either way it is a real CALCULATED Δv.
+    assert 1000.0 < duna.dv_mps < 2600.0, duna.dv_mps
     assert duna.tof_s is not None and duna.tof_s > 100 * 21600  # > 100 Kerbin-days
     assert duna.wait_s is not None and duna.wait_s > 0          # the synodic wait bound
     assert "planet transfer" in duna.calc

@@ -134,10 +134,11 @@ def test_mission_aware_total_dv_exceeds_lko_only_by_the_mission_budget():
 # --------------------------------------------------------------------------------------------------- #
 # 3. the harness deriver turns the Mun plan into the right mission-aware launch args
 # --------------------------------------------------------------------------------------------------- #
-def test_harness_derives_mission_args_from_mun_plan():
-    """fly_mun_roundtrip._mission_aware_launch_args must read the graph and return mission_dv (post-LKO
-    Δv + margin), needs_legs=True (airless Mun touchdown), and heatshield+chutes (Kerbin recover)."""
-    import fly_mun_roundtrip as fmr
+def test_general_planner_derives_mission_args_from_mun_plan():
+    """The GENERAL planner's mission-aware sizing (planner._apply_mission_aware_launch — the body-agnostic
+    successor to the deleted hardcoded fly_mun_roundtrip helper) reads the graph and returns mission_dv
+    (post-LKO Δv + margin), needs_legs=True (airless Mun touchdown), and heatshield+chutes (Kerbin recover)."""
+    from ksp_lab.astra import planner
 
     plan = [
         {"primitive": "launch", "args": {"crew": 1, "target_alt_km": 100, "name": "AI-Mun-1"}},
@@ -148,17 +149,17 @@ def test_harness_derives_mission_args_from_mun_plan():
         {"primitive": "transfer", "args": {"target_body": "Kerbin"}},
         {"primitive": "recover", "args": {}},
     ]
-    args = fmr._mission_aware_launch_args(plan, launch_body="Kerbin")
+    args = planner._apply_mission_aware_launch(plan, launch_body="Kerbin")
     assert args["needs_legs"] is True
     assert args["heatshield"] is True
     assert args["chutes"] is True
-    # mission_dv ~= post-LKO sum (~3930) * 1.05 ~= 4126 m/s; allow a band for catalog/body constants.
+    # mission_dv ~= post-LKO sum (~3930) * 1.08 ~= 4244 m/s; allow a band for catalog/body constants.
     assert 3800.0 <= args["mission_dv"] <= 4600.0, args
 
 
-def test_harness_no_post_lko_nodes_returns_empty():
+def test_general_planner_no_post_lko_nodes_returns_empty():
     """A plain LKO-only plan (launch only) yields NO mission-aware args — the LKO launch is left as-is."""
-    import fly_mun_roundtrip as fmr
+    from ksp_lab.astra import planner
 
     plan = [{"primitive": "launch", "args": {"crew": 0, "target_alt_km": 100, "name": "Relay-1"}}]
-    assert fmr._mission_aware_launch_args(plan, launch_body="Kerbin") == {}
+    assert planner._apply_mission_aware_launch(plan, launch_body="Kerbin") == {}

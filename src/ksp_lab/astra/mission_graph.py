@@ -232,14 +232,25 @@ def _hierarchical_transfer_math(dep: Body, tgt: Body, kind: str) -> tuple[float,
     return dv, phase, tof, calc
 
 
-def _planet_transfer_math(dep: Body, tgt: Body, *, sc=None, ut_now: float = 0.0
+# Post-aerobrake CIRCULARIZATION Δv: arriving at a body WITH an atmosphere behind a heat shield, the
+# atmosphere cancels the arrival v_inf for free; only a small burn at apoapsis is needed to lift the
+# periapsis out of the air into a bound orbit. Replaces the full propulsive capture for an aerocapture.
+AEROCAPTURE_CIRCULARIZE_DV_MPS = 120.0
+
+
+def _planet_transfer_math(dep: Body, tgt: Body, *, sc=None, ut_now: float = 0.0, aerocapture: bool = False
                           ) -> tuple[float, float | None, float | None, float, str, list[str]]:
     """Δv, window_ut, wait_s, tof, calc, errors for a SUN-to-SUN planet transfer (e.g. Kerbin->Duna).
 
     Departure ejection = Oberth burn from a low parking orbit of ``dep`` for the heliocentric v_inf;
     capture = arrival-v_inf capture into a low orbit of ``tgt``. The WINDOW is the next departure UT:
     with a live ``sc`` we call the precise Lambert ``transfer_planner.find_transfer_window``; offline we
-    use the closed-form synodic estimate (next time the phase angle lines up)."""
+    use the closed-form synodic estimate (next time the phase angle lines up).
+
+    AEROCAPTURE: when ``aerocapture`` (the target has air and the plan arrives behind a heat shield), the
+    propulsive capture is replaced by a small post-aerobrake circularization — the model that makes a
+    Duna/Eve arrival, and a Kerbin return, far cheaper than a full burn (the model was over-sizing the
+    vehicle into infeasibility)."""
     sun = parent_of(dep)
     r_park = dep.low_orbit_radius_m()
     r1 = dep.orbit_radius_m
@@ -247,7 +258,10 @@ def _planet_transfer_math(dep: Body, tgt: Body, *, sc=None, ut_now: float = 0.0
     vinf_dep = astro.transfer_departure_excess_speed(sun.mu, r1, r2)
     eject_dv = astro.oberth_ejection_dv(dep.mu, r_park, vinf_dep)
     vinf_arr = astro.transfer_arrival_excess_speed(sun.mu, r1, r2)
-    capture_dv = astro.capture_from_excess(tgt.mu, tgt.low_orbit_radius_m(), vinf_arr)
+    if aerocapture and tgt.atmosphere_top_m > 0:
+        capture_dv = AEROCAPTURE_CIRCULARIZE_DV_MPS
+    else:
+        capture_dv = astro.capture_from_excess(tgt.mu, tgt.low_orbit_radius_m(), vinf_arr)
     dv = eject_dv + capture_dv
     tof = astro.hohmann(sun.mu, r1, r2)[2]
 
@@ -339,9 +353,11 @@ def _build_transfer(idx, state_in, args, *, sc=None, ut_now=0.0, **_kw) -> Missi
         window_ut, wait_s = None, None
         calc = f"{state_in.body}->{tgt_name} ({kind}): " + calc
     else:  # 'sibling' — a Sun-to-Sun planet transfer
-        dv, window_ut, wait_s, tof, calc, errs = _planet_transfer_math(dep, tgt, sc=sc, ut_now=ut_now)
+        aerocap = (str(args.get("capture_mode") or "").lower() == "aerocapture" and tgt.atmosphere_top_m > 0)
+        dv, window_ut, wait_s, tof, calc, errs = _planet_transfer_math(
+            dep, tgt, sc=sc, ut_now=ut_now, aerocapture=aerocap)
         node_errors += errs
-        calc = f"{state_in.body}->{tgt_name} (planet): " + calc
+        calc = f"{state_in.body}->{tgt_name} (planet{', aerocapture' if aerocap else ''}): " + calc
     state_out = state_in.copy()
     state_out.body = tgt_name or state_in.body
     state_out.situation = Situation.ORBIT      # transfer() captures into an orbit of the target
