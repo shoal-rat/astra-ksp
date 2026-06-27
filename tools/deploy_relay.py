@@ -85,13 +85,19 @@ def _root_side_keeps_engine(vessel, dec) -> bool:
     return False
 
 
-def _inter_stage_decouplers(vessel) -> list:
+def _inter_stage_decouplers(vessel, exclude_split_interface: bool = False) -> list:
     """The decouplers ascent staging may fire, DEEPEST-first (the booster decoupler before any upper one),
     EXCLUDING any decoupler that would strand the engineless payload. An inter-stage decoupler drops a SPENT
     stage while the active (root/pod) side KEEPS an engine (``_root_side_keeps_engine``); a PAYLOAD decoupler
     leaves the payload with no propulsion and must never fire during ascent. The crewed vehicle has TWO such
     payload decouplers (heat-shield boundary + upper boundary), which the old shallowest-only heuristic
-    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire."""
+    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire.
+
+    ``exclude_split_interface`` (a SPLIT transfer/lander craft): the lander is the topmost propulsive stage,
+    so the SHALLOWEST engine-keeping decoupler is the transfer/lander INTERFACE — it drops the DROPPABLE
+    TRANSFER stage, which fires AFTER LKO (trans-Duna injection), NOT during ascent. Firing it on the ascent
+    strands the mission in LKO with only the lander. Exclude it so the ascent stops at the (intact) transfer
+    stage; jettison_transfer_stage fires it later in Duna orbit."""
     try:
         decs = list(vessel.parts.decouplers)
     except Exception:
@@ -105,6 +111,10 @@ def _inter_stage_decouplers(vessel) -> list:
         payload = min(decs, key=lambda dd: _depth_from_root(dd.part))
         inter = [dd for dd in decs if dd is not payload]
     inter.sort(key=lambda dd: -_depth_from_root(dd.part))           # deepest (lowest booster) fires first
+    if exclude_split_interface and len(inter) >= 2:
+        # the SHALLOWEST engine-keeping decoupler (last after the deepest-first sort) is the transfer/lander
+        # interface on a split craft — keep the transfer stage attached through ascent.
+        inter = inter[:-1]
     return inter
 
 
@@ -464,9 +474,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # MechJeb autostage (which intermittently skips the booster decoupler on this fin geometry). That
     # guarantees a spent stage is physically separated BEFORE the next engine lights — the fix for "the
     # next engine just heats the attached tank with no thrust gain" — and the comsat is never jettisoned.
-    inter_decs = _inter_stage_decouplers(kv)
+    _is_split = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
+    inter_decs = _inter_stage_decouplers(kv, exclude_split_interface=_is_split)
     log(f"  ascent separators: {len(inter_decs)} inter-stage decoupler(s) to fire explicitly "
-        f"(payload decoupler protected — never fired during ascent)")
+        f"(payload decoupler protected — never fired during ascent"
+        + ("; SPLIT: transfer/lander interface kept attached for TMI" if _is_split else "") + ")")
     # FAIL-FAST baselines (captured once, on the fully-stacked vehicle at liftoff): the part count that
     # SHOULD survive to orbit (post-staging = full stack minus the booster stages we will drop) and the
     # bare PAYLOAD count (what's left if it breaks up). post_staging is the full stack minus one part per
