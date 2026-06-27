@@ -182,7 +182,10 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
     dv_raise = abs(math.sqrt(KERBIN.mu * (2.0 / r_park - 1.0 / a_tr)) - math.sqrt(KERBIN.mu / r_park))
     dv_circ = abs(math.sqrt(KERBIN.mu / r_target) - math.sqrt(KERBIN.mu * (2.0 / r_target - 1.0 / a_tr)))
     insertion_dv = 250.0 + dv_raise + dv_circ
-    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    # A SPLIT craft's insertion stage circularises the HEAVY upper (transfer+lander) at LKO; on a weak
+    # vacuum engine that burn crawls and bleeds the transfer stage. Give it a thrust floor too.
+    _split = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
+    _ins_g, _ins_twr = (9.81, 0.5) if (insertion_dv >= 3500.0 or _split) else (0.0, 0.0)
     _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
     phases = [Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,
                     reserve_frac=default_reserve_frac(9.81)),

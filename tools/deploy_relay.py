@@ -342,7 +342,10 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # NOTE: a thrustier crewed upper (Skipper via min_twr 1.3) was tried and DID NOT fix the crewed-launch
     # failure — the blocker is ASCENT AERODYNAMICS (the blunt exposed heat-shield/pod tumbles), not upper
     # thrust. Left at the proven relay floor; the real fix is a payload fairing over the crewed pod for ascent.
-    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    # SPLIT craft: the insertion stage circularises the HEAVY upper (transfer+lander) — give it a thrust
+    # floor too, or a weak vacuum engine crawls the circularisation and bleeds the transfer stage dry.
+    _split_ins = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
+    _ins_g, _ins_twr = (9.81, 0.5) if (insertion_dv >= 3500.0 or _split_ins) else (0.0, 0.0)
     # CREWED vs uncrewed command/recovery. A crewed launch (crew>0) MUST write a craft with a crewable
     # Mk1 pod + forward heat shield + chutes so a kerbal can board and survive re-entry; an uncrewed relay
     # rides a headless probe core in a fairing. mission_type reflects which so downstream code can tell.

@@ -71,6 +71,11 @@ def _mission_reserve_phase_name(phases: list[Phase]) -> str | None:
     if not phases:
         return None
     _LKO_PHASES = {"booster", "insertion"}     # Kerbin-ascent / parking-orbit stages, dropped before TMI
+    # Prefer the named DEEP-SPACE transfer/mission stage (droppable, re-taskable, where capture-overspend is
+    # absorbed) — even though the transfer carries a thrust floor (min_twr>0) so it is not a "vacuum" phase.
+    for ph in phases:
+        if ph.name in ("transfer", "mission"):
+            return ph.name
     for ph in phases:
         if ph.name not in _LKO_PHASES and _is_vacuum_transfer_phase(ph):
             return ph.name
@@ -97,7 +102,13 @@ def mission_upper_phases(*, mission_dv: float = 0.0, transfer_dv: float = 0.0,
     EMPTY: relay / LKO-only launch (nothing appended)."""
     phases: list[Phase] = []
     if transfer_dv > 0.0 and lander_dv > 0.0:
-        phases.append(Phase("transfer", transfer_dv, twr_body_g=0.0, min_twr=0.0,
+        # THRUST FLOOR on the transfer stage: it pushes the WHOLE upper (transfer+lander, ~25-30 t) through
+        # the trans-X ejection + capture. With no floor the sizer picks the lightest engine (a 60 kN Terrier)
+        # whose TWR on that stack is ~0.2 — the eject/capture burns then crawl, bleed huge gravity loss, and
+        # TIME OUT, which consumed the whole transfer stage before the ejection finished and stranded the
+        # mission in Kerbin orbit. min_twr=0.5 (ref g 9.81) forces ~5 m/s^2 burn accel (a ~1100 m/s burn in
+        # ~220 s, inside the node-executor budget). It is still the reserve-banking stage (picked by name).
+        phases.append(Phase("transfer", transfer_dv, twr_body_g=9.81, min_twr=0.5,
                             reserve_frac=default_reserve_frac(0.0)))
         phases.append(Phase("land_ascend_return", lander_dv,
                             twr_body_g=max(0.0, float(lander_body_g)), min_twr=2.0, min_diameter_m=2.5,
