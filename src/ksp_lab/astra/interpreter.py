@@ -1,21 +1,22 @@
-"""Natural-language -> a DECOMPOSED mission plan, ALWAYS by the Claude LLM mission-architect.
+"""Natural-language -> a DECOMPOSED mission plan, ALWAYS by an LLM mission-architect over a LOCAL CLI.
 
 ASTRA accepts one line of plain English and breaks it into an ORDERED list of atomic, body-agnostic
-PRIMITIVES (see primitives.py). The interpreter forces a task DECOMPOSITION via Claude: the LLM is shown
-the primitive CATALOG (names + descriptions + param schemas) plus the body constants + calculation
+PRIMITIVES (see primitives.py). The interpreter forces a task DECOMPOSITION via an LLM: the model is
+shown the primitive CATALOG (names + descriptions + param schemas) plus the body constants + calculation
 helpers (and, on a live run, the live universe state) and returns
-``{"steps": [{"primitive": ..., "args": {...}}, ...], "rationale": ...}``.
+``{"steps": [{"primitive": ..., "args": {...}}, ...], ...}``.
 
-There is NO offline/heuristic fallback. ``interpret()`` REQUIRES ``ANTHROPIC_API_KEY`` and a working
-Claude call; if the key is unset or the call/parse fails, it RAISES rather than silently degrading to a
-keyword guesser. The user's directive: "fully leverage the capabilities of Claude — no superfluous
-offline fallback." A ``--dry-run`` still calls the LLM to PLAN; it just doesn't fly.
+The LLM is called over the **local Claude Code / Codex CLI** (``llm_cli.call_llm_cli``) — the machine's
+own authenticated coding-agent session, with **NO ANTHROPIC_API_KEY**. There is NO offline / heuristic
+decomposer (the old keyword planner is removed); if the local CLI is missing or its reply does not parse,
+``interpret()`` RAISES ``LLMUnavailableError`` rather than degrading. Only the deterministic PHYSICS —
+filling numeric args and sizing the rocket, in ``planner.finalize_plan`` — stays non-LLM. A ``--dry-run``
+still calls the LLM to PLAN; it just doesn't fly.
 """
 from __future__ import annotations
 
 import json
 import os
-import urllib.request
 from dataclasses import dataclass, field
 
 from ..mission import MissionPlanner
@@ -23,12 +24,11 @@ from ..models import MissionSpec
 from . import primitives
 from . import planning_context as _pc
 
-_DEFAULT_MODEL = os.environ.get("ASTRA_MODEL", "claude-opus-4-8")
-_API_URL = "https://api.anthropic.com/v1/messages"
+_DEFAULT_MODEL = os.environ.get("ASTRA_MODEL", "local-cli")
 
 
 class LLMUnavailableError(RuntimeError):
-    """Raised when ASTRA cannot reach the Claude mission-architect (no key, or the call/parse failed).
+    """Raised when ASTRA cannot reach the LLM mission-architect (no local CLI, or the call/parse failed).
     ASTRA has NO offline fallback by design — surfacing this loudly is the intended behaviour."""
 
 
@@ -60,46 +60,23 @@ class Interpreter:
 
     # ----- public -----
     def interpret(self, command: str, planning_ctx: dict | None = None) -> MissionPlan:
-        """Decompose+plan a command with the Claude mission-architect. ``planning_ctx`` (from
-        planning_context.build_planning_context) lets the LLM reason over the LIVE universe state
-        (vessel orbits, resources) — the agent passes it for a live run; for a dry-run it's None and the
-        LLM plans from the static (bodies+catalog) context.
+        """Decompose+plan a command with the LLM mission-architect, called over the LOCAL Claude Code /
+        Codex CLI — **no ANTHROPIC_API_KEY**. ``planning_ctx`` (from planning_context.build_planning_context)
+        lets the LLM reason over the LIVE universe state (vessel orbits, resources) on a live run; for a
+        dry-run it's None and the LLM plans from the static (bodies+catalog) context.
 
-        AUTONOMOUS by design: when ANTHROPIC_API_KEY is set, the Claude mission-architect decomposes
-        (richest reasoning). When it is NOT set, ASTRA still decomposes AUTONOMOUSLY via the general,
-        body-agnostic planner (``planner.decompose``) — a single GENERAL algorithm that computes every
-        step's parameters from the bodies table + physics for ANY destination. This is NOT a per-mission
-        script (those are forbidden); it is the key-free autonomous path so the agent is never blocked on
-        an external service. The LLM path, if a key is present, can override it with deeper reasoning."""
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            try:
-                return self._interpret_llm(command, planning_ctx)
-            except LLMUnavailableError:
-                raise
-            except Exception as exc:  # network / parse / empty-plan -> fail loudly, do NOT silently degrade
-                raise LLMUnavailableError(
-                    f"ASTRA mission-architect failed for {command!r}: {exc} — no offline fallback."
-                ) from exc
-        return self._interpret_general(command)
-
-    def _interpret_general(self, command: str) -> MissionPlan:
-        """Decompose with the general body-agnostic planner (no LLM). Reads the destination + goal type and
-        emits the ordered primitives with physics-computed parameters for ANY body."""
-        from . import planner
-
-        target = self._default_target_body(command.lower())
-        steps, rationale = planner.decompose(command, target)
-        steps = _validate_steps(steps)
-        if not steps:
+        The task DECOMPOSITION is ALWAYS an LLM call. There is NO heuristic / local decomposer (the old
+        keyword planner has been removed): if the local CLI is missing or its reply does not parse,
+        ``interpret()`` raises ``LLMUnavailableError`` rather than silently degrading. Only the PHYSICS
+        (filling numeric args + sizing the rocket, in planner.finalize_plan) stays deterministic."""
+        try:
+            return self._interpret_llm(command, planning_ctx)
+        except LLMUnavailableError:
+            raise
+        except Exception as exc:  # CLI missing / parse / empty-plan -> fail loudly, do NOT silently degrade
             raise LLMUnavailableError(
-                f"general decomposer produced no executable steps for {command!r} (target {target})."
-            )
-        mission = self.planner.interpret(command)
-        return MissionPlan(
-            command=command, target_body=target, steps=steps, mission=mission,
-            source="general", rationale=rationale,
-            notes="Decomposed by ASTRA's general body-agnostic planner (no LLM key).",
-        )
+                f"ASTRA mission-architect failed for {command!r}: {exc} — no offline fallback."
+            ) from exc
 
     # ----- body parsing (a small default-only helper for when the LLM omits target_body) -----
     @staticmethod
@@ -186,6 +163,15 @@ class Interpreter:
         steps = _validate_steps(data.get("steps", []))
         if not steps:
             raise ValueError("LLM returned no valid primitive steps")
+        # ENGINEERING FINALIZATION (physics, NOT decomposition): fill the precise numeric args the model may
+        # have omitted, insert the split-stage jettison for a crewed planetary round-trip, and SIZE the
+        # launch vehicle (mission_dv / split budget, legs, side boosters) from the decomposed mission graph.
+        from . import planner
+        launch_body = str((planning_ctx or {}).get("launch_body") or "Kerbin")
+        try:
+            planner.finalize_plan(steps, launch_body=launch_body)
+        except Exception:
+            pass
         mission = self.planner.interpret(command)
         target = str(data.get("target_body") or self._default_target_body(command.lower()))
         # Accept either the new "mission_rationale" or the legacy "rationale" key.
@@ -204,32 +190,11 @@ class Interpreter:
         )
 
     def _call_llm(self, system: str, command: str) -> str:
-        """POST the architect prompt to the Anthropic Messages API; return the concatenated text.
-        Raised to 4000 max_tokens so the model has room to REASON per step. Network/parse errors
-        propagate to interpret(), which wraps them in LLMUnavailableError and FAILS — no fallback."""
-        body = json.dumps(
-            {
-                "model": self.model,
-                "max_tokens": 4000,
-                "system": system,
-                "messages": [{"role": "user", "content": command}],
-            }
-        ).encode("utf-8")
-        req = urllib.request.Request(
-            _API_URL,
-            data=body,
-            headers={
-                "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        return "".join(
-            blk.get("text", "") for blk in payload.get("content", []) if blk.get("type") == "text"
-        ).strip()
+        """Call the LOCAL Claude Code / Codex CLI (no API key) with the architect prompt; return its raw
+        stdout, which contains the model's strict-JSON plan. A missing/failed CLI raises (no fallback)."""
+        from .llm_cli import call_llm_cli
+
+        return call_llm_cli(system, command, backend=os.environ.get("ASTRA_LLM_CLI") or None)
 
 
 def _validate_steps(raw: list) -> list[dict]:
@@ -267,8 +232,25 @@ def _validate_steps(raw: list) -> list[dict]:
 
 
 def _extract_json(text: str) -> str:
-    start = text.find("{")
+    """Extract the LAST balanced top-level JSON object from the model's reply. The local CLI (codex/claude)
+    may ECHO the prompt — which itself contains an example ``{...}`` — and wrap the answer in agent framing,
+    so a naive first-{ to last-} grab would span both. Scan from the end for the last ``{`` that closes a
+    parseable JSON object."""
     end = text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        raise ValueError(f"no JSON object in model output: {text[:120]!r}")
-    return text[start : end + 1]
+    while end != -1:
+        depth = 0
+        for i in range(end, -1, -1):
+            c = text[i]
+            if c == "}":
+                depth += 1
+            elif c == "{":
+                depth -= 1
+                if depth == 0:
+                    cand = text[i:end + 1]
+                    try:
+                        json.loads(cand)
+                        return cand
+                    except Exception:
+                        break
+        end = text.rfind("}", 0, end)
+    raise ValueError(f"no JSON object in model output: {text[:160]!r}")

@@ -180,7 +180,15 @@ def test_split_stage_duna_roundtrip_lands_stable_with_independent_lander_budget(
                                 mission_upper_phases, _mission_reserve_phase_name)
     from ksp_lab.bodies import DUNA
 
-    steps, _ = planner.decompose("land a crew on Mars, plant a flag, and bring them home", "Duna")
+    # LLM-decomposed basic plan (what the architect emits); finalize_plan adds the physics (split + sizing).
+    steps = [{"primitive": "launch", "args": {"crew": 1}},
+             {"primitive": "transfer", "args": {"target_body": "Duna"}},
+             {"primitive": "land", "args": {}},
+             {"primitive": "plant_flag", "args": {}},
+             {"primitive": "ascend", "args": {}},
+             {"primitive": "transfer", "args": {"target_body": "Kerbin"}},
+             {"primitive": "recover", "args": {}}]
+    planner.finalize_plan(steps)
     names = [s["primitive"] for s in steps]
     assert "jettison_transfer_stage" in names
     assert names.index("jettison_transfer_stage") == names.index("transfer") + 1
@@ -189,6 +197,8 @@ def test_split_stage_duna_roundtrip_lands_stable_with_independent_lander_budget(
     assert la.get("transfer_dv", 0) > 0 and la.get("lander_dv", 0) > 0
     assert "mission_dv" not in la
     assert abs(la["lander_body_g"] - DUNA.surface_g) < 0.1
+    # the heavy split launch is lifted by SIDE BOOSTERS (asparagus), not an all-core needle
+    assert la.get("radial_boosters", 0) >= 4, "a crewed planetary round-trip launches on side boosters"
 
     ph = [Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3, reserve_frac=default_reserve_frac(9.81)),
           Phase("insertion", 283.0, twr_body_g=0.0, min_twr=0.0, reserve_frac=default_reserve_frac(0.0))]
@@ -197,9 +207,12 @@ def test_split_stage_duna_roundtrip_lands_stable_with_independent_lander_budget(
     req = ShipRequirements(name="AI-Duna-1", mission_type="crewed_launch", crew=1, payload_t=0.3, phases=ph,
                            landing=_KERBIN_LANDING, needs_legs=True, needs_heatshield=True,
                            needs_docking=False, max_engine_count=int(la.get("max_core_engines", 6)),
-                           radial_booster_count=0)
+                           radial_booster_count=int(la.get("radial_boosters", 0)))
     d = design_ship(req)
     assert d.feasible, d.infeasible_reasons
+    # the side boosters lift the stack and DROP FIRST, so the asparagus craft is far lighter than all-core
+    assert d.radial_boosters is not None and d.radial_boosters.count >= 4, "side boosters must be built"
+    assert d.estimates.get("launch_twr", 0) >= 1.2, "boosters must clear the liftoff TWR floor"
     assert d.landed_stable is True, "the short split lander must land upright (low CoG, wide legs)"
     lander_stage = next(s for s in d.stages if "land" in s.role.lower())
     assert lander_stage.diameter_m >= 2.5, "the lander base must be wide for a squat, low-CoG lander"
@@ -212,7 +225,14 @@ def test_mun_roundtrip_stays_single_stage_unchanged():
     (not transfer_dv/lander_dv) — the flight-proven Mun vehicle is left byte-for-byte unchanged by the split."""
     from ksp_lab.astra import planner
 
-    steps, _ = planner.decompose("land a crew on the Mun, plant a flag, and return", "Mun")
+    steps = [{"primitive": "launch", "args": {"crew": 1}},
+             {"primitive": "transfer", "args": {"target_body": "Mun"}},
+             {"primitive": "land", "args": {}},
+             {"primitive": "plant_flag", "args": {}},
+             {"primitive": "ascend", "args": {}},
+             {"primitive": "transfer", "args": {"target_body": "Kerbin"}},
+             {"primitive": "recover", "args": {}}]
+    planner.finalize_plan(steps)
     names = [s["primitive"] for s in steps]
     assert "jettison_transfer_stage" not in names
     la = steps[0]["args"]

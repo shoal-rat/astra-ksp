@@ -85,89 +85,83 @@ def parse_intent(command: str) -> dict:
     }
 
 
-def decompose(command: str, target_body: str, *, launch_body: str = "Kerbin") -> tuple[list[dict], str]:
-    """Decompose a goal into ordered primitive steps for ANY destination body, with parameters computed
-    from physics. Returns (steps, rationale). Mirrors the old hand-built Mun PLAN but for any body, and
-    folds in the MISSION-AWARE launch sizing (post-LKO Δv + legs + heat-shield/chutes) so ONE vehicle is
-    built for the whole round trip — generalised out of the deleted hardcoded fly_mun_roundtrip script."""
-    intent = parse_intent(command)
-    tb = lookup_body(target_body)
+def finalize_plan(steps: list[dict], *, launch_body: str = "Kerbin") -> list[dict]:
+    """ENGINEERING finalization of an LLM-DECOMPOSED plan. The LLM does the DECOMPOSITION (which steps, in
+    what order, for which bodies); this fills the deterministic PHYSICS the model should not have to nail by
+    hand, and is the ONLY non-LLM step left in the planning path:
+
+      * fill any missing capture_alt_km / target_alt_km / parking altitude / craft name from the body's
+        atmosphere + low-orbit constants, and the RETURN-leg capture mode (aerocapture at an air home);
+      * heat shield + chutes on the launch when the mission recovers on a body WITH air;
+      * for a CREWED land-AND-RETURN on a PLANET (interplanetary), insert a ``jettison_transfer_stage`` step
+        after the outbound capture so the upper is sized as a DROPPABLE transfer stage + a SHORT lander
+        stage (the split that lets the lander touch down UPRIGHT and keep its OWN get-home budget) — unless
+        the LLM already emitted that step;
+      * SIZE the launch vehicle for the whole mission from the mission graph (mission_dv / the split
+        transfer+lander budget, legs, side boosters) via ``_apply_mission_aware_launch``.
+
+    Mutates and returns ``steps``. A relay / one-way / moon plan is simply sized; only a crewed planetary
+    round-trip gets the split jettison inserted."""
     lb = lookup_body(launch_body)
-    crew = 1 if intent["crewed"] else 0
-    park_km = round(_low_orbit_alt_km(lb), 0) or 100.0
-    name = f"AI-{target_body}-1"
+    launch_step = next((s for s in steps if s.get("primitive") == "launch"), None)
+    crew = int((launch_step or {}).get("args", {}).get("crew", 0) or 0)
 
-    steps: list[dict] = []
+    transfers = [s for s in steps if s.get("primitive") == "transfer"]
+    outbound = next((s for s in transfers
+                     if str(s.get("args", {}).get("target_body") or "") not in ("", launch_body)), None)
+    target_body = str((outbound or {}).get("args", {}).get("target_body") or "")
+    has_land = any(s.get("primitive") == "land" for s in steps)
+    has_return = any(str(s.get("args", {}).get("target_body") or "") == launch_body for s in transfers)
 
-    # 1. LAUNCH to a parking orbit of the launch body. heat-shield + chutes only matter for a body that we
-    #    RECOVER on (Kerbin, has air). mission_dv + needs_legs are filled in below from the mission graph.
-    needs_recovery_aero = intent["return"] and _has_atmosphere(lb)
-    launch_args: dict = {
-        "crew": crew, "target_alt_km": park_km, "name": name,
-        "heatshield": bool(needs_recovery_aero), "chutes": bool(needs_recovery_aero),
-        "radial_boosters": 0,
-    }
-    steps.append({"primitive": "launch", "args": launch_args})
+    # 1) fill the precise numeric / mode args the LLM may have left blank (physics, not decomposition).
+    if launch_step is not None:
+        la = launch_step.setdefault("args", {})
+        la.setdefault("name", f"AI-{target_body or launch_body}-1")
+        la.setdefault("target_alt_km", round(_low_orbit_alt_km(lb), 0) or 100.0)
+    for s in transfers:
+        a = s.setdefault("args", {})
+        tname = str(a.get("target_body") or "")
+        if not tname:
+            continue
+        if tname == launch_body:                          # RETURN leg
+            a.setdefault("capture_mode", "aerocapture" if _has_atmosphere(lb) else "loose")
+            continue
+        tb = lookup_body(tname)
+        a.setdefault("capture_mode", "circular")
+        if "capture_alt_km" not in a:
+            a["capture_alt_km"] = (round(float(tb.atmosphere_top_m) * 1.25 / 1000.0, 0)
+                                   if _has_atmosphere(tb) else round(_capture_alt_km(tb), 0))
+    if target_body:
+        tb = lookup_body(target_body)
+        for s in steps:
+            if s.get("primitive") == "ascend":
+                s.setdefault("args", {}).setdefault("target_alt_km", round(_low_orbit_alt_km(tb), 0))
+    if launch_step is not None and has_return and _has_atmosphere(lb):
+        la = launch_step.setdefault("args", {})
+        la.setdefault("heatshield", True)
+        la.setdefault("chutes", True)
 
-    if intent["relay"] or intent["orbit_only"]:
-        # Orbit-only / relay: transfer + (circular capture) and commission; no landing or return.
-        cap = _capture_alt_km(tb)
-        steps.append({"primitive": "transfer",
-                      "args": {"target_body": target_body, "capture_mode": "circular",
-                               "capture_alt_km": round(cap, 0)}})
-        if intent["relay"]:
-            steps.append({"primitive": "commission_relay", "args": {}})
-        rationale = (f"Orbit-{target_body} mission: launch -> circular capture at {round(cap)} km"
-                     + (" -> commission relay" if intent["relay"] else "") + ".")
-        return steps, rationale
+    # 2) SPLIT-STAGE: a crewed land-AND-return on a PLANET gets the droppable transfer stage + short lander.
+    #    The capture is expensive + variable there (8k-40k km, 1100-2400 m/s) and a tall single stack topples;
+    #    a moon round-trip keeps the proven single stack. Insert the in-orbit jettison if the LLM omitted it.
+    if outbound is not None:
+        is_planet = bool(target_body) and not _is_moon(lookup_body(target_body))
+        if has_land and has_return and crew > 0 and is_planet:
+            outbound["args"]["capture_mode"] = "circular"      # the split lander needs a stable orbit
+            if not any(s.get("primitive") == "jettison_transfer_stage" for s in steps):
+                steps.insert(steps.index(outbound) + 1,
+                             {"primitive": "jettison_transfer_stage", "args": {"target_body": target_body}})
 
-    # 2. TRANSFER + capture at the destination. A LANDER captures PROPULSIVELY to a STABLE orbit (circular),
-    #    NOT by aerocapture into a FOREIGN atmosphere: the craft would enter engine-first, UNPROTECTED (its
-    #    heat shield faces the home-return reentry, not this arrival), and break up at orbital speed — the
-    #    crewed Duna craft did exactly that. Capture above the air, then deorbit gently. (Only the home-body
-    #    RETURN aerocaptures — there the heat shield protects the reentry.) On an airless body, capture to a
-    #    low circular orbit to deorbit from.
-    capture_mode = "circular"
-    if _has_atmosphere(tb):
-        cap = round(float(tb.atmosphere_top_m) * 1.25 / 1000.0, 0)   # stable parking orbit ABOVE the air
-    else:
-        cap = round(_capture_alt_km(tb), 0)
-    steps.append({"primitive": "transfer",
-                  "args": {"target_body": target_body, "capture_mode": capture_mode,
-                           "capture_alt_km": cap}})
-
-    # SPLIT-STAGE round-trip: once captured in a low parking orbit, JETTISON the spent droppable TRANSFER
-    # stage (which did the ejection + capture) BEFORE descent, leaving the short, wide, low-CoG LANDER stage
-    # to deorbit + land UPRIGHT + ascend + return on its OWN budget. This is what fixes both the tip-over
-    # (short kept-mass) and the return-fuel shortfall (lander budget independent of capture cost). Gated to a
-    # crewed land-AND-return on a PLANET (interplanetary): that is where the capture is expensive + variable
-    # (8k-40k km, 1100-2400 m/s) and the tall single stack toppled. A MOON round-trip (Mun) keeps the proven
-    # single-stack path — its capture is cheap/reliable and that vehicle is flight-proven.
-    split_stage = bool(intent["land"] and intent["return"] and not _is_moon(tb))
-    if split_stage:
-        steps.append({"primitive": "jettison_transfer_stage", "args": {"target_body": target_body}})
-
-    if intent["land"]:
-        steps.append({"primitive": "land", "args": {}})
-    if intent["flag"]:
-        steps.append({"primitive": "plant_flag", "args": {}})
-
-    if intent["return"]:
-        # 5. ASCEND back to a low orbit of the destination, 6. transfer home, 7. recover.
-        steps.append({"primitive": "ascend", "args": {"target_alt_km": round(_low_orbit_alt_km(tb), 0)}})
-        steps.append({"primitive": "transfer", "args": {"target_body": launch_body, "capture_mode": "aerocapture"
-                                                        if _has_atmosphere(lb) else "loose"}})
-        steps.append({"primitive": "recover", "args": {}})
-
-    # MISSION-AWARE launch sizing: one vehicle for the whole trip (post-LKO Δv + legs + heat-shield/chutes).
+    # 3) size ONE launch vehicle for the whole trip (mission_dv / split budget, legs, side boosters).
+    #    The Δv budget + staging are PHYSICS, not the LLM's job: strip any value the model hallucinated for
+    #    these so _apply_mission_aware_launch recomputes them from the mission graph (the model keeps the
+    #    high-level args it owns — crew, capture mode, altitudes, name).
+    if launch_step is not None:
+        for k in ("mission_dv", "transfer_dv", "lander_dv", "lander_body_g", "needs_legs",
+                  "max_core_engines", "radial_boosters"):
+            launch_step.get("args", {}).pop(k, None)
     _apply_mission_aware_launch(steps, launch_body=launch_body)
-
-    verb = "land + return" if intent["return"] else ("land" if intent["land"] else "fly to")
-    rationale = (f"{verb} {target_body} ({'crewed' if crew else 'uncrewed'}): "
-                 f"{capture_mode} capture; "
-                 + ("aerobraked chute-assisted descent" if _has_atmosphere(tb) else "propulsive hoverslam on legs")
-                 + ("; ascend + heliocentric/phasing return + Kerbin reentry recover" if intent["return"] else ""))
-    return steps, rationale
+    return steps
 
 
 def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin") -> dict:
@@ -241,18 +235,24 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
             for k, v in merged.items():
                 step["args"].setdefault(k, v)
             # A HEAVY interplanetary craft (large post-LKO budget — a propulsive capture at a far planet)
-            # makes a several-hundred-tonne rocket a single core engine cannot lift (liftoff TWR < 1.2). Give
-            # the booster a bigger CORE ENGINE CLUSTER (max_core_engines) for the liftoff thrust — a clustered
-            # core has NO radial protrusions, so it stays a clean rocket and passes the ascent-envelope shape
-            # gate (radial strap-on boosters FAIL that gate: "radial protrusions within ascent envelope").
-            # design.py sizes the cluster within a 1.5x mounting plate.
+            # makes a several-hundred-tonne rocket a single core engine cannot lift off the pad (liftoff
+            # TWR < 1.2), and stacking all that propellant into the core alone makes an un-launchable tall
+            # needle. The fix is SIDE BOOSTERS.
             if is_split:
-                # The SPLIT round-trip carries a generously-sized droppable transfer stage (sized for the real
-                # ~3100 m/s eject+corrections+capture) on top of the lander, so the whole rocket is heavy
-                # (~570 t) — give the core an 8-engine cluster to clear the liftoff TWR floor (still a clean
-                # no-protrusion core that passes the shape gate).
-                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 8)
+                # SIDE BOOSTERS (asparagus): radial pods carrying their OWN fuel tanks + engines that
+                # crossfeed the core and DROP FIRST, shedding their mass early. They lift the heavy split
+                # stack off the pad and let the CORE be far lighter and shorter than an all-core needle — in
+                # sizing the wet mass falls ~504 t -> ~343 t and the liftoff TWR clears the floor. The
+                # geometry gate ACCEPTS a SYMMETRIC strap-on ring (it judges the core envelope separately and
+                # the even pod cluster on its own), so this is still a clean, gate-passing rocket. design.py
+                # asparagus-sizes the pods; 4 even pods on a 6-engine core. (radial_boosters was stripped
+                # above so the model can't override this physics choice — set it fresh here.)
+                step["args"]["radial_boosters"] = 4
+                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 6)
             elif post_lko_dv > 3200.0:
+                # A heavy ONE-WAY interplanetary craft (far relay / lander, no return mass): a 2-pod assist +
+                # a 4-engine core clears the pad without the full asparagus of a round-trip.
+                step["args"]["radial_boosters"] = 2
                 step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 4)
             break
     return merged

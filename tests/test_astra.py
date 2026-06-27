@@ -27,26 +27,39 @@ def _stub_llm(monkeypatch, steps, *, target_body, rationale="stub plan"):
 # ----------------------------------------------------------------------------------------------------
 # INTERPRETER HARD-REQUIRES THE LLM — no offline/heuristic fallback at all.
 # ----------------------------------------------------------------------------------------------------
-def test_interpret_falls_back_to_general_decomposer_without_api_key(monkeypatch):
-    # With no ANTHROPIC_API_KEY, ASTRA decomposes AUTONOMOUSLY via the general body-agnostic planner — a
-    # single GENERAL algorithm (NOT a per-mission script), so the agent is never blocked on the API.
+def test_interpret_decomposes_via_llm_cli_without_api_key(monkeypatch):
+    # Decomposition is ALWAYS an LLM call over the LOCAL CLI (no ANTHROPIC_API_KEY). Mock the CLI's stdout
+    # with a strict-JSON plan (codex echoes the prompt + frames the answer, so the JSON-extractor must take
+    # the LAST object); the interpreter validates it against the catalog and finalize_plan adds the physics.
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    fake_stdout = (
+        'OpenAI Codex v0.139\nuser\n<the prompt, which itself contains an example {"x":1}>\ncodex\n'
+        '{"target_body":"Mun","steps":['
+        '{"primitive":"launch","args":{"crew":1}},'
+        '{"primitive":"transfer","args":{"target_body":"Mun"}},'
+        '{"primitive":"land","args":{}},'
+        '{"primitive":"plant_flag","args":{}},'
+        '{"primitive":"ascend","args":{}},'
+        '{"primitive":"transfer","args":{"target_body":"Kerbin"}},'
+        '{"primitive":"recover","args":{}}]}\ntokens used\n9001\n'
+    )
+    monkeypatch.setattr(Interpreter, "_call_llm", lambda self, system, command: fake_stdout, raising=True)
     plan = Interpreter().interpret("land a crew on the Mun, plant a flag, and return")
-    assert plan.source == "general"
+    assert plan.source == "llm"
     assert plan.target_body == "Mun"
     prims = [s["primitive"] for s in plan.steps]
     assert prims[0] == "launch" and "land" in prims and "ascend" in prims and "recover" in prims
-    # the launch is mission-sized for the whole round trip (post-LKO Δv + legs threaded in)
+    # the launch is mission-sized for the whole round trip (post-LKO Δv + legs threaded in by finalize_plan)
     launch_args = plan.steps[0]["args"]
     assert launch_args.get("mission_dv", 0) > 1000.0 and launch_args.get("needs_legs") is True
 
 
 def test_interpret_raises_when_llm_call_fails(monkeypatch):
-    # A live key but a failing Claude call must propagate as LLMUnavailableError — never a silent degrade.
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    # A failing local-CLI call must propagate as LLMUnavailableError — never a silent degrade (no fallback).
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     def boom(self, system, command):
-        raise RuntimeError("network down")
+        raise RuntimeError("local CLI not installed")
 
     monkeypatch.setattr(Interpreter, "_call_llm", boom, raising=True)
     with pytest.raises(LLMUnavailableError):
