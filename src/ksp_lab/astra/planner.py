@@ -19,7 +19,9 @@ from ..bodies import synchronous_altitude_m
 
 # Margin folded on top of the mission graph's summed post-LKO Δv when sizing the launch vehicle (the graph
 # uses nominal Hohmann/vis-viva; a live grid-search capture + a sloppier node run a few hundred m/s over).
-_POST_LKO_MARGIN_FRAC = 0.08
+# 0.13: a crewed interplanetary round-trip's capture (lowered-periapsis Oberth, still ~2x the nominal model)
+# + ascent + return runs the budget razor-thin; the extra reserve buys the margin to actually get home.
+_POST_LKO_MARGIN_FRAC = 0.13
 
 
 def _has_atmosphere(body) -> bool:

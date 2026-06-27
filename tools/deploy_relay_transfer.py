@@ -507,16 +507,16 @@ def _search_duna_correction_grid(sc, v, mid_ut, seed_prograde=0.0, pg_width=140.
     return best
 
 
-def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0):
-    """In the Duna SOI (on the hyperbolic approach), grid-search a CHEAP node early in the approach that
-    drops the Duna periapsis toward ~target_pe. The mid-transfer correction lands the encounter at the SOI
+def _search_duna_periapsis_lower(sc, v, target_pe=300_000.0, target_name="Duna"):
+    """In the target SOI (on the hyperbolic approach), grid-search a CHEAP node early in the approach that
+    drops the periapsis toward ~target_pe. The mid-transfer correction lands the encounter at the SOI
     EDGE (pe ~22,000-43,000 km) where a retro-capture has no Oberth and costs ~the full v_inf (> the fuel).
-    A radial burn far from periapsis has high leverage on the periapsis, so lowering it here to ~300 km makes
-    the capture cheap (Oberth). Scores the candidate node's resulting Duna periapsis directly (we are already
-    in Duna's SOI, so node.orbit is the Duna approach)."""
+    A radial burn far from periapsis has high leverage on the periapsis, so lowering it here makes the
+    capture cheap (Oberth). Scores the candidate node's resulting periapsis directly (we are already in the
+    target SOI, so node.orbit is the approach). Body-agnostic (Duna default keeps old call sites working)."""
     sc.rails_warp_factor = 0
     time.sleep(2)
-    duna = sc.bodies["Duna"]
+    duna = sc.bodies[target_name]
     mu, r_duna = duna.gravitational_parameter, duna.equatorial_radius
     a = v.orbit.semi_major_axis
     v_inf = (mu / abs(a)) ** 0.5 if a and a < 0 else 0.0     # hyperbolic excess speed (~constant on approach)
@@ -995,6 +995,20 @@ def transfer_to_body(conn, sc, bridge, v, target_name: str, target_alt_km: float
             break
     if v.orbit.body.name != target_name:
         log(f"  ABORT: never entered the {target_name} SOI (still {v.orbit.body.name})"); return False
+    # 3b) If the encounter periapsis is HIGH (a SOI-edge graze the mid-transfer grid couldn't deepen), LOWER
+    # it now with a cheap radial burn EARLY in the approach (high leverage far from periapsis) so the capture
+    # gets Oberth. Without this, a LANDER whose target orbit is LOW captures at the high encounter (~21,000 km)
+    # then Hohmanns all the way down — ~2400 m/s, which stranded the crewed Duna craft with no fuel to ascend
+    # or return. Lowering to ~2,500 km first (then a small Hohmann to the target) roughly halves the cost.
+    if v.orbit.periapsis_altitude > 2_000_000.0:
+        log(f"  {target_name} periapsis {v.orbit.periapsis_altitude/1000:.0f} km too high for an Oberth capture — lowering ...")
+        plow = _search_duna_periapsis_lower(sc, v, target_name=target_name)
+        if plow is not None and plow["pe"] < v.orbit.periapsis_altitude * 0.85:
+            v.control.remove_nodes()
+            v.control.add_node(plow["ut"], prograde=plow["prograde"], radial=plow["radial"], normal=plow["normal"])
+            _execute_node_manually(conn, sc, v, max_burn_s=200.0, max_throttle=1.0)
+            log(f"  {target_name} periapsis now {v.orbit.periapsis_altitude/1000:.0f} km, "
+                f"LF {v.resources.amount('LiquidFuel'):.0f}")
     # 4) Capture at the encounter periapsis (cheap Oberth low capture), then Hohmann up to the sync radius.
     ttp = v.orbit.time_to_periapsis
     if ttp and 0 < ttp < 1e7:
