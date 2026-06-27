@@ -33,20 +33,20 @@
   <!-- ON THE GROUND -->
   <text x="40" y="120" class="lay">ON THE GROUND</text>
   <rect x="40" y="132" width="270" height="120" rx="13" fill="url(#gLaunch)" stroke="#115e59"/>
-  <rect x="56" y="146" width="74" height="16" rx="8" fill="#a3e635"/><text x="62" y="158" class="tag">PNG GATE</text>
+  <rect x="56" y="146" width="96" height="16" rx="8" fill="#a3e635"/><text x="62" y="158" class="tag">PNG + CODEX</text>
   <text x="56" y="184" class="pt">launch</text>
-  <text x="56" y="204" class="pw">design + ascend to a parking orbit</text>
-  <text x="56" y="220" class="pw">of the launch body (Kerbin)</text>
-  <text x="56" y="238" class="pwr">three-view PNG &#8594; looks_like_a_rocket</text>
+  <text x="56" y="204" class="pw">design (split stages / side boosters)</text>
+  <text x="56" y="220" class="pw">+ ascend to a Kerbin parking orbit</text>
+  <text x="56" y="238" class="pwr">three-view PNG &#8594; gate + Codex review</text>
 
   <!-- IN CRUISE -->
   <text x="355" y="120" class="lay">INTERPLANETARY / MOON LEG</text>
   <rect x="355" y="132" width="270" height="120" rx="13" fill="url(#gCruise)" stroke="#155e75"/>
-  <text x="371" y="160" class="pt">transfer</text>
-  <text x="371" y="182" class="pw">wait for the window on the ground,</text>
-  <text x="371" y="198" class="pw">warp ~1000x to ut_dep, eject + capture</text>
-  <text x="371" y="218" class="pwr">circular &#183; loose &#183; aerocapture</text>
-  <text x="371" y="240" class="opt">+ set_orbit to shape the arrival ring</text>
+  <text x="371" y="158" class="pt">transfer &#183; jettison_transfer_stage</text>
+  <text x="371" y="180" class="pw">wait for the window, warp to ut_dep,</text>
+  <text x="371" y="196" class="pw">eject + capture, then DROP the spent</text>
+  <text x="371" y="212" class="pw">transfer stage &#8212; the short lander goes on</text>
+  <text x="371" y="232" class="pwr">circular &#183; loose &#183; aerocapture</text>
 
   <!-- AT THE BODY -->
   <text x="670" y="120" class="lay">AT THE TARGET BODY</text>

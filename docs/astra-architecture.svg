@@ -25,14 +25,14 @@
   <text x="40" y="30" class="layer">ONE NATURAL-LANGUAGE COMMAND</text>
   <rect x="40" y="42" width="920" height="54" rx="12" fill="url(#gCmd)" stroke="#1e293b"/>
   <text x="64" y="66" class="title" font-size="15px">PYTHONPATH=src python tools/astra.py "..."</text>
-  <text x="64" y="86" class="sub">"put a relay in synchronous orbit around Duna"  &#183;  "land a crew on Gilly, plant a flag, bring them home"</text>
+  <text x="64" y="86" class="sub">"put a relay in synchronous orbit around Duna"  &#183;  "land a crew on Mars, plant a flag, and bring them home"</text>
 
   <!-- 2. LLM MISSION ARCHITECT -->
-  <text x="40" y="130" class="layer">LLM MISSION ARCHITECT  (interpreter.py &#8594; Anthropic API, ASTRA_MODEL)</text>
+  <text x="40" y="130" class="layer">LLM MISSION ARCHITECT  (interpreter.py + llm_cli.py &#8594; local Claude Code / Codex CLI &#8212; NO API key)</text>
   <rect x="40" y="142" width="920" height="178" rx="12" fill="url(#gBrain)" stroke="#4c1d95"/>
-  <text x="64" y="168" class="title">Claude REASONS over a rich planning context &#8212; decomposes AND calculates parameters</text>
-  <text x="64" y="187" class="sub">Builds a planning context (planning_context.py), asks Claude to DECOMPOSE the goal into ordered primitive steps and</text>
-  <text x="64" y="205" class="sub">CALCULATE each step's args (windows, altitudes, capture modes), then returns strict-JSON steps[] &#183; heuristic fallback.</text>
+  <text x="64" y="168" class="title">An LLM REASONS over a rich planning context &#8212; decomposes AND calculates parameters</text>
+  <text x="64" y="187" class="sub">Builds a planning context (planning_context.py), shells out to the LOCAL Claude Code / Codex agent to DECOMPOSE the</text>
+  <text x="64" y="205" class="sub">goal into ordered primitive steps and CALCULATE each step's args, returns strict-JSON steps[] &#183; NO heuristic fallback.</text>
 
   <!-- 4 context blocks fed to the model -->
   <rect x="60"  y="222" width="212" height="84" rx="9" fill="#ede9fe" stroke="#c4b5fd"/>
@@ -78,15 +78,15 @@
     <rect x="312" y="440" width="118" height="30" rx="7" fill="#0b4f49"/><text x="320" y="459" class="prim">transfer_crew</text>
     <rect x="438" y="440" width="118" height="30" rx="7" fill="#0b4f49"/><text x="446" y="459" class="prim">recover</text>
     <rect x="564" y="440" width="118" height="30" rx="7" fill="#0b4f49"/><text x="572" y="459" class="prim">commission_relay</text>
-    <rect x="690" y="440" width="250" height="30" rx="7" fill="#0b4f49"/><text x="698" y="459" class="prim">select_vessel &#183; &#8230; (12+ in CATALOG)</text>
+    <rect x="690" y="440" width="250" height="30" rx="7" fill="#0b4f49"/><text x="698" y="459" class="prim">jettison_transfer_stage &#183; &#8230; (13+ in CATALOG)</text>
   </g>
 
   <!-- design gate (between plan and fly) -->
   <rect x="40" y="500" width="450" height="58" rx="12" fill="#13362f" stroke="#0d9488"/>
-  <rect x="56" y="514" width="74" height="16" rx="8" fill="#a3e635"/><text x="62" y="526" class="tag">PNG GATE</text>
-  <text x="140" y="520" class="sub" font-size="11.5px">launch is HARD-GATED on a three-view PNG render</text>
-  <text x="140" y="538" class="lab" fill="#ccfbf1">design_and_verify &#8594; headless-Chrome PNG &#8594; looks_like_a_rocket</text>
-  <text x="140" y="552" class="lab" fill="#fca5a5">no rocket shape &#8594; RESULT: FAIL, refuse to fly</text>
+  <rect x="56" y="514" width="100" height="16" rx="8" fill="#a3e635"/><text x="62" y="526" class="tag">PNG + CODEX</text>
+  <text x="166" y="520" class="sub" font-size="11.5px">split stages / side boosters &#8594; three-view PNG</text>
+  <text x="166" y="538" class="lab" fill="#ccfbf1">looks_like_a_rocket gate + FORCED Codex shape review</text>
+  <text x="166" y="552" class="lab" fill="#fca5a5">no rocket shape / Codex objection &#8594; refuse to fly</text>
 
   <!-- executor -->
   <rect x="510" y="500" width="450" height="58" rx="12" fill="url(#gExec)" stroke="#5b21b6"/>
