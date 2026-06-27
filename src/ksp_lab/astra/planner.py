@@ -150,6 +150,18 @@ def finalize_plan(steps: list[dict], *, launch_body: str = "Kerbin") -> list[dic
         is_planet = bool(target_body) and not _is_moon(lookup_body(target_body))
         if has_land and has_return and crew > 0 and is_planet:
             outbound["args"]["capture_mode"] = "circular"      # the split lander needs a stable orbit
+            # FEASIBILITY CAP (physics, not decomposition): a SINGLE-LAUNCH crewed planetary round-trip is
+            # sized for ONE kerbal + a light payload. The split transfer+lander already makes a ~490 t /
+            # 4-booster rocket at crew=1; each extra seat or payload tonne cascades through ~6 km/s of Δv
+            # (the LLM's crew=2 / payload_t=2 blew it to ~1000+ t — infeasible, and the design gate rejected
+            # it on fineness). Pin the lander to crew=1 + a light payload so the gated design IS the
+            # launchable flown craft (launch_to_lko itself flies payload_t=0.3). "A crew" = one kerbal.
+            if launch_step is not None:
+                la = launch_step.setdefault("args", {})
+                if int(la.get("crew", 1) or 1) > 1:
+                    la["crew"] = 1
+                if float(la.get("payload_t", 0.0) or 0.0) > 0.5:
+                    la["payload_t"] = 0.3
             if not any(s.get("primitive") == "jettison_transfer_stage" for s in steps):
                 steps.insert(steps.index(outbound) + 1,
                              {"primitive": "jettison_transfer_stage", "args": {"target_body": target_body}})
