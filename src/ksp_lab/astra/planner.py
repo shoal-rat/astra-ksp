@@ -22,11 +22,14 @@ from ..bodies import synchronous_altitude_m
 # 0.13: a crewed interplanetary round-trip's capture (lowered-periapsis Oberth, still ~2x the nominal model)
 # + ascent + return runs the budget razor-thin; the extra reserve buys the margin to actually get home.
 _POST_LKO_MARGIN_FRAC = 0.13
-# The DROPPABLE TRANSFER stage absorbs ALL of: the ejection, the MID-COURSE grid corrections (~900 m/s, not
-# in the nominal model), AND the variable capture+Hohmann (8k-40k km encounter -> ~1100-2400 m/s vs the ~600
-# nominal). Live runs put the real transfer cost ~3100 m/s vs the ~1688 model, so size it GENEROUSLY — it is
-# jettisoned in orbit, so over-sizing only costs a bigger dropped stage, never the lander's get-home budget.
-_TRANSFER_MARGIN_FRAC = 0.85
+# The DROPPABLE TRANSFER stage absorbs the ejection + mid-course corrections + capture variance; over-sizing
+# it only grows the dropped stage, not the lander's budget. BUT it cannot be sized for the full live worst
+# case (~3100 m/s = eject 1039 + imprecise-ejection corrections ~890 + capture+Hohmann ~1176): at 0.85 the
+# whole rocket is a 574 t / 65 m needle whose actual launch TWR dips under 1 and the ascent fails. 0.6 keeps
+# the craft launchable (~480 t) and covers eject+capture for a LOW encounter; the residual gap is the
+# relay-tuned transfer's INEFFICIENCY (large corrections + propulsive capture), whose real fix is a precise
+# ejection / aerocapture rework, not a bigger transfer stage. See project_ksp_mars_duna memory.
+_TRANSFER_MARGIN_FRAC = 0.6
 
 
 def _has_atmosphere(body) -> bool:
