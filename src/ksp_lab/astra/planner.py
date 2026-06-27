@@ -23,13 +23,15 @@ from ..bodies import synchronous_altitude_m
 # + ascent + return runs the budget razor-thin; the extra reserve buys the margin to actually get home.
 _POST_LKO_MARGIN_FRAC = 0.13
 # The DROPPABLE TRANSFER stage absorbs the ejection + mid-course corrections + capture variance; over-sizing
-# it only grows the dropped stage, not the lander's budget. BUT it cannot be sized for the full live worst
-# case (~3100 m/s = eject 1039 + imprecise-ejection corrections ~890 + capture+Hohmann ~1176): at 0.85 the
-# whole rocket is a 574 t / 65 m needle whose actual launch TWR dips under 1 and the ascent fails. 0.6 keeps
-# the craft launchable (~480 t) and covers eject+capture for a LOW encounter; the residual gap is the
-# relay-tuned transfer's INEFFICIENCY (large corrections + propulsive capture), whose real fix is a precise
-# ejection / aerocapture rework, not a bigger transfer stage. See project_ksp_mars_duna memory.
-_TRANSFER_MARGIN_FRAC = 0.6
+# it only grows the dropped stage, not the lander's budget. The live worst case is ~3138 m/s (eject 1039 +
+# imprecise-ejection corrections ~890 + capture+Hohmann ~1176) — the cost that ran the 0.6-margin transfer
+# (2701 m/s) DRY mid-capture and stranded the craft. The old reason 0.6 was the ceiling: at 0.85 an
+# ALL-CORE upper became a 574 t / 65 m needle whose launch TWR dipped under 1. SIDE BOOSTERS remove that
+# ceiling — they lift a heavier transfer stage off the pad and drop their mass early, so at margin 1.0 the
+# transfer stage carries 3376 m/s (covering the ~3138 worst case with ~240 m/s slack) on a launchable
+# ~487 t / TWR-1.76 asparagus rocket that still passes the shape gate. 1.0 is the real fix for the capture
+# running dry; the split keeps the lander's get-home budget independent of it. See project_ksp_mars_duna.
+_TRANSFER_MARGIN_FRAC = 1.0
 
 
 def _has_atmosphere(body) -> bool:
