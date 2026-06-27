@@ -53,10 +53,13 @@ def log(m: str) -> None:
 # follow the preceding transfer's arrival body (Mun) by the mission-graph state chain.
 PLAN = [
     {"primitive": "launch", "args": {"crew": 1, "target_alt_km": 100, "heatshield": True,
-                                     "chutes": True, "radial_boosters": 2, "name": "AI-Mun-1"}},
+                                     "chutes": True, "radial_boosters": 0, "name": "AI-Mun-1"}},
     {"primitive": "transfer", "args": {"target_body": "Mun"}},
     {"primitive": "land", "args": {}},
-    {"primitive": "plant_flag", "args": {}},
+    # plant_flag is a BONUS objective. EVA can be refused by the live game (a blocked Mk1 hatch — the heat
+    # shield sits under the side hatch — or a busy airlock); a failed flag must NOT strand the crew on the
+    # Mun, so it is marked optional and the mission presses on to the ascent + return.
+    {"primitive": "plant_flag", "args": {}, "optional": True},
     {"primitive": "ascend", "args": {"target_alt_km": 20}},
     {"primitive": "transfer", "args": {"target_body": "Kerbin"}},
     {"primitive": "recover", "args": {}},
@@ -113,9 +116,30 @@ def _mission_aware_launch_args(plan: list[dict], *, launch_body: str = "Kerbin")
     return args
 
 
+def _parse_args(argv: list[str]) -> tuple[str, int]:
+    """``[config.yaml] [--from-step N]``. ``--from-step`` (1-based) RESUMES the plan against the live active
+    vessel — fly the launch once, then iterate a later leg (transfer/land/ascend/return/recover) in place
+    without re-launching. The skipped steps are assumed already flown (the vessel is left in the right state
+    by the prior partial run)."""
+    cfg_path = "configs/local-ksp.yaml"
+    from_step = 1
+    rest = argv[1:]
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "--from-step" and i + 1 < len(rest):
+            from_step = int(rest[i + 1]); i += 2; continue
+        if a.startswith("--from-step="):
+            from_step = int(a.split("=", 1)[1]); i += 1; continue
+        if not a.startswith("--"):
+            cfg_path = a
+        i += 1
+    return cfg_path, max(1, from_step)
+
+
 def main() -> int:
-    cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/local-ksp.yaml"
-    log(f"=== ASTRA Mun land-and-return experiment :: config={cfg_path} ===")
+    cfg_path, from_step = _parse_args(sys.argv)
+    log(f"=== ASTRA Mun land-and-return experiment :: config={cfg_path} from_step={from_step} ===")
 
     # MISSION-AWARE LAUNCH SIZING: enrich the launch step IN PLACE from the mission graph so the vehicle
     # is built for the whole round-trip (post-LKO Δv + legs + heatshield/chutes), not just to LKO.
@@ -143,17 +167,37 @@ def main() -> int:
     agent = AstraAgent(cfg_path, interpreter=object(), max_attempts=1)
     cfg = agent.config
 
-    # 1. Load the save autonomously via /load-save (the autonomous-setup deliverable).
-    try:
-        from ksp_lab.bridge_client import BridgeClient
-        bridge_cfg = cfg.get("bridge", {}) if isinstance(cfg, dict) else {}
-        bridge = BridgeClient(**bridge_cfg) if bridge_cfg else BridgeClient()
-        log("loading save '默认' via /load-save (autonomous setup)")
-        res = bridge.load_save("默认")
-        log(f"  /load-save -> {res}")
-        time.sleep(14)  # let the scene settle into the space center
-    except Exception as exc:
-        log(f"  /load-save failed ({exc}); proceeding — the save may already be loaded")
+    # 1. Load the save autonomously via /load-save (the autonomous-setup deliverable) — but ONLY if KSP
+    #    isn't already in a scene. kRPC only listens once a game is loaded, so kRPC-up == a save is already
+    #    loaded; in that case skip the reload (the /load-save HTTP blocks ~120s and a reload just resets the
+    #    same scene). When kRPC is down (main menu), load the save to enter the space center.
+    import socket as _socket
+
+    def _krpc_listening() -> bool:
+        try:
+            s = _socket.socket(); s.settimeout(2); s.connect(("127.0.0.1", 50000)); s.close(); return True
+        except Exception:
+            return False
+
+    if _krpc_listening():
+        log("kRPC already listening — a save is loaded; skipping /load-save reload")
+    else:
+        try:
+            from ksp_lab.bridge_client import BridgeClient
+            bridge_cfg = cfg.get("bridge", {}) if isinstance(cfg, dict) else {}
+            bridge = BridgeClient(**bridge_cfg) if bridge_cfg else BridgeClient()
+            log("loading save '默认' via /load-save (autonomous setup)")
+            try:
+                res = bridge.load_save("默认")
+                log(f"  /load-save -> {res}")
+            except Exception as exc:
+                log(f"  /load-save HTTP returned/blocked ({exc}); the load still completes — waiting for kRPC")
+            for _ in range(20):
+                time.sleep(3)
+                if _krpc_listening():
+                    break
+        except Exception as exc:
+            log(f"  /load-save setup failed ({exc}); proceeding — the save may already be loaded")
 
     # 2. Connect the live flight context (kRPC + bridge).
     try:
@@ -190,10 +234,17 @@ def main() -> int:
     except Exception as exc:
         log(f"validation raised (continuing to fly): {exc}")
 
-    # 4. Fly the primitives FAIL-FAST.
-    reached = 0
+    # 4. Fly the primitives FAIL-FAST. On a --from-step resume, the earlier steps are assumed already flown
+    #    (the live active vessel carries the state); reached starts at the last skipped step so the
+    #    completion check still measures the whole plan.
+    if from_step > 1:
+        log(f"RESUME: skipping steps 1..{from_step - 1}; flying from step {from_step} against the live "
+            f"active vessel {ctx.vessel_name!r} at {ctx.current_body}")
+    reached = from_step - 1
     results = []
     for i, step in enumerate(PLAN, start=1):
+        if i < from_step:
+            continue
         prim, args = step["primitive"], step.get("args", {})
         log(f"=== STEP {i}/{len(PLAN)}: {prim} {args} ===")
         try:
@@ -203,8 +254,17 @@ def main() -> int:
             results.append({"step": i, "primitive": prim, "ok": False, "marker": "exception", "detail": str(exc)})
             break
         log(f"STEP {i} -> ok={pr.ok} marker={pr.marker}; {pr.detail}")
-        results.append({"step": i, "primitive": prim, "ok": pr.ok, "marker": pr.marker, "detail": pr.detail})
+        results.append({"step": i, "primitive": prim, "ok": pr.ok, "marker": pr.marker, "detail": pr.detail,
+                        "optional": bool(step.get("optional"))})
         if not pr.ok:
+            if step.get("optional"):
+                log(f"STEP {i} ({prim}) failed ({pr.marker}) but is OPTIONAL — pressing on with the mission.")
+                reached = i
+                try:
+                    ctx.refresh_vessel()
+                except Exception:
+                    pass
+                continue
             log(f"FAIL-FAST at step {i} ({prim}): {pr.marker} — aborting mission.")
             break
         reached = i

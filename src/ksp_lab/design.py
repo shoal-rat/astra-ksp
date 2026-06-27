@@ -161,6 +161,16 @@ def _build_tanks_by_diameter() -> dict[float, list[str]]:
 MIN_BOOSTER_ASL_RATIO = 0.6
 
 
+# Engines that burn LiquidFuel but NO Oxidizer. The sizer's tank pool (TANKS_BY_DIAMETER) is every stock
+# LFO cylinder, so pairing an oxidizer-less engine with one loads ~55% Oxidizer the engine can NEVER burn:
+# dead weight, AND the LiquidFuel runs out at ~half the calculated Δv (the dV math assumes all propellant is
+# usable). Live proof — a crewed Mun lander on the nuclear LV-N fuel-starved mid-descent at 13 km
+# (fueled_active_engines dropped to 0 with the tanks still "55% full" of unusable Oxidizer) and crashed,
+# killing the kerbal. The pool is "chemical rocket engines" by design; keep oxidizer-less engines out until
+# LF-only tank loadouts are modelled. Stock's only such rocket engine is the LV-N (Nerv).
+_OXIDIZERLESS_ENGINES = {"nuclearEngine"}
+
+
 def _build_engine_pool(atmospheric: bool) -> list[str]:
     """Every stock chemical rocket engine in the standard stack diameters, ranked for the role (sea-level
     thrust ascending for boosters, vacuum Isp for upper stages). Drawn straight from the full catalog.
@@ -178,6 +188,8 @@ def _build_engine_pool(atmospheric: bool) -> list[str]:
     for dia in DIAMETERS:
         for p in catalog_engines(diameter_m=dia, atmospheric=atmospheric):
             if p.diameter_m < DIAMETERS[0] - 1e-6:      # sub-1.25 m micro-engine: renderer not built for it
+                continue
+            if p.name in _OXIDIZERLESS_ENGINES:         # LF-only engine can't use the all-LFO tank pool
                 continue
             if atmospheric and p.thrust_kn_vac > 0 and (p.thrust_kn_asl / p.thrust_kn_vac) < MIN_BOOSTER_ASL_RATIO:
                 continue                                # vacuum engine: wrong part to lift off the pad

@@ -85,11 +85,7 @@ class AutomationRunner:
 
             try:
                 if bridge is not None:
-                    bridge.load_craft(design.name)
-                    time.sleep(float(self.config["runner"].get("post_load_settle_s", 6)))
-                    self._wait_for_bridge_state(bridge, "loadedSceneIsEditor", True)
-                    bridge.launch()
-                    self._wait_for_bridge_state(bridge, "loadedSceneIsFlight", True)
+                    self._load_and_launch(bridge, design.name)
                 telemetry = controller.fly(
                     mission,
                     design,
@@ -286,11 +282,90 @@ class AutomationRunner:
         }
 
     def _load_and_launch(self, bridge: BridgeClient, craft_name: str) -> None:
+        """Load a craft into the editor and take it to the launch pad (FLIGHT).
+
+        Two things broke the naive ``load -> wait editor -> launch -> wait flight`` flow and are fixed here
+        (verified LIVE against the bridge + KSP.log, 2026-06-26):
+
+        1. ASYNC CRAFT LOAD. ``bridge.load_craft`` triggers a full SPACECENTER->EDITOR scene transition;
+           ``loadedSceneIsEditor`` flips True ~2 s BEFORE the craft's parts are actually placed (KSP.log
+           prints "<craft> loaded!" at the end of that window). Launching against the just-entered, still-
+           empty editor silently no-ops. ``_wait_for_craft_ready`` blocks until the editor scene is up AND
+           the bridge has recorded THIS craft (``lastCraftName``) AND the command queue has drained
+           (``queueDepth==0``), then settles, so the parts are really there before we launch.
+
+        2. SILENT LAUNCH NO-OP + slow heavy-craft transition. ``bridge.launch()`` returns "Launch
+           requested." even when KSP's pre-flight ``LaunchSiteClear`` check FAILS (a vessel already on the
+           pad) or when the reflected ``EditorLogic.launchVessel()`` invoke is dropped — in both cases the
+           scene never leaves the editor and nothing is logged. We therefore (a) give the editor->FLIGHT
+           transition a GENEROUS timeout (a heavy 58-part craft on a Steam-less/slow load can take well over
+           a minute), and (b) RE-ISSUE ``launch()`` once if the scene has not started transitioning after a
+           short grace window. If it still never reaches flight, the raised error names ``LaunchSiteClear``
+           as the likely cause so the caller knows to reload a clean save (the pad is occupied — not
+           something the Python side can clear)."""
+        runner_cfg = self.config["runner"]
         bridge.load_craft(craft_name)
-        time.sleep(float(self.config["runner"].get("post_load_settle_s", 6)))
-        self._wait_for_bridge_state(bridge, "loadedSceneIsEditor", True)
+        self._wait_for_craft_ready(bridge, craft_name)
+
+        launch_timeout = float(runner_cfg.get("launch_transition_timeout_s", 180))
+        relaunch_after = float(runner_cfg.get("relaunch_after_s", 20))
+        poll_s = float(runner_cfg.get("scene_poll_s", 1.0))
+
         bridge.launch()
-        self._wait_for_bridge_state(bridge, "loadedSceneIsFlight", True)
+        deadline = time.monotonic() + launch_timeout
+        relaunch_deadline = time.monotonic() + relaunch_after
+        relaunched = False
+        last_state: dict = {}
+        while time.monotonic() < deadline:
+            last_state = bridge.state()
+            if bool(last_state.get("loadedSceneIsFlight")):
+                return
+            # If the scene has not begun leaving the editor after the grace window, the launch was a
+            # silent no-op (dropped invoke / transient editor lock) — re-issue it ONCE.
+            if (
+                not relaunched
+                and time.monotonic() >= relaunch_deadline
+                and last_state.get("scene") == "EDITOR"
+            ):
+                bridge.launch()
+                relaunched = True
+            time.sleep(poll_s)
+        raise TimeoutError(
+            "Craft never reached FLIGHT after load+launch"
+            f" (craft={craft_name!r}, relaunched={relaunched}); last bridge state: {last_state}. "
+            "If scene is still EDITOR the most likely cause is the pre-flight LaunchSiteClear check failing "
+            "(a vessel is already on the pad) — reload a clean save before launching."
+        )
+
+    def _wait_for_craft_ready(self, bridge: BridgeClient, craft_name: str) -> None:
+        """Block until ``craft_name`` is actually loaded in the editor, not merely the editor SCENE active.
+
+        ``bridge.load_craft`` populates the editor ship ASYNCHRONOUSLY a few frames after the scene
+        switches, so ``loadedSceneIsEditor`` alone is not enough — it is True against a still-empty editor.
+        We wait for the editor scene AND ``lastCraftName == craft_name`` (the bridge records the requested
+        craft synchronously on accept, so this confirms the load command for THIS craft was the last one
+        processed) AND ``queueDepth == 0`` (any queued main-thread work drained), then apply a settle delay
+        for the parts to finish placing. Raises ``TimeoutError`` if the editor never reports the craft."""
+        runner_cfg = self.config["runner"]
+        timeout = float(runner_cfg.get("craft_ready_timeout_s", 60))
+        poll_s = float(runner_cfg.get("scene_poll_s", 1.0))
+        settle_s = float(runner_cfg.get("post_load_settle_s", 6))
+        deadline = time.monotonic() + timeout
+        last_state: dict = {}
+        while time.monotonic() < deadline:
+            last_state = bridge.state()
+            ready = (
+                bool(last_state.get("loadedSceneIsEditor"))
+                and str(last_state.get("lastCraftName") or "") == craft_name
+                and int(last_state.get("queueDepth") or 0) == 0
+            )
+            if ready:
+                time.sleep(settle_s)
+                return
+            time.sleep(poll_s)
+        raise TimeoutError(
+            f"Craft {craft_name!r} never became ready in the editor; last bridge state: {last_state}"
+        )
 
     def _prepare_next_launch_without_revert(self, bridge: BridgeClient) -> None:
         try:
@@ -469,12 +544,17 @@ class AutomationRunner:
             return None
         return Path(template).expanduser().resolve()
 
-    def _wait_for_bridge_state(self, bridge: BridgeClient, key: str, expected: bool) -> None:
-        deadline = time.monotonic() + float(self.config["runner"].get("scene_transition_timeout_s", 60))
+    def _wait_for_bridge_state(
+        self, bridge: BridgeClient, key: str, expected: bool, timeout_s: float | None = None
+    ) -> None:
+        if timeout_s is None:
+            timeout_s = float(self.config["runner"].get("scene_transition_timeout_s", 60))
+        poll_s = float(self.config["runner"].get("scene_poll_s", 1.0))
+        deadline = time.monotonic() + float(timeout_s)
         last_state = {}
         while time.monotonic() < deadline:
             last_state = bridge.state()
             if bool(last_state.get(key)) is expected:
                 return
-            time.sleep(1.0)
+            time.sleep(poll_s)
         raise TimeoutError(f"Timed out waiting for bridge state {key}={expected}; last state: {last_state}")

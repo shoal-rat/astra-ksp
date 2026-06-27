@@ -3040,6 +3040,10 @@ class KrpcFlightController:
         burn_started = time.monotonic()
         last_retro_point_at = time.monotonic()
         first_actual_thrust_seen = False
+        try:
+            sma_at_burn_start = float(vessel.orbit.semi_major_axis)
+        except Exception:
+            sma_at_burn_start = float("nan")
         while time.monotonic() - start < timeout_s:
             self._set_physics_warp(conn, 0)
             if time.monotonic() - last_retro_point_at > 1.0:
@@ -3113,7 +3117,20 @@ class KrpcFlightController:
                 actual_thrust = float(vessel.thrust)
             except Exception:
                 actual_thrust = 0.0
+            # vessel.thrust can LAG at 0 for several seconds after a rails-warp de-warp even while the engine
+            # is physically firing — so confirm NET thrust via orbital ENERGY (semi-major-axis) change too.
+            # Only thrust changes the SMA (coasting/gravity conserve it); a genuinely blocked engine leaves it
+            # exactly constant, so this still catches that. Fixes a false abort of a working low-thrust LV-N
+            # capture where vessel.thrust read 0 for 12 s while the apoapsis climbed 270 km toward capture.
             first_actual_thrust_seen = first_actual_thrust_seen or actual_thrust > 1.0
+            if not first_actual_thrust_seen:
+                try:
+                    sma_now = float(vessel.orbit.semi_major_axis)
+                    if (math.isfinite(sma_now) and math.isfinite(sma_at_burn_start)
+                            and abs(sma_now - sma_at_burn_start) > 5_000.0):
+                        first_actual_thrust_seen = True
+                except Exception:
+                    pass
             if time.monotonic() - burn_started > 8.0 and not first_actual_thrust_seen:
                 vessel.control.throttle = 0.0
                 self._record_live_sample(
@@ -3222,6 +3239,10 @@ class KrpcFlightController:
             burn_started = time.monotonic()
             last_vector_update_at = 0.0
             first_actual_thrust_seen = False
+            try:
+                sma_at_burn_start = float(vessel.orbit.semi_major_axis)
+            except Exception:
+                sma_at_burn_start = float("nan")
             correction_attempted = False
             reference_altitude = initial_altitude
             while time.monotonic() - start < timeout_s and time.monotonic() - burn_started < max_burn_s:
@@ -3269,7 +3290,19 @@ class KrpcFlightController:
                     actual_thrust = float(vessel.thrust)
                 except Exception:
                     actual_thrust = 0.0
+                # vessel.thrust can LAG at 0 for several seconds after a rails-warp de-warp while the engine
+                # physically fires — confirm net thrust via orbital ENERGY (semi-major-axis) change, which
+                # only thrust produces. A truly blocked engine keeps the SMA exactly constant, so this still
+                # catches that while not false-aborting a working low-thrust burn.
                 first_actual_thrust_seen = first_actual_thrust_seen or actual_thrust > 1.0
+                if not first_actual_thrust_seen:
+                    try:
+                        sma_now = float(vessel.orbit.semi_major_axis)
+                        if (math.isfinite(sma_now) and math.isfinite(sma_at_burn_start)
+                                and abs(sma_now - sma_at_burn_start) > 5_000.0):
+                            first_actual_thrust_seen = True
+                    except Exception:
+                        pass
 
                 if time.monotonic() - burn_started > 8.0 and not first_actual_thrust_seen:
                     vessel.control.throttle = 0.0

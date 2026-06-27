@@ -33,6 +33,14 @@ runner:
   flight_timeout_s: 2400
   post_load_settle_s: 10
   scene_transition_timeout_s: 60
+  # Wait for the editor ship to actually finish loading (loadedSceneIsEditor flips ~2s before the
+  # parts are placed) before launching.
+  craft_ready_timeout_s: 60
+  scene_poll_s: 1.0
+  # Editor->FLIGHT is slow for a heavy craft / slow scene load; give it a generous budget and re-issue
+  # launch() once if the scene has not started transitioning, to ride out a silent launch no-op.
+  launch_transition_timeout_s: 180
+  relaunch_after_s: 20
 
 optimizer:
   external_command: ""

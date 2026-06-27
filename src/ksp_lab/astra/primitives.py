@@ -97,6 +97,28 @@ def _emit(primitive: str, ok: bool, marker: str, detail: str = "", data: dict | 
     return PrimitiveResult(primitive=primitive, ok=ok, marker=marker, detail=detail, data=data or {})
 
 
+# ------------------------------------------------------------------------------------------------------
+# PROVEN MUN MACHINERY bridge. A crewed Mun land-and-return is flown by the VALIDATED closed-loop methods
+# on KrpcFlightController (the same code that flew the Artemis Mun milestones — TMI grid-search, capture,
+# Falcon-9 hoverslam landing, ascent, trans-Kerbin return, recovery), NOT by the heliocentric
+# deploy_relay_transfer (which ejects to a Sun orbit and cannot reach a body inside Kerbin's SOI) or the
+# Eve/Gilly drivers. The transfer/land/recover primitives route Mun-system legs here; other bodies keep
+# their existing body-agnostic path unchanged.
+# ------------------------------------------------------------------------------------------------------
+def _flight_controller(ctx: "PrimitiveContext"):
+    from ksp_lab.flight_controller import KrpcFlightController
+    return KrpcFlightController(ctx.cfg["krpc"])
+
+
+def _recorder(ctx: "PrimitiveContext", tag: str):
+    from ksp_lab.telemetry import TelemetryRecorder
+    return TelemetryRecorder(Path("runs") / f"{tag}-{ctx.vessel_name or 'craft'}.jsonl")
+
+
+def _flight_timeout(ctx: "PrimitiveContext") -> int:
+    return int(ctx.cfg.get("runner", {}).get("flight_timeout_s", 2400))
+
+
 # ======================================================================================================
 # Primitive implementations. Each takes (ctx, **args) and returns a PrimitiveResult. Body-agnostic.
 # ======================================================================================================
@@ -271,13 +293,16 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
                          f"{name}: Codex objected to the three-view; flaws: {verdict.flaws}",
                          {"png_path": png_path, "codex_flaws": verdict.flaws})
 
-    # insertion_dv_override stays 0 here (a plain orbit). transfer() sizes the upper for an interplanetary
-    # budget when it is the next step; for a bare launch the calculated raise+circularize budget suffices.
+    # MISSION-AWARE: thread the post-LKO budget (mission_dv) + landing legs into the ACTUAL flown craft so
+    # launch_to_lko writes the SAME 3-phase legged vehicle the design-chart gate just approved. Without this
+    # the gate verified a full-mission rocket but launch_to_lko re-derived and flew an LKO-only one, so the
+    # crew reached LKO with no Δv to transfer/land/return. mission_dv==0 (relay/Eve) is unchanged.
     try:
         ok = deploy_relay.launch_to_lko(
             ctx.sc, ctx.cfg, ctx.runner, ctx.bridge, name, float(target_alt_km),
             booster_max_engines=int(max_core_engines), radial_booster_count=int(radial_boosters),
             crew=int(crew), needs_heatshield=bool(heatshield), landing=landing,
+            mission_dv=float(mission_dv), needs_legs=bool(needs_legs),
         )
     except Exception as exc:
         return _emit("launch", False, "launch_error", f"{name}: {exc}")
@@ -304,6 +329,18 @@ def transfer(ctx: PrimitiveContext, *, target_body: str, capture_alt_km: float |
     if ctx.dry_run:
         return _emit("transfer", True, "transfer_planned",
                      f"(dry-run) transfer to {target_body} (mode={capture_mode}, alt={capture_alt_km})")
+
+    # PROVEN MUN-SYSTEM legs (see the bridge note above): the outbound Kerbin->Mun capture and the
+    # Mun->Kerbin return fly the validated flight_controller machinery. The heliocentric transfer below
+    # ejects to a Sun orbit and CANNOT reach a body inside Kerbin's SOI, nor return from one.
+    v = ctx.refresh_vessel()
+    cur = (ctx.current_body or "").strip()
+    tgt = (target_body or "").strip()
+    if tgt == "Mun" and cur == "Kerbin":
+        return _transfer_to_mun_orbit(ctx, v)
+    if tgt == "Kerbin" and cur == "Mun":
+        return _return_from_mun_to_kerbin_soi(ctx, v)
+
     import deploy_relay_transfer as drt
     drt.cfg = ctx.cfg                                  # the reused drt machinery reads drt.cfg["krpc"]
     tb = lookup_body(target_body)
@@ -353,6 +390,60 @@ def transfer(ctx: PrimitiveContext, *, target_body: str, capture_alt_km: float |
                  f"captured at {target_body} (mode {capture_mode})", {"body": ctx.current_body})
 
 
+def _transfer_to_mun_orbit(ctx: PrimitiveContext, v) -> PrimitiveResult:
+    """Kerbin parking orbit -> captured Mun orbit via the PROVEN flight_controller machinery (TMI grid-search
+    node -> closed-loop execute -> coast to the Mun SOI -> in-SOI periapsis correction -> retro capture). No
+    refuel; the craft flies on its mission-stage propellant."""
+    ctrl = _flight_controller(ctx)
+    rec = _recorder(ctx, "transfer-mun")
+    start = time.monotonic()
+    try:
+        ok = ctrl._transfer_and_capture_mun_orbit(ctx.conn, v, rec, start, _flight_timeout(ctx))
+    except Exception as exc:
+        return _emit("transfer", False, "transfer_error", f"->Mun: {exc}")
+    ctx.refresh_vessel()
+    if not ok or ctx.current_body != "Mun":
+        return _emit("transfer", False, "transfer_failed",
+                     f"did not capture at the Mun (now {ctx.current_body})")
+    try:
+        pe = ctx.vessel.orbit.periapsis_altitude / 1000.0
+        ap = ctx.vessel.orbit.apoapsis_altitude / 1000.0
+        detail = f"captured in Mun orbit ({pe:.0f}x{ap:.0f} km)"
+    except Exception:
+        detail = "captured in Mun orbit"
+    return _emit("transfer", True, "transfer_capture", detail, {"body": "Mun"})
+
+
+def _return_from_mun_to_kerbin_soi(ctx: PrimitiveContext, v) -> PrimitiveResult:
+    """Mun orbit -> Kerbin reentry trajectory: plan + execute the trans-Kerbin injection (grid-search return
+    node aimed at a ~30 km Kerbin periapsis) and coast into the Kerbin SOI, leaving the craft set up for the
+    recover step. The proven _return_to_kerbin_from_mun_orbit also recovers; we stop at SOI entry so the
+    plan's separate recover() owns the reentry, keeping each primitive atomic."""
+    ctrl = _flight_controller(ctx)
+    rec = _recorder(ctx, "return-kerbin")
+    start = time.monotonic()
+    timeout = _flight_timeout(ctx)
+    try:
+        node = ctrl._find_kerbin_return_node(ctx.conn, v, rec, start)
+        if node is None:
+            return _emit("transfer", False, "transfer_failed", "no Mun->Kerbin return node found")
+        v = ctrl._execute_node(ctx.conn, v, node, rec, start, timeout,
+                               "trans_kerbin_injection", preferred_name=str(v.name))
+        ok = ctrl._coast_to_kerbin_soi(ctx.conn, v, rec, start, timeout)
+    except Exception as exc:
+        return _emit("transfer", False, "transfer_error", f"Mun->Kerbin return: {exc}")
+    ctx.refresh_vessel()
+    if not ok or ctx.current_body != "Kerbin":
+        return _emit("transfer", False, "transfer_failed",
+                     f"did not enter the Kerbin SOI (now {ctx.current_body})")
+    try:
+        pe = ctx.vessel.orbit.periapsis_altitude / 1000.0
+        detail = f"on a Kerbin reentry trajectory (periapsis {pe:.0f} km)"
+    except Exception:
+        detail = "on a Kerbin reentry trajectory"
+    return _emit("transfer", True, "transfer_capture", detail, {"body": "Kerbin"})
+
+
 def set_orbit(ctx: PrimitiveContext, *, periapsis_km: float, apoapsis_km: float) -> PrimitiveResult:
     """Circularize / Hohmann to a target orbit around the CURRENT body. Wraps deploy_relay_transfer's
     precise _circularize_at / _hohmann_to_radius (for a circular target) or raise_and_circularize."""
@@ -384,6 +475,20 @@ def land(ctx: PrimitiveContext, *, target_lat: float | None = None, target_lon: 
         return _emit("land", True, "land_planned", f"(dry-run) land on current body{where}")
     v = ctx.refresh_vessel()
     body_name = ctx.current_body
+    # PROVEN: the Mun is flown by the validated Falcon-9 hoverslam lander (_land_on_mun lowers to a 360 km
+    # apoapsis, deorbits to a -5 km periapsis, then reads LIVE gravity for the suicide burn + terminal flare
+    # — the same code that put the Artemis HLS on the surface). The gentle Gilly descent below is tuned for
+    # micro-g moons and would crash at the Mun's 1.63 m/s^2, so route an untargeted Mun landing there.
+    if body_name == "Mun" and target_lat is None and target_lon is None:
+        ctrl = _flight_controller(ctx)
+        rec = _recorder(ctx, "land-mun")
+        start = time.monotonic()
+        try:
+            ok = ctrl._land_on_mun(ctx.conn, v, rec, start, _flight_timeout(ctx))
+        except Exception as exc:
+            return _emit("land", False, "land_error", f"on Mun: {exc}")
+        ctx.refresh_vessel()
+        return _emit("land", bool(ok), "landed" if ok else "land_failed", "on Mun", {"body": "Mun"})
     try:
         # Prefer MechJeb's landing AP (calculates deorbit + decel burn + chute timing). For a low-gravity
         # airless body, the gentle hand-flown fallback (_descend_to_gilly_surface) is more reliable; it
@@ -582,6 +687,40 @@ def recover(ctx: PrimitiveContext) -> PrimitiveResult:
     if ctx.dry_run:
         return _emit("recover", True, "recover_planned", "(dry-run) descend + chutes + recover crew")
     v = ctx.refresh_vessel()
+    # PROVEN: at Kerbin use the validated MechJeb landing-AP recovery (the Artemis Orion reentry path).
+    # _recover_on_kerbin delegates deorbit + attitude hold + decel burn + chute timing to MechJeb and only
+    # warp-assists the high coast — it never warps into a sub-atmosphere periapsis (the class of bug that
+    # killed crew). After a safe touchdown we FORMALLY recover the craft + crew.
+    if ctx.current_body == "Kerbin":
+        ctrl = _flight_controller(ctx)
+        rec = _recorder(ctx, "recover-kerbin")
+        start = time.monotonic()
+        # CLEAN REENTRY: a too-high periapsis (a 48 km trans-Kerbin return barely touches the air) skips the
+        # craft back out for hundreds of negligible-drag passes — MechJeb won't deorbit a craft already "in"
+        # the 70 km atmosphere. Drop the periapsis into a real reentry corridor (~25 km) at apoapsis FIRST,
+        # then hand the descent to MechJeb's landing AP (which owns the chute timing).
+        try:
+            pe = float(v.orbit.periapsis_altitude)
+            if pe > 32_000.0:
+                import crewed_eve_roundtrip as cer
+                _log(f"  reentry periapsis {pe / 1000:.0f} km too high — lowering to ~25 km for a clean reentry")
+                cer._lower_kerbin_periapsis(ctx.conn, ctx.sc, ctx.bridge, v, 25_000.0)
+                ctx.refresh_vessel()
+                v = ctx.vessel or v
+        except Exception as exc:
+            _log(f"  periapsis-lowering skipped ({exc}); proceeding to MechJeb reentry")
+        try:
+            ok = ctrl._recover_on_kerbin(ctx.conn, v, rec, start, _flight_timeout(ctx))
+        except Exception as exc:
+            return _emit("recover", False, "recover_error", f"on Kerbin: {exc}")
+        if ok:
+            try:
+                ctx.refresh_vessel()
+                (ctx.vessel or v).recover()      # credit + remove from world (crew returned home)
+            except Exception:
+                pass
+        return _emit("recover", bool(ok), "recovered" if ok else "recover_failed",
+                     "crew down safe and recovered" if ok else "did not recover")
     try:
         import crewed_eve_roundtrip as cer
         # If the craft is still on an interplanetary/return trajectory above the atmosphere, the bespoke

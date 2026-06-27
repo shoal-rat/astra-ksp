@@ -93,6 +93,10 @@ class CraftNode:
     # outer radius + the y it extends UP to (the upper tank base), so the chart draws the tube and the
     # geometry gate can confirm the exposed engine is housed, not naked. (h_top, r)
     interstage_shroud: tuple[float, float] | None = None
+    # The kept LEGGED LANDER engine: a bare bell + legs that fires only in vacuum. It is deliberately NOT
+    # shrouded (an interstage tube under the bell fires the plume back into the same vessel and cancels
+    # thrust), so the geometry gate exempts it from the interstage-shroud requirement.
+    lander_base_engine: bool = False
 
     @property
     def craft_id(self) -> str:
@@ -617,7 +621,18 @@ class CraftWriter:
             # of this stage's own tank). The lower stage is the NEXT one in the top-down render order, so its
             # diameter is rendered_stages[render_index].diameter_m. The lower stage decouples before this
             # engine fires (the inter-stage TD-12 below), so the shroud drops WITH the spent lower stage.
-            if render_index < n_stages:
+            #
+            # EXCEPTION — the KEPT LEGGED LANDER engine is NEVER shrouded. The shroud is surface-attached
+            # under the bell; a long lander engine (e.g. the high-Isp LV-N the vacuum sizer favours) fires
+            # its exhaust plume straight into that tube — which is part of the SAME vessel — so the reaction
+            # cancels the thrust to ZERO. Live proof: the crewed-Mun LV-N made NO net thrust at TMI (full
+            # throttle, fuel draining, g_force 0) until this shroud was removed. A bare lander bell is correct
+            # (it touches down on its legs). The design-chart gate exempts it via ``lander_base_engine``.
+            # Comsat upper engines (no legs, short bells) still get the shroud, which works for them.
+            is_legged_lander_engine = bool(getattr(design, "landing_legs", False)) and render_index == lander_render_index
+            if is_legged_lander_engine:
+                engine.lander_base_engine = True
+            if render_index < n_stages and not is_legged_lander_engine:
                 lower_dia = rendered_stages[render_index].diameter_m
                 shroud_r = max(part(stage.engine).diameter_m, lower_dia) / 2.0
                 shroud_top = engine.y + part(stage.engine).height_m / 2.0  # up to the tank base above

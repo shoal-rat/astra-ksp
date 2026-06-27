@@ -216,9 +216,13 @@ def test_design_pools_are_the_whole_catalog_no_curated_tier():
     assert "Size3EngineCluster" in D.BOOSTER_ENGINES          # Mammoth
     assert any("Size2LFB" in n for n in D.BOOSTER_ENGINES)    # Twin-Boar
     assert len(D.BOOSTER_ENGINES) >= 10                       # a deep pool, not a 5-engine hand-list
-    # The vacuum pool keeps the high-Isp engines a booster pool excludes (Terrier, Nerv, Poodle). The
+    # The vacuum pool keeps the high-Isp CHEMICAL engines a booster pool excludes (Terrier, Poodle). The
     # catalog now keys on the live AvailablePart.name (dotted) form, so the Terrier is "liquidEngine3.v2".
-    assert "nuclearEngine" in D.VACUUM_ENGINES and "liquidEngine3.v2" in D.VACUUM_ENGINES
+    # The oxidizer-less nuclear LV-N is deliberately EXCLUDED: the tank pool is all-LFO, and an LF-only
+    # engine on an LFO tank carries ~55% dead Oxidizer it can never burn (it fuel-starved a crewed Mun
+    # lander mid-descent — see design._OXIDIZERLESS_ENGINES).
+    assert "liquidEngine3.v2" in D.VACUUM_ENGINES            # Terrier (LFO, high Isp) stays in the pool
+    assert "nuclearEngine" not in D.VACUUM_ENGINES           # LV-N (LF-only) excluded from the all-LFO pool
     # Single tier: the *_FULL aliases are the SAME object as the base pool (back-compat, not a 2nd tier).
     assert D.BOOSTER_ENGINES_FULL is D.BOOSTER_ENGINES
     assert D.TANKS_BY_DIAMETER_FULL is D.TANKS_BY_DIAMETER
