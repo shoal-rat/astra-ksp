@@ -22,6 +22,10 @@ from ..bodies import synchronous_altitude_m
 # 0.13: a crewed interplanetary round-trip's capture (lowered-periapsis Oberth, still ~2x the nominal model)
 # + ascent + return runs the budget razor-thin; the extra reserve buys the margin to actually get home.
 _POST_LKO_MARGIN_FRAC = 0.13
+# The DROPPABLE TRANSFER stage absorbs ALL the capture variance (the relay-tuned capture lands 8k-40k km and
+# costs a variable ~1100-2400 m/s vs the ~600 nominal model), so size it GENEROUSLY — it is jettisoned in
+# orbit, so over-sizing it only costs a bigger dropped stage, never the lander's get-home budget.
+_TRANSFER_MARGIN_FRAC = 0.45
 
 
 def _has_atmosphere(body) -> bool:
@@ -128,6 +132,17 @@ def decompose(command: str, target_body: str, *, launch_body: str = "Kerbin") ->
                   "args": {"target_body": target_body, "capture_mode": capture_mode,
                            "capture_alt_km": cap}})
 
+    # SPLIT-STAGE round-trip: once captured in a low parking orbit, JETTISON the spent droppable TRANSFER
+    # stage (which did the ejection + capture) BEFORE descent, leaving the short, wide, low-CoG LANDER stage
+    # to deorbit + land UPRIGHT + ascend + return on its OWN budget. This is what fixes both the tip-over
+    # (short kept-mass) and the return-fuel shortfall (lander budget independent of capture cost). Gated to a
+    # crewed land-AND-return on a PLANET (interplanetary): that is where the capture is expensive + variable
+    # (8k-40k km, 1100-2400 m/s) and the tall single stack toppled. A MOON round-trip (Mun) keeps the proven
+    # single-stack path — its capture is cheap/reliable and that vehicle is flight-proven.
+    split_stage = bool(intent["land"] and intent["return"] and not _is_moon(tb))
+    if split_stage:
+        steps.append({"primitive": "jettison_transfer_stage", "args": {"target_body": target_body}})
+
     if intent["land"]:
         steps.append({"primitive": "land", "args": {}})
     if intent["flag"]:
@@ -188,7 +203,30 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
     if any(n.primitive == "land" for n in g.nodes):
         needs_legs = True
 
-    merged = {"mission_dv": round(post_lko_dv * (1.0 + _POST_LKO_MARGIN_FRAC), 1), "needs_legs": needs_legs}
+    # SPLIT-STAGE budget partition (a jettison_transfer_stage step present): the OUTBOUND transfer
+    # (eject + capture) sizes the droppable TRANSFER stage; land + ascend + the RETURN transfer + recover
+    # size the short LANDER stage. TWO independent budgets (each +margin ONCE) so the lander is immune to
+    # capture overspend. Otherwise the whole post-LKO budget is ONE 'mission' stage (Mun/legacy/one-way).
+    m = 1.0 + _POST_LKO_MARGIN_FRAC
+    is_split = any(n.primitive == "jettison_transfer_stage" for n in g.nodes)
+    transfer_dv = sum(getattr(n, "dv_mps", 0.0) for n in g.nodes
+                      if n.primitive == "transfer" and str(n.target_body) != str(launch_body))
+    lander_dv = sum(getattr(n, "dv_mps", 0.0) for n in g.nodes
+                    if n.primitive in ("land", "ascend", "recover")
+                    or (n.primitive == "transfer" and str(n.target_body) == str(launch_body)))
+    merged = {"needs_legs": needs_legs}
+    if is_split and transfer_dv > 0.0 and lander_dv > 0.0:
+        land_body = next((str(n.target_body) for n in g.nodes
+                          if n.primitive == "transfer" and str(n.target_body) != str(launch_body)), None)
+        try:
+            lander_body_g = float(getattr(lookup_body(land_body), "surface_g", 0.0))
+        except Exception:
+            lander_body_g = 0.0
+        merged["transfer_dv"] = round(transfer_dv * (1.0 + _TRANSFER_MARGIN_FRAC), 1)
+        merged["lander_dv"] = round(lander_dv * m, 1)
+        merged["lander_body_g"] = round(lander_body_g, 3)
+    else:
+        merged["mission_dv"] = round(post_lko_dv * m, 1)
     if needs_heatshield:
         merged["heatshield"] = True
     if needs_chutes:
@@ -204,7 +242,12 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
             # core has NO radial protrusions, so it stays a clean rocket and passes the ascent-envelope shape
             # gate (radial strap-on boosters FAIL that gate: "radial protrusions within ascent envelope").
             # design.py sizes the cluster within a 1.5x mounting plate.
-            if post_lko_dv > 3200.0:
+            if is_split:
+                # The SPLIT round-trip carries a generously-sized droppable transfer stage on top of the
+                # lander, so the whole rocket is heavier (~430 t) — a 4-engine core hangs under TWR 1.2; give
+                # it a 6-engine cluster (still a clean no-protrusion core that passes the shape gate).
+                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 6)
+            elif post_lko_dv > 3200.0:
                 step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 4)
             break
     return merged

@@ -63,14 +63,49 @@ def _is_vacuum_transfer_phase(phase: Phase) -> bool:
 
 def _mission_reserve_phase_name(phases: list[Phase]) -> str | None:
     """Pick the single phase that carries the whole-mission contingency reserve: the FIRST vacuum
-    transfer/capture leg (re-taskable propellant). Falls back to the last phase if none is a clean
-    vacuum leg, so the reserve is always banked SOMEWHERE on a real (non-empty) vehicle."""
+    transfer/capture leg (re-taskable propellant) that actually FLIES THE MISSION — NOT the Kerbin-ascent
+    booster or the LKO insertion stage, both of which are jettisoned BEFORE the deep-space legs (banking the
+    contingency there throws it away in parking orbit). On the SPLIT plan this puts the 5% cushion on the
+    droppable 'transfer' stage that does the eject+capture (where capture-overspend is absorbed), never on
+    the dropped insertion. Falls back to the last phase if none qualifies, so the reserve is always banked."""
     if not phases:
         return None
+    _LKO_PHASES = {"booster", "insertion"}     # Kerbin-ascent / parking-orbit stages, dropped before TMI
     for ph in phases:
-        if _is_vacuum_transfer_phase(ph):
+        if ph.name not in _LKO_PHASES and _is_vacuum_transfer_phase(ph):
             return ph.name
     return phases[-1].name
+
+
+def mission_upper_phases(*, mission_dv: float = 0.0, transfer_dv: float = 0.0,
+                         lander_dv: float = 0.0, lander_body_g: float = 0.0) -> list[Phase]:
+    """The vacuum UPPER phase(s) a deep-space mission appends ABOVE booster+insertion. ONE definition
+    shared by primitives._launch_requirements (the design-gate craft) and deploy_relay.launch_to_lko (the
+    flown craft) so the gated vehicle == the flown vehicle.
+
+    SPLIT path (transfer_dv>0 AND lander_dv>0 — a crewed land-and-RETURN on another body): a droppable
+    TRANSFER stage (trans-X ejection + capture) JETTISONED in orbit before descent, plus a SHORT, WIDE,
+    low-CoG LANDER stage (descent+ascend+return) carrying its OWN budget. The lander is forced onto a
+    >=2.5 m base (min_diameter_m) so it lands SQUAT + UPRIGHT (low CoG → the leg-span gate clears the
+    tip-over angle), and given min_twr=2.0 at the target's surface gravity so (a) it has real ascent thrust
+    and (b) it is NOT a vacuum-transfer phase — so the whole-mission contingency reserve banks on the
+    transfer/insertion legs, NEVER the lander. That makes the lander's descent+ascend+return budget
+    INDEPENDENT of however much the (variable) capture overspent: the transfer stage absorbs the slop and
+    is dropped. Fixes BOTH the tip-over (short lander) and the return-fuel shortfall (clean lander budget).
+
+    SINGLE path (mission_dv>0, the legacy Mun land-and-return): one tall vacuum 'mission' stage, no split.
+    EMPTY: relay / LKO-only launch (nothing appended)."""
+    phases: list[Phase] = []
+    if transfer_dv > 0.0 and lander_dv > 0.0:
+        phases.append(Phase("transfer", transfer_dv, twr_body_g=0.0, min_twr=0.0,
+                            reserve_frac=default_reserve_frac(0.0)))
+        phases.append(Phase("land_ascend_return", lander_dv,
+                            twr_body_g=max(0.0, float(lander_body_g)), min_twr=2.0, min_diameter_m=2.5,
+                            reserve_frac=default_reserve_frac(0.0, is_landing=True)))
+    elif mission_dv > 0.0:
+        phases.append(Phase("mission", mission_dv, twr_body_g=0.0, min_twr=0.0,
+                            reserve_frac=default_reserve_frac(0.0)))
+    return phases
 
 
 @dataclass(slots=True)

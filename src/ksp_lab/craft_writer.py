@@ -894,7 +894,12 @@ class CraftWriter:
             eng_h = part(lander_engine.part_name).height_m if lander_engine is not None else 1.0
             anchor = lander_engine if lander_engine is not None else lander_tank
             foot_y = anchor.y - eng_h * 0.5 - 0.2            # footpad plane just below the engine bell
-            kept = [n for n in nodes if not n.is_surface and getattr(n, "stage_index", 0) <= lander_render_index]
+            # LANDED kept-mass = only the bus/capsule (stage_index 0) + the LANDER stage itself. A droppable
+            # transfer stage (a HIGHER render_index, dropped in orbit before descent) must NOT count toward
+            # the landed CoG or the lander's leg span is computed for a tall stack that no longer exists. Use
+            # an exact membership (not <=) so any stage between is excluded too.
+            kept = [n for n in nodes if not n.is_surface
+                    and getattr(n, "stage_index", 0) in (0, lander_render_index)]
             mk = sum(part(n.part_name).wet_mass_t for n in kept) or 1.0
             cog_y = sum(part(n.part_name).wet_mass_t * n.y for n in kept) / mk
             h_cog = max(0.5, cog_y - foot_y)                 # CoG height above the footpad plane

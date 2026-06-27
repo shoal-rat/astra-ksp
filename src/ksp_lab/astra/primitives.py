@@ -153,7 +153,8 @@ def select_vessel(ctx: PrimitiveContext, name: str) -> PrimitiveResult:
 
 def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshield: bool,
                          landing, radial_boosters: int, max_core_engines: int,
-                         mission_dv: float = 0.0, needs_legs: bool = False):
+                         mission_dv: float = 0.0, needs_legs: bool = False,
+                         transfer_dv: float = 0.0, lander_dv: float = 0.0, lander_body_g: float = 0.0):
     """Build the SAME ShipRequirements deploy_relay.launch_to_lko sizes internally, so the design-chart
     gate (design_and_verify) reasons over the craft that will ACTUALLY be flown. Mirrors the req in
     deploy_relay.launch_to_lko (insertion Δv calculated for the target orbit, asparagus boosters,
@@ -170,7 +171,7 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
     import math
 
     from ..bodies import KERBIN
-    from ..design import Phase, ShipRequirements, default_reserve_frac
+    from ..design import Phase, ShipRequirements, default_reserve_frac, mission_upper_phases
 
     # Insertion Δv = Hohmann raise from the ~100 km parking orbit to the target + circularise + trim margin
     # (identical to launch_to_lko's calculation). A bare launch's target altitude needs little; a heavy
@@ -187,12 +188,14 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
                     reserve_frac=default_reserve_frac(9.81)),
               Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
                     reserve_frac=default_reserve_frac(0.0))]
-    # MISSION PHASE (opt-in): a vacuum leg carrying the whole post-LKO Δv budget so the SAME craft can
-    # transfer, capture, land, ascend, return and de-orbit on its own propellant. Only appended when asked.
-    mission_dv = max(0.0, float(mission_dv))
-    if mission_dv > 0.0:
-        phases.append(Phase("mission", mission_dv, twr_body_g=0.0, min_twr=0.0,
-                            reserve_frac=default_reserve_frac(0.0)))
+    # MISSION UPPER PHASE(S) (opt-in): either ONE vacuum 'mission' stage (legacy Mun land-and-return), or
+    # the SPLIT droppable-transfer + short-lander pair (crewed planetary land-and-return — see
+    # design.mission_upper_phases). Shared with deploy_relay.launch_to_lko so the gated craft == the flown
+    # craft. Nothing appended for relay/LKO launches (all dv args 0).
+    phases.extend(mission_upper_phases(mission_dv=max(0.0, float(mission_dv)),
+                                       transfer_dv=max(0.0, float(transfer_dv)),
+                                       lander_dv=max(0.0, float(lander_dv)),
+                                       lander_body_g=max(0.0, float(lander_body_g))))
     return ShipRequirements(
         name=name, mission_type=_mission_type, crew=int(crew), payload_t=0.3,
         phases=phases,
@@ -206,7 +209,8 @@ def _launch_requirements(name: str, *, target_alt_km: float, crew: int, heatshie
 def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0, payload_t: float = 0.3,
            docking: bool = False, heatshield: bool = False, chutes: bool = False,
            radial_boosters: int = 0, max_core_engines: int = 1, name: str = "AI-Craft",
-           mission_dv: float = 0.0, needs_legs: bool = False) -> PrimitiveResult:
+           mission_dv: float = 0.0, needs_legs: bool = False,
+           transfer_dv: float = 0.0, lander_dv: float = 0.0, lander_body_g: float = 0.0) -> PrimitiveResult:
     """Design + launch a craft to orbit the LAUNCH body (the body KSC sits on — Kerbin in stock).
 
     The design step is HARD-GATED on the three-view PNG: it calls design_chart.design_and_verify, which
@@ -251,7 +255,9 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
         req = _launch_requirements(name, target_alt_km=target_alt_km, crew=crew, heatshield=heatshield,
                                    landing=landing, radial_boosters=radial_boosters,
                                    max_core_engines=max_core_engines,
-                                   mission_dv=mission_dv, needs_legs=needs_legs)
+                                   mission_dv=mission_dv, needs_legs=needs_legs,
+                                   transfer_dv=transfer_dv, lander_dv=lander_dv,
+                                   lander_body_g=lander_body_g)
         out_dir = Path("docs")
         _design, png_path, design_ok, report = design_chart.design_and_verify(req, out_dir=out_dir)
     except Exception as exc:
@@ -315,6 +321,7 @@ def launch(ctx: PrimitiveContext, *, target_alt_km: float = 100.0, crew: int = 0
             booster_max_engines=int(max_core_engines), radial_booster_count=int(radial_boosters),
             crew=int(crew), needs_heatshield=bool(heatshield), landing=landing,
             mission_dv=float(mission_dv), needs_legs=bool(needs_legs),
+            transfer_dv=float(transfer_dv), lander_dv=float(lander_dv), lander_body_g=float(lander_body_g),
         )
     except Exception as exc:
         return _emit("launch", False, "launch_error", f"{name}: {exc}")
@@ -342,6 +349,14 @@ def transfer(ctx: PrimitiveContext, *, target_body: str, capture_alt_km: float |
         return _emit("transfer", True, "transfer_planned",
                      f"(dry-run) transfer to {target_body} (mode={capture_mode}, alt={capture_alt_km})")
 
+    # DISABLE MechJeb's auto-stager for the in-space transfer: the launch ascent (mj_ascent autostage) may
+    # leave core.staging live, and on a SPLIT craft an auto-stage during the TMI/capture burns would fire the
+    # transfer/lander INTERFACE decoupler MID-CAPTURE — dropping the lander before it ever descends. Explicit
+    # staging (jettison_transfer_stage) is the sole stager from here on (the documented crewed-Eve fix).
+    try:
+        ctx.bridge.mj_disable("staging")
+    except Exception:
+        pass
     # PROVEN MUN-SYSTEM legs (see the bridge note above): the outbound Kerbin->Mun capture and the
     # Mun->Kerbin return fly the validated flight_controller machinery. The heliocentric transfer below
     # ejects to a Sun orbit and CANNOT reach a body inside Kerbin's SOI, nor return from one.
@@ -664,11 +679,26 @@ def _ascend_via_mechjeb(ctx: PrimitiveContext, v, body_name: str, target_alt_km:
         v.control.legs = False          # retract legs for the climb
     except Exception:
         pass
+    # DISABLE MechJeb's StagingController FIRST. mj_land (the Duna descent) enables core.staging and leaves
+    # its token attached; mj_ascent(autostage=False) only clears the ascent-AP flag, NOT that token. With it
+    # still live, a near-orbit lander-engine flameout would make MechJeb fire the next stage = the istg-0
+    # CAPSULE decoupler, jettisoning the pod+heat-shield+chutes and stranding the crew. Mirror the proven
+    # crewed-Eve _disable_inspace_autostage: explicit staging is the SOLE stager on the split lander.
+    try:
+        ctx.bridge.mj_disable("staging")
+    except Exception as exc:
+        _log(f"  mj_disable(staging) note ({exc})")
     try:
         v.control.sas = False
         v.control.throttle = 1.0
-        v.control.activate_next_stage()  # ignite the ascent stage
-        ctx.bridge.mj_ascent(altitude=target_m, inclination=0.0, autostage=True)
+        # The SPLIT lander's engine is ALREADY lit (it ignited when the transfer stage was jettisoned), and on
+        # a craft carrying a HEAT SHIELD the only next stage is the istg-0 capsule decoupler — so NEVER blind-
+        # stage it. Stage only for an airless single-stack lander (no heat shield) whose ascent engine has not
+        # yet lit. (Belt-and-suspenders with mj_disable above + autostage=False below.)
+        carries_heatshield = any("heatshield" in p.name.lower() for p in v.parts.all)
+        if not _has_live_engine(v) and not carries_heatshield:
+            v.control.activate_next_stage()
+        ctx.bridge.mj_ascent(altitude=target_m, inclination=0.0, autostage=False)
         _log(f"  MechJeb ascent AP engaged from {body_name} -> {target_m / 1000:.0f} km")
     except Exception as exc:
         return _emit("ascend", False, "ascend_error", f"mj_ascent from {body_name}: {exc}")
@@ -871,6 +901,115 @@ def _jettison_service_section(ctx: PrimitiveContext, v) -> bool:
         return False
 
 
+def _has_live_engine(v) -> bool:
+    """True if the active vessel already has a lit, FUELLED engine — so we must NOT stage again (staging
+    would fire the next decoupler, e.g. the capsule decoupler, and shed the pod)."""
+    try:
+        return any(e.active and e.has_fuel for e in v.parts.engines)
+    except Exception:
+        return False
+
+
+def _select_lander_vessel(sc, craft_name: str, target_body, ref_ap: float, ref_pe: float):
+    """After the transfer stage decouples, kRPC focuses the HEAVIER discarded stage. Positively re-select the
+    LANDER by IDENTITY — a vessel that carries CREW and a HEAT-SHIELD part (the spent transfer stage has
+    neither) AND whose orbit MATCHES the just-captured parking orbit (the lander split off IN that orbit; the
+    ~100 stray vessels in the save sit in unrelated orbits). NOT by mass/fuel (which picks the heavier
+    transfer stage) and NOT by an EXACT name (a post-decouple vessel carries a locale/'Probe' suffix, so an
+    exact match would lose to a stray that has the bare name — the documented stranding regression)."""
+    best, best_score = None, float("inf")
+    for vs in sc.vessels:
+        try:
+            if int(vs.crew_count) < 1:
+                continue
+            if not any("heatshield" in p.name.lower() for p in vs.parts.all):
+                continue
+            if target_body and str(vs.orbit.body.name) != str(target_body):
+                continue
+            # ORBIT PROXIMITY (m) is the robust discriminator: the lander is in the just-captured parking
+            # orbit; strays sit in unrelated Duna orbits. Name match is only a tiny soft tiebreak.
+            score = (abs(float(vs.orbit.apoapsis_altitude) - ref_ap)
+                     + abs(float(vs.orbit.periapsis_altitude) - ref_pe))
+            if not vessel_names_match(str(vs.name), str(craft_name)):
+                score += 1000.0
+            if score < best_score:
+                best_score, best = score, vs
+        except Exception:
+            continue
+    return best
+
+
+def jettison_transfer_stage(ctx: PrimitiveContext, *, target_body: str | None = None) -> PrimitiveResult:
+    """SPLIT-STAGE round-trip: in the parking orbit AFTER capture, DROP the spent TRANSFER stage (which did
+    the ejection + capture) so the SHORT lander descends + lands UPRIGHT + ascends + returns on its OWN
+    budget. The transfer/lander interface decoupler is inverse-stage 1 and fires TOGETHER with the lander
+    engine ignition, so a SINGLE stage event drops the transfer AND lights the lander. kRPC then focuses the
+    heavier dropped stage, so we RE-SELECT the lander by orbit + crew + heat-shield identity — never by mass."""
+    if ctx.dry_run:
+        return _emit("jettison_transfer_stage", True, "jettison_planned",
+                     "(dry-run) drop the spent transfer stage; keep the short lander")
+    if ctx.sc is None:
+        return _emit("jettison_transfer_stage", True, "jettison_skipped", "no sim context")
+    v = ctx.refresh_vessel()
+    sc = ctx.sc
+    craft_name = ctx.vessel_name or (v.name if v is not None else "")
+    target_body = target_body or (str(v.orbit.body.name) if v is not None else None)
+    try:
+        sc.rails_warp_factor = 0
+        sc.physics_warp_factor = 0
+    except Exception:
+        pass
+    before_parts = len(v.parts.all) if v is not None else 0
+    try:                                      # the just-captured parking orbit — re-find the lander by it
+        ref_ap = float(v.orbit.apoapsis_altitude)
+        ref_pe = float(v.orbit.periapsis_altitude)
+    except Exception:
+        ref_ap = ref_pe = 0.0
+    # Drop the transfer stage + ignite the lander (one inverse-stage-1 event). Throttle 0 first so the lander
+    # does not fire uncontrolled on ignition. If the transfer stage already auto-dropped (it ran dry on the
+    # capture), this stage event simply lights the lander cleanly; the re-select still recovers the lander.
+    try:
+        v.control.throttle = 0.0
+        time.sleep(0.5)
+        v.control.activate_next_stage()
+        time.sleep(1.5)
+    except Exception as exc:
+        _log(f"  stage event note ({exc})")
+    lander = _select_lander_vessel(sc, craft_name, target_body, ref_ap, ref_pe)
+    if lander is not None:
+        try:
+            sc.active_vessel = lander
+            time.sleep(0.8)
+        except Exception as exc:
+            _log(f"  re-select note ({exc})")
+    # VERIFY by re-reading (retry); FAIL CLOSED — never assume success on a read error, or we would fly the
+    # dropped transfer stage / a stray into the ground believing it is the lander.
+    after_parts = crew = None
+    has_hs = False
+    for _ in range(3):
+        v = ctx.refresh_vessel()
+        try:
+            after_parts = len(v.parts.all)
+            crew = int(v.crew_count)
+            has_hs = any("heatshield" in p.name.lower() for p in v.parts.all)
+            break
+        except Exception:
+            time.sleep(1.0)
+    if not (crew and crew >= 1 and has_hs):
+        return _emit("jettison_transfer_stage", False, "jettison_lost_lander",
+                     f"could not confirm the crewed lander is active after jettison (crew={crew}, "
+                     f"heatshield={has_hs}) — refusing to fly the dropped transfer stage")
+    try:                                      # the descent/ascent legs own staging explicitly from here
+        ctx.bridge.mj_disable("staging")
+    except Exception:
+        pass
+    _log(f"  transfer stage dropped; lander re-acquired ({before_parts}->{after_parts} parts, crew={crew}, "
+         f"heat shield kept)")
+    return _emit("jettison_transfer_stage", True, "transfer_stage_jettisoned",
+                 f"dropped the spent transfer stage; short lander ({after_parts} parts) keeps the crew + heat shield",
+                 {"parts": after_parts, "crew": crew})
+
+
 def recover(ctx: PrimitiveContext) -> PrimitiveResult:
     """Descend/aerocapture + chutes + recover the active vessel & crew on the home body. Wraps
     crewed_eve_roundtrip.descend_and_recover (the proven aerobrake + chute + recover sequence)."""
@@ -994,7 +1133,13 @@ _register(PrimitiveSpec(
                     "vehicle for a full crewed land-and-return (TMI+capture+land+ascend+return+reentry); "
                     "0 = a plain LKO-only launch (relay/Eve, unchanged)"},
      "needs_legs": {"type": "bool", "default": False, "desc": "force landing legs (a Mun touchdown / "
-                    "Kerbin re-entry needs them even with chutes); pair with mission_dv>0"}},
+                    "Kerbin re-entry needs them even with chutes); pair with mission_dv>0"},
+     "transfer_dv": {"type": "float", "default": 0.0, "desc": "SPLIT round-trip: Δv (m/s) for the DROPPABLE "
+                     "transfer stage (eject+capture); pair with lander_dv (replaces mission_dv)"},
+     "lander_dv": {"type": "float", "default": 0.0, "desc": "SPLIT round-trip: Δv (m/s) for the SHORT lander "
+                   "stage (descent+ascend+return); independent of capture cost"},
+     "lander_body_g": {"type": "float", "default": 0.0, "desc": "surface gravity (m/s^2) of the body the "
+                       "lander lands/ascends on, to size its ascent TWR"}},
     "deploy_relay.launch_to_lko",
 ))
 _register(PrimitiveSpec(
@@ -1073,6 +1218,14 @@ _register(PrimitiveSpec(
     "Bring the current vessel online as a comms relay: deploy antenna + solar, set vessel type Relay.",
     {},
     "deploy_relay.commission",
+))
+_register(PrimitiveSpec(
+    "jettison_transfer_stage", jettison_transfer_stage,
+    "SPLIT-STAGE round-trip: in the parking orbit after capture, drop the spent transfer stage and re-select "
+    "the short crewed lander (by crew + heat-shield identity) so it lands UPRIGHT + ascends + returns on its "
+    "own budget.",
+    {"target_body": {"type": "str", "default": "", "desc": "the body being orbited (to disambiguate the lander)"}},
+    "v.control.activate_next_stage + _select_lander_vessel",
 ))
 
 

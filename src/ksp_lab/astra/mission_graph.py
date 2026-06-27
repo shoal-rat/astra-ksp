@@ -541,6 +541,9 @@ _BUILDERS = {
     "commission_relay": _build_logic("commission_relay", requires_orbit=True),
     "transfer_crew": _build_logic("transfer_crew"),
     "select_vessel": _build_logic("select_vessel"),
+    # Drop the spent transfer stage in the parking orbit before descent (split-stage round-trip). Zero Δv,
+    # ORBIT in -> ORBIT out, so the following land() ORBIT precondition is satisfied.
+    "jettison_transfer_stage": _build_logic("jettison_transfer_stage", requires_orbit=True),
 }
 
 

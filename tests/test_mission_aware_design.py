@@ -163,3 +163,73 @@ def test_general_planner_no_post_lko_nodes_returns_empty():
 
     plan = [{"primitive": "launch", "args": {"crew": 0, "target_alt_km": 100, "name": "Relay-1"}}]
     assert planner._apply_mission_aware_launch(plan, launch_body="Kerbin") == {}
+
+
+# --------------------------------------------------------------------------------------------------- #
+# 4. SPLIT-STAGE crewed PLANET round-trip: droppable transfer stage + short squat lander
+# --------------------------------------------------------------------------------------------------- #
+def test_split_stage_duna_roundtrip_lands_stable_with_independent_lander_budget():
+    """The crewed Duna (planet) land-and-return SPLITS the upper into a droppable transfer stage + a SHORT
+    wide lander. The plan inserts jettison_transfer_stage between capture and descent; the launch carries
+    transfer_dv + lander_dv (NOT mission_dv); and the produced craft is feasible, lands UPRIGHT
+    (landed_stable), has a >=2.5 m lander base, and does NOT bank the whole-mission reserve on the lander
+    (so the lander's get-home budget is independent of the variable capture cost)."""
+    import design_chart
+    from ksp_lab.astra import planner
+    from ksp_lab.design import (Phase, ShipRequirements, design_ship, default_reserve_frac,
+                                mission_upper_phases, _mission_reserve_phase_name)
+    from ksp_lab.bodies import DUNA
+
+    steps, _ = planner.decompose("land a crew on Mars, plant a flag, and bring them home", "Duna")
+    names = [s["primitive"] for s in steps]
+    assert "jettison_transfer_stage" in names
+    assert names.index("jettison_transfer_stage") == names.index("transfer") + 1
+    assert names.index("jettison_transfer_stage") < names.index("land")
+    la = steps[0]["args"]
+    assert la.get("transfer_dv", 0) > 0 and la.get("lander_dv", 0) > 0
+    assert "mission_dv" not in la
+    assert abs(la["lander_body_g"] - DUNA.surface_g) < 0.1
+
+    ph = [Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3, reserve_frac=default_reserve_frac(9.81)),
+          Phase("insertion", 283.0, twr_body_g=0.0, min_twr=0.0, reserve_frac=default_reserve_frac(0.0))]
+    ph += mission_upper_phases(transfer_dv=la["transfer_dv"], lander_dv=la["lander_dv"],
+                               lander_body_g=la["lander_body_g"])
+    req = ShipRequirements(name="AI-Duna-1", mission_type="crewed_launch", crew=1, payload_t=0.3, phases=ph,
+                           landing=_KERBIN_LANDING, needs_legs=True, needs_heatshield=True,
+                           needs_docking=False, max_engine_count=int(la.get("max_core_engines", 6)),
+                           radial_booster_count=0)
+    d = design_ship(req)
+    assert d.feasible, d.infeasible_reasons
+    assert d.landed_stable is True, "the short split lander must land upright (low CoG, wide legs)"
+    lander_stage = next(s for s in d.stages if "land" in s.role.lower())
+    assert lander_stage.diameter_m >= 2.5, "the lander base must be wide for a squat, low-CoG lander"
+    assert _mission_reserve_phase_name(ph) != lander_stage.role, "the lander must NOT bank the mission reserve"
+    assert design_chart.looks_like_a_rocket(d).get("looks_like_a_rocket") is True
+
+
+def test_mun_roundtrip_stays_single_stage_unchanged():
+    """A MOON (Mun) land-and-return keeps the proven SINGLE 'mission' stack: NO jettison step, mission_dv set
+    (not transfer_dv/lander_dv) — the flight-proven Mun vehicle is left byte-for-byte unchanged by the split."""
+    from ksp_lab.astra import planner
+
+    steps, _ = planner.decompose("land a crew on the Mun, plant a flag, and return", "Mun")
+    names = [s["primitive"] for s in steps]
+    assert "jettison_transfer_stage" not in names
+    la = steps[0]["args"]
+    assert la.get("mission_dv", 0) > 1000.0
+    assert "transfer_dv" not in la and "lander_dv" not in la
+
+
+def test_jettison_transfer_stage_is_registered_and_validates():
+    """jettison_transfer_stage must be a real catalog primitive (so _validate_steps keeps it) and a valid
+    zero-Δv ORBIT->ORBIT mission-graph node (so the plan validator does not reject the split plan)."""
+    from ksp_lab.astra.primitives import CATALOG
+    from ksp_lab.astra.mission_graph import build_mission_graph
+    assert "jettison_transfer_stage" in CATALOG
+    plan = [{"primitive": "launch", "args": {"crew": 1, "target_alt_km": 80, "name": "AI-Duna-1"}},
+            {"primitive": "transfer", "args": {"target_body": "Duna"}},
+            {"primitive": "jettison_transfer_stage", "args": {"target_body": "Duna"}},
+            {"primitive": "land", "args": {}}]
+    g = build_mission_graph(plan, launch_body="Kerbin")
+    jet = next(n for n in g.nodes if n.primitive == "jettison_transfer_stage")
+    assert jet.dv_mps == 0.0
