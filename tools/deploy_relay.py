@@ -609,9 +609,19 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
             # before the raise, and ignite the upper. Otherwise the raise drags the dead booster and strands
             # the relay short of keo (Keo-4/5 ended ~100x692 km dragging the whole booster). The payload
             # decoupler is never in inter_decs, so the comsat is never jettisoned.
-            dropped = _separate_attached_boosters(ksc, inter_decs)
+            # Use the FULL engine-keeping decoupler list for the LKO cleanup (NOT the ascent exclude-split
+            # list). At orbit the _stage_below_has_fuel guard inside _separate_attached_boosters is the
+            # ROBUST discriminator: a SPENT stage (boosters / core, drained on the climb) has NO fuel below
+            # its decoupler and is dropped, while the FULL droppable TRANSFER stage (fuel below the
+            # transfer/lander interface) is protected and kept for TMI. The exclude-split heuristic used here
+            # before wrongly OMITTED the RADIAL booster decoupler on a booster+split craft — every decoupler
+            # sits at the same part-tree depth, so 'drop the shallowest' dropped the boosters off the list,
+            # leaving the spent boosters + core attached so the ejection dragged the whole dead stack and
+            # never escaped Kerbin (the 2026-06-27 live failure). The guard alone keeps the transfer safe.
+            lko_decs = _inter_stage_decouplers(ksc.active_vessel, exclude_split_interface=False)
+            dropped = _separate_attached_boosters(ksc, lko_decs)
             if dropped:
-                log(f"  booster STILL ATTACHED at orbit -> force-separated {dropped} stage(s) + ignited upper")
+                log(f"  spent stage(s) STILL ATTACHED at orbit -> force-separated {dropped} (boosters/core) + ignited upper")
             log(f"  IN LKO: {round(s.get('periapsis',0)/1000)}x{round(s.get('apoapsis',0)/1000)} km "
                 f"(booster dropped — raise/circularise runs on the upper's own propellant, no refuel)")
             c2.close(); return True
