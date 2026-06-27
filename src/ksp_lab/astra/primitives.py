@@ -484,21 +484,50 @@ def _land_via_mechjeb(ctx: PrimitiveContext, v, body_name: str) -> PrimitiveResu
     the high coast (MechJeb won't fast-warp a long descent ellipse) and wait for touchdown; NO hand-rolled
     chute/burn timing (the class of code that killed crew). Legs are deployed for the final touchdown."""
     sc = ctx.sc
+    # CLEAR any leftover rails warp FIRST: under rails warp the throttle is ignored and the engine cannot
+    # fire, so a deorbit burn silently does nothing (a killed prior run can leave the craft time-warping —
+    # this stranded the crewed Duna craft in a 62 km circle: throttle set, thrust 0, periapsis unmoved).
+    try:
+        sc.rails_warp_factor = 0
+        sc.physics_warp_factor = 0
+    except Exception:
+        pass
+    try:
+        atm = float(lookup_body(body_name).atmosphere_top_m)
+    except Exception:
+        atm = 50_000.0
     # Do NOT deploy legs yet: extended legs in a high-speed atmospheric ENTRY rip off / drag-break the craft
     # (a contributor to the Duna entry break-up). Keep them retracted for the entry; MechJeb's landing AP
-    # (DeployGears) lowers them for the final touchdown. Point retrograde first for a stable, heat-shield-
-    # trailing entry attitude before handing to MechJeb.
+    # (DeployGears) lowers them for the final touchdown.
     try:
         v.control.legs = False
     except Exception:
         pass
+    # From a STABLE parking orbit whose periapsis sits ABOVE the air, MechJeb's landing AP can stall (and the
+    # warp-assist below would then just fast-warp a NON-descending orbit forever — the crewed Duna craft hung
+    # in a 62 km circle). DEORBIT ourselves first: swing retrograde and burn until the periapsis drops INTO
+    # the lower atmosphere, putting the craft on a committed descent ellipse, THEN hand the powered/chute
+    # phase to MechJeb with SAS RELEASED so the AP owns attitude (a held-retrograde SAS lock would fight the
+    # AP and block the deorbit). A craft that already arrives on a descent ellipse skips straight to MechJeb.
     try:
         from krpc.services import spacecenter as _spc
-        v.control.speed_mode = _spc.SpeedMode.surface
-        v.control.sas = True
-        v.control.sas_mode = _spc.SASMode.retrograde
-    except Exception:
-        pass
+        pe = float(v.orbit.periapsis_altitude)
+        if pe > atm * 0.4:
+            _log(f"  deorbit: dropping periapsis {pe/1000:.0f} km into the atmosphere for descent ...")
+            v.control.speed_mode = _spc.SpeedMode.orbit
+            v.control.sas = True
+            v.control.sas_mode = _spc.SASMode.retrograde
+            time.sleep(8.0)  # swing to retrograde before lighting the engine
+            target_pe = atm * 0.2
+            t0 = time.monotonic()
+            while float(v.orbit.periapsis_altitude) > target_pe and time.monotonic() - t0 < 90.0:
+                v.control.throttle = 0.7
+                time.sleep(0.5)
+            v.control.throttle = 0.0
+            v.control.sas = False
+            _log(f"  deorbit done: periapsis {float(v.orbit.periapsis_altitude)/1000:.0f} km")
+    except Exception as exc:
+        _log(f"  deorbit note ({exc})")
     try:
         ctx.bridge.mj_land(touchdown_speed=0.5)
         _log(f"  MechJeb landing AP engaged on {body_name}")
@@ -506,10 +535,6 @@ def _land_via_mechjeb(ctx: PrimitiveContext, v, body_name: str) -> PrimitiveResu
         _log(f"  mj_land engage note ({exc})")
     start = time.monotonic()
     timeout = _flight_timeout(ctx)
-    try:
-        atm = float(lookup_body(body_name).atmosphere_top_m)
-    except Exception:
-        atm = 50_000.0
     while time.monotonic() - start < timeout:
         try:
             sit = str(v.situation).split(".")[-1].lower()

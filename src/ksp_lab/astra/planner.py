@@ -197,12 +197,12 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
             for k, v in merged.items():
                 step["args"].setdefault(k, v)
             # A HEAVY interplanetary craft (large post-LKO budget — a propulsive capture at a far planet)
-            # makes a several-hundred-tonne rocket a single-core booster cannot lift (liftoff TWR < 1.2).
-            # Strap on asparagus RADIAL BOOSTERS so the liftoff TWR clears the floor; design.py sizes them
-            # and the core flies on lighter after they drop. Scale the count with the post-LKO budget.
-            if post_lko_dv > 4200.0:
-                step["args"]["radial_boosters"] = max(int(step["args"].get("radial_boosters", 0)), 4)
-            elif post_lko_dv > 3200.0:
-                step["args"]["radial_boosters"] = max(int(step["args"].get("radial_boosters", 0)), 2)
+            # makes a several-hundred-tonne rocket a single core engine cannot lift (liftoff TWR < 1.2). Give
+            # the booster a bigger CORE ENGINE CLUSTER (max_core_engines) for the liftoff thrust — a clustered
+            # core has NO radial protrusions, so it stays a clean rocket and passes the ascent-envelope shape
+            # gate (radial strap-on boosters FAIL that gate: "radial protrusions within ascent envelope").
+            # design.py sizes the cluster within a 1.5x mounting plate.
+            if post_lko_dv > 3200.0:
+                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 4)
             break
     return merged
