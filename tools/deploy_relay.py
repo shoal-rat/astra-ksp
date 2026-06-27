@@ -479,9 +479,20 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # next engine just heats the attached tank with no thrust gain" — and the comsat is never jettisoned.
     _is_split = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
     inter_decs = _inter_stage_decouplers(kv, exclude_split_interface=_is_split)
+    _booster_split = _is_split and int(radial_booster_count) > 0
+    if _booster_split:
+        # NO MID-ASCENT STAGING for a booster+split craft. The asparagus pods have no crossfeed fuel lines,
+        # so the core burns its OWN propellant in parallel with the boosters; firing the radial decoupler
+        # MID-ASCENT (when a pod engine flames out) leaves the core under-fuelled and the climb STALLS (it
+        # stalled at 19 km). The overpowered SSME core + booster cluster reaches LKO together on the combined
+        # thrust (proven), so keep EVERYTHING attached through the climb and let the end-of-ascent LKO cleanup
+        # drop the spent boosters + core in orbit (where _stage_below_has_fuel cleanly tells spent from the
+        # live transfer stage). An empty list disables the in-loop dry-trigger staging below.
+        inter_decs = []
     log(f"  ascent separators: {len(inter_decs)} inter-stage decoupler(s) to fire explicitly "
         f"(payload decoupler protected — never fired during ascent"
-        + ("; SPLIT: transfer/lander interface kept attached for TMI" if _is_split else "") + ")")
+        + ("; BOOSTER+SPLIT: no mid-ascent staging — spent stages dropped at LKO" if _booster_split
+           else ("; SPLIT: transfer/lander interface kept attached for TMI" if _is_split else "")) + ")")
     # FAIL-FAST baselines (captured once, on the fully-stacked vehicle at liftoff): the part count that
     # SHOULD survive to orbit (post-staging = full stack minus the booster stages we will drop) and the
     # bare PAYLOAD count (what's left if it breaks up). post_staging is the full stack minus one part per
