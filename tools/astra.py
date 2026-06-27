@@ -6,14 +6,17 @@ ASTRA is a GENERAL KSP1 agent: it DECOMPOSES the command into an ordered list of
 PRIMITIVES (launch / transfer / land / plant_flag / dock / recover / ...) and executes them against one
 live kRPC + bridge connection. It is no longer a fixed Mun-mission selector.
 
-The decomposition is done by the Claude mission-architect — there is NO offline/heuristic fallback.
-ANTHROPIC_API_KEY MUST be set; without it (or if the Claude call fails) ASTRA raises rather than
-silently degrading to a keyword guesser. Set ASTRA_MODEL to choose the model (default claude-opus-4-8).
+ASTRA decomposes AUTONOMOUSLY. When ANTHROPIC_API_KEY is set the Claude mission-architect decomposes
+(richest reasoning); when it is NOT set ASTRA uses its GENERAL body-agnostic planner (a single algorithm
+that computes every step's parameters from the bodies table + physics for ANY destination — NOT a
+per-mission script). Either way the agent plans, validates, flies, diagnoses and retries on its own.
 
 Options:
     --config PATH     kRPC/runner config (default: configs/local-ksp.yaml)
-    --dry-run         decompose the command (still via the LLM) and print the primitive plan; do NOT fly
+    --dry-run         decompose the command and print the primitive plan; do NOT fly
     --max-attempts N  retries per primitive step to absorb run-to-run variance (default 2)
+    --from-step N     RESUME: skip the first N-1 steps (assumed already flown) and fly from step N against
+                      the live active vessel — re-attempt one leg without re-flying launch/transfer
 """
 from __future__ import annotations
 
@@ -28,8 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="astra", description="Autonomous KSP1 mission agent.")
     parser.add_argument("command", help="one line of natural language describing the mission")
     parser.add_argument("--config", default="configs/local-ksp.yaml")
-    parser.add_argument("--dry-run", action="store_true", help="interpret only (still via the LLM); do not fly")
+    parser.add_argument("--dry-run", action="store_true", help="interpret only; do not fly")
     parser.add_argument("--max-attempts", type=int, default=2)
+    parser.add_argument("--from-step", type=int, default=1,
+                        help="resume: fly from this 1-based step against the live vessel")
     args = parser.parse_args(argv)
 
     agent = AstraAgent(
@@ -39,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
     )
     try:
-        result = agent.run(args.command)
+        result = agent.run(args.command, from_step=max(1, args.from_step))
     except LLMUnavailableError as exc:
         print(f"ASTRA: {exc}", file=sys.stderr)
         return 3

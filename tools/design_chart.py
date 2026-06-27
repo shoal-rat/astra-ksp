@@ -87,6 +87,10 @@ def assembly_geometry(design, part_bodies: dict | None = None) -> list[dict]:
             # INTERSTAGE SHROUD wrapping this engine, (shroud_top_y, shroud_radius), or None. Set by
             # craft_writer on every upper-stage engine that sits above a lower stage (flaw #4).
             "interstage_shroud": getattr(n, "interstage_shroud", None),
+            # The kept LEGGED LANDER engine: a bare bell + legs that fires only in vacuum. It must NOT be
+            # shrouded (the plume would fire into the tube and cancel thrust), so it is exempt from the
+            # interstage-shroud requirement below.
+            "lander_base": getattr(n, "lander_base_engine", False),
             "stage_index": getattr(n, "stage_index", 0),
         })
     # A payload fairing's ogive shell extrudes UPWARD from its base over every part above it (the
@@ -283,7 +287,10 @@ def _interstage_shroud_ok(geom: list[dict]) -> tuple[bool, dict]:
     if len(engines) <= 1:
         return True, {}
     base_istg = max(g.get("stage_index", 0) for g in engines)
-    upper = [g for g in engines if g.get("stage_index", 0) < base_istg]
+    # The kept LEGGED LANDER engine is exempt: it is a bare bell + legs that fires only in vacuum and CANNOT
+    # carry a shroud (the exhaust plume would fire into the tube and cancel thrust to zero). A bare lander
+    # bell is correct, so it does not count as an un-shrouded mid-stack engine.
+    upper = [g for g in engines if g.get("stage_index", 0) < base_istg and not g.get("lander_base")]
     if not upper:
         return True, {}
     missing = sum(1 for g in upper if not g.get("interstage_shroud"))

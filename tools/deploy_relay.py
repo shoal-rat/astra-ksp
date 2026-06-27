@@ -85,13 +85,19 @@ def _root_side_keeps_engine(vessel, dec) -> bool:
     return False
 
 
-def _inter_stage_decouplers(vessel) -> list:
+def _inter_stage_decouplers(vessel, exclude_split_interface: bool = False) -> list:
     """The decouplers ascent staging may fire, DEEPEST-first (the booster decoupler before any upper one),
     EXCLUDING any decoupler that would strand the engineless payload. An inter-stage decoupler drops a SPENT
     stage while the active (root/pod) side KEEPS an engine (``_root_side_keeps_engine``); a PAYLOAD decoupler
     leaves the payload with no propulsion and must never fire during ascent. The crewed vehicle has TWO such
     payload decouplers (heat-shield boundary + upper boundary), which the old shallowest-only heuristic
-    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire."""
+    mis-fired — dropping the whole upper stage. Returns [] when nothing is safe to fire.
+
+    ``exclude_split_interface`` (a SPLIT transfer/lander craft): the lander is the topmost propulsive stage,
+    so the SHALLOWEST engine-keeping decoupler is the transfer/lander INTERFACE — it drops the DROPPABLE
+    TRANSFER stage, which fires AFTER LKO (trans-Duna injection), NOT during ascent. Firing it on the ascent
+    strands the mission in LKO with only the lander. Exclude it so the ascent stops at the (intact) transfer
+    stage; jettison_transfer_stage fires it later in Duna orbit."""
     try:
         decs = list(vessel.parts.decouplers)
     except Exception:
@@ -105,6 +111,10 @@ def _inter_stage_decouplers(vessel) -> list:
         payload = min(decs, key=lambda dd: _depth_from_root(dd.part))
         inter = [dd for dd in decs if dd is not payload]
     inter.sort(key=lambda dd: -_depth_from_root(dd.part))           # deepest (lowest booster) fires first
+    if exclude_split_interface and len(inter) >= 2:
+        # the SHALLOWEST engine-keeping decoupler (last after the deepest-first sort) is the transfer/lander
+        # interface on a split craft — keep the transfer stage attached through ascent.
+        inter = inter[:-1]
     return inter
 
 
@@ -221,6 +231,26 @@ def _guarded_decouple(vessel, dec) -> bool:
         return False
 
 
+def _stage_below_has_fuel(vessel, dec, min_lf: float = 5.0) -> bool:
+    """True if the parts BELOW ``dec`` still hold significant propellant — i.e. ``dec`` would drop a FULL,
+    LIVE stage, not a SPENT/empty booster. The end-of-ascent booster cleanup must NOT fire such a decoupler:
+    on a SPLIT crewed interplanetary craft the only engine-keeping decoupler left in LKO is the
+    transfer/lander INTERFACE, whose lower side is the full droppable TRANSFER stage needed for trans-Duna
+    injection — firing it here would strand the mission in Kerbin parking orbit before TMI."""
+    try:
+        dpart = dec.part
+        total = 0.0
+        for p in vessel.parts.all:
+            try:
+                if _part_is_below(p, dpart):
+                    total += float(p.resources.amount("LiquidFuel"))
+            except Exception:
+                pass
+        return total > min_lf
+    except Exception:
+        return False
+
+
 def _separate_attached_boosters(ksc, inter_decs) -> int:
     """Fire EVERY still-un-fired inter-stage decoupler (drop the spent/attached booster stack), confirming
     each by a part-count drop over a few physics frames, then make sure the upper stage is lit. The payload
@@ -232,6 +262,8 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
             if dd.decoupled:
                 continue
             before = len(ksc.active_vessel.parts.all)
+            if _stage_below_has_fuel(ksc.active_vessel, dd):   # GUARD: never drop a FULL live stage (the
+                continue                                       # droppable TRANSFER stage) during ascent cleanup
             if not _guarded_decouple(ksc.active_vessel, dd):   # GUARD: never fire a payload/heat-shield decoupler
                 continue
             fired += 1
@@ -258,7 +290,9 @@ def _separate_attached_boosters(ksc, inter_decs) -> int:
 def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
                   insertion_dv_override: float = 0.0, booster_max_engines: int = 1,
                   radial_booster_count: int = 0, *, crew: int = 0,
-                  needs_heatshield: bool = False, landing=None) -> bool:
+                  needs_heatshield: bool = False, landing=None,
+                  mission_dv: float = 0.0, needs_legs: bool = False,
+                  transfer_dv: float = 0.0, lander_dv: float = 0.0, lander_body_g: float = 0.0) -> bool:
     """Proven launch: clear pad, write the RA-100 comsat craft, MechJeb ascent, direct booster
     ignition + explicit staging, until a stable ~100 km parking orbit. The insertion stage is sized for
     the eventual TARGET orbit so it has the propellant to raise + circularise there.
@@ -300,7 +334,7 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     #   insertion: sized above for the LKO -> target raise + circularise
     # Tall enough that the CoP sits a full caliber below the CoG (aerodynamically STABLE). The bus rides the
     # RA-100 relay inside a real PROCEDURAL FAIRING (ogive shell, jettisoned in orbit before deploy) + fins.
-    from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac
+    from ksp_lab.design import Phase, ShipRequirements, design_ship, default_reserve_frac, mission_upper_phases
     # A HEAVY interplanetary upper (large override -> a ~30 t insertion stage) must CIRCULARISE before it
     # falls back from apoapsis, so it needs real thrust — a slow Terrier (60 kN) leaves it suborbital
     # (the Eve-relay #8 failure). Give a big upper a TWR floor so the sizer picks a Reliant; a light
@@ -308,20 +342,38 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # NOTE: a thrustier crewed upper (Skipper via min_twr 1.3) was tried and DID NOT fix the crewed-launch
     # failure — the blocker is ASCENT AERODYNAMICS (the blunt exposed heat-shield/pod tumbles), not upper
     # thrust. Left at the proven relay floor; the real fix is a payload fairing over the crewed pod for ascent.
-    _ins_g, _ins_twr = (9.81, 0.5) if insertion_dv >= 3500.0 else (0.0, 0.0)
+    # SPLIT craft: the insertion stage circularises the HEAVY upper (transfer+lander) — give it a thrust
+    # floor too, or a weak vacuum engine crawls the circularisation and bleeds the transfer stage dry.
+    _split_ins = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
+    _ins_g, _ins_twr = (9.81, 0.5) if (insertion_dv >= 3500.0 or _split_ins) else (0.0, 0.0)
     # CREWED vs uncrewed command/recovery. A crewed launch (crew>0) MUST write a craft with a crewable
     # Mk1 pod + forward heat shield + chutes so a kerbal can board and survive re-entry; an uncrewed relay
     # rides a headless probe core in a fairing. mission_type reflects which so downstream code can tell.
     _mission_type = "crewed_launch" if crew > 0 else "relay_comsat"
+    # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
+    # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
+    _phases = [Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
+                     reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
+               Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
+                     reserve_frac=default_reserve_frac(0.0))]                    # +7% vacuum reserve
+    # MISSION-AWARE (opt-in): a crewed SINGLE-VEHICLE deep-space mission (a Mun land-and-return) must carry
+    # the POST-LKO Δv budget (TMI + capture + land + ascend + return + re-entry) on the SAME craft, so when
+    # mission_dv>0 we APPEND a vacuum "mission" phase (design.py splits it across stages if it exceeds the
+    # single-stage Δv ceiling) and force landing legs on. mission_dv==0 keeps the relay/Eve LKO craft
+    # BYTE-FOR-BYTE unchanged. This mirrors primitives._launch_requirements so the WRITTEN+FLOWN craft is the
+    # SAME 3-phase legged vehicle the design-chart gate approved — previously the gate sized a full-mission
+    # craft but launch_to_lko re-derived and flew an LKO-only one (the crewed Mun round-trip sizing blocker).
+    # SPLIT (transfer_dv+lander_dv) -> droppable transfer stage + short lander; or single 'mission' stage;
+    # or nothing (relay/LKO). ONE definition shared with primitives._launch_requirements (design gate) so
+    # the gated craft == the flown craft.
+    _phases.extend(mission_upper_phases(mission_dv=max(0.0, float(mission_dv)),
+                                        transfer_dv=max(0.0, float(transfer_dv)),
+                                        lander_dv=max(0.0, float(lander_dv)),
+                                        lander_body_g=max(0.0, float(lander_body_g))))
     req = ShipRequirements(
         name=name, mission_type=_mission_type, crew=crew, payload_t=0.3,
-        # Booster sized to reach NEAR-orbital on its own (atmospheric Isp + ~1200 m/s gravity/drag loss eat
-        # ~3400 of this), so the weak high-Isp upper only has to circularise + raise to the target.
-        phases=[Phase("booster", 4200.0, twr_body_g=9.81, min_twr=1.3,            # 1.2-1.8 is the window
-                      reserve_frac=default_reserve_frac(9.81)),                   # +12% ascent reserve
-                Phase("insertion", insertion_dv, twr_body_g=_ins_g, min_twr=_ins_twr,
-                      reserve_frac=default_reserve_frac(0.0))],                   # +7% vacuum reserve
-        landing=landing, needs_legs=False, needs_heatshield=needs_heatshield, needs_docking=False,
+        phases=_phases,
+        landing=landing, needs_legs=bool(needs_legs), needs_heatshield=needs_heatshield, needs_docking=False,
         max_engine_count=booster_max_engines,
         # RADIAL BOOSTERS: a heavy interplanetary upper (Eve's ~3800 m/s sync insertion) makes a ~200 t
         # rocket that hangs at low TWR on a single core. radial_booster_count>0 straps N tank+engine pods
@@ -425,9 +477,11 @@ def launch_to_lko(sc, cfg, runner, bridge, name: str, target_alt_km: float,
     # MechJeb autostage (which intermittently skips the booster decoupler on this fin geometry). That
     # guarantees a spent stage is physically separated BEFORE the next engine lights — the fix for "the
     # next engine just heats the attached tank with no thrust gain" — and the comsat is never jettisoned.
-    inter_decs = _inter_stage_decouplers(kv)
+    _is_split = (float(transfer_dv) > 0.0 and float(lander_dv) > 0.0)
+    inter_decs = _inter_stage_decouplers(kv, exclude_split_interface=_is_split)
     log(f"  ascent separators: {len(inter_decs)} inter-stage decoupler(s) to fire explicitly "
-        f"(payload decoupler protected — never fired during ascent)")
+        f"(payload decoupler protected — never fired during ascent"
+        + ("; SPLIT: transfer/lander interface kept attached for TMI" if _is_split else "") + ")")
     # FAIL-FAST baselines (captured once, on the fully-stacked vehicle at liftoff): the part count that
     # SHOULD survive to orbit (post-staging = full stack minus the booster stages we will drop) and the
     # bare PAYLOAD count (what's left if it breaks up). post_staging is the full stack minus one part per

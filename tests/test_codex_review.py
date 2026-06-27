@@ -32,7 +32,10 @@ def test_invokes_cli_multimodally_with_prompt_on_stdin():
     codex_review_three_view(["a.png", "b.png"], runner=runner, codex_bin="codex")
 
     cmd = cap["cmd"]
-    assert cmd[:5] == ["codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check"]
+    # cmd[0] is the RESOLVED codex executable (on Windows the vendored codex.exe, since the bare name + a
+    # .cmd shim can't be exec'd by subprocess); the exec sub-args follow unchanged.
+    assert "codex" in cmd[0].lower()
+    assert cmd[1:5] == ["exec", "--sandbox", "read-only", "--skip-git-repo-check"]
     # one -i per image, multimodal
     assert cmd.count("-i") == 2
     assert "a.png" in cmd and "b.png" in cmd

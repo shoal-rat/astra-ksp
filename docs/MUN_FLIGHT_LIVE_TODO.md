@@ -1,5 +1,46 @@
 # Mun land-and-return: LIVE-flight staging TODOs
 
+## ✅ FLOWN LIVE AND RECOVERED (2026-06-27)
+
+A crewed Mun land-and-return was flown end-to-end against the live game and the kerbal was **recovered
+alive at Kerbin**: `launch → LKO → trans-Mun injection → Mun capture → Mun landing → ascent →
+trans-Kerbin return → reentry → recovered` (`fly_mun_roundtrip.py`, 7/7 steps, `complete=True`). The
+six watch-items below were all exercised live. Seven real bugs surfaced and were fixed (each verified
+in the live game, not just offline):
+
+1. **Launch flew an LKO-only craft.** `primitives.launch` sized the full-mission rocket for the design
+   gate but `deploy_relay.launch_to_lko` re-derived and flew a 2-phase LKO craft, so `mission_dv`/legs
+   never reached the flown vehicle. Fix: thread `mission_dv` + `needs_legs` through `launch_to_lko`
+   (appends the vacuum `mission` phase + legs). *Live: the flown craft now carries ~4000 m/s + legs.*
+2. **Mun legs used the heliocentric Eve/interplanetary driver** (`deploy_relay_transfer.transfer_to_body`
+   ejects to a **Sun** orbit and cannot reach a body inside Kerbin's SOI, nor return from one). Fix:
+   route the Mun outbound + the Mun→Kerbin return through the proven `flight_controller` Mun machinery
+   (`_transfer_and_capture_mun_orbit`, `_find_kerbin_return_node`/`_execute_node`/`_coast_to_kerbin_soi`);
+   `land`→`_land_on_mun`, `recover`→`_recover_on_kerbin`.
+3. **The lander engine's exhaust fired into its own interstage shroud** (same vessel → net thrust ZERO;
+   the LV-N made `g_force=0` at full throttle). Fix: the kept **legged lander** engine is left a bare
+   bell — `craft_writer` skips the shroud for it and the design-chart gate exempts it (`lander_base_engine`).
+4. **Capture burn falsely aborted (`no_actual_thrust`)** — `vessel.thrust` reads 0 for several seconds
+   after a high-rails-warp de-warp even while the engine fires. Fix: both no-thrust guards
+   (`_capture_mun_orbit`, `_execute_mun_apsis_node`) also accept orbital-**energy** (semi-major-axis)
+   change as proof of thrust (only thrust changes it; a truly blocked engine keeps it constant).
+5. **Nuclear LV-N on LFO tanks → fuel starvation.** The LV-N burns LiquidFuel only, so ~55% of an LFO
+   tank is dead Oxidizer it can never use and the LF runs out at ~half the calculated Δv — the lander
+   starved at 13 km mid-descent and crashed. Fix: exclude oxidizer-less engines from the all-LFO engine
+   pool (`design._OXIDIZERLESS_ENGINES`); a chemical (Terrier) lander uses its propellant fully.
+6. **Flag plant blocked the whole mission.** The Mk1 hatch is obstructed by the heat shield below it, so
+   `/eva-flag` returns null. Fix: `plant_flag` is a **bonus** step — marked `optional`, a failure logs and
+   the mission presses on to the ascent + return rather than stranding the crew.
+7. **Reentry periapsis too shallow.** The trans-Kerbin return leaves a ~48 km periapsis that barely
+   touches the air and skips out for hundreds of passes (MechJeb won't deorbit a craft already "in" the
+   70 km atmosphere). Fix: `recover` lowers a too-high periapsis to a real corridor (~25 km) at apoapsis
+   before handing the descent to MechJeb.
+
+Re-run end to end with `PYTHONPATH=src python tools/fly_mun_roundtrip.py configs/local-ksp.yaml`, or
+resume a single leg against the live vessel with `--from-step N` (1-based).
+
+---
+
 The launch **DESIGN** is now mission-aware (`primitives.launch` + `_launch_requirements` take
 `mission_dv` + `needs_legs`; `tools/fly_mun_roundtrip.py` derives them from the mission graph). That
 sizes **one** vehicle with enough Δv + landing legs + heatshield/chutes for the whole Mun round-trip,

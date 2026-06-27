@@ -207,14 +207,11 @@ def test_pure_prograde_mun_correction_uses_direct_orbital_marker():
     assert not controller._use_direct_prograde_correction("trans_mun_injection", FakeNode(prograde=850.0))
 
 
-def test_mun_transfer_correction_throttle_starts_at_precision_level():
-    controller = KrpcFlightController(
-        {
-            "correction_target_accel_mps2": 0.10,
-            "correction_min_throttle": 0.004,
-            "correction_max_throttle": 0.025,
-        }
-    )
+def test_mun_transfer_correction_throttle_is_real_not_starved():
+    # DYNAMIC throttle law (replaces the old starved 0.004–0.025 correction cap that could not move a
+    # 12 Mm orbit in the node window). accel = 2e6/2e5 = 10 m/s^2; feather_dv = max(1.5, 10*2.5) = 25;
+    # throttle = 6/25 = 0.24, bounded to [0.12, 0.45].
+    controller = KrpcFlightController({})
 
     throttle = controller._maneuver_node_throttle(
         "mun_transfer_correction",
@@ -222,15 +219,22 @@ def test_mun_transfer_correction_throttle_starts_at_precision_level():
         vessel_mass_kg=200_000.0,
         thrust_n=2_000_000.0,
     )
-
-    assert 0.004 <= throttle <= 0.025
-    assert throttle < 0.02
+    assert 0.12 <= throttle <= 0.45            # a REAL correction throttle, not the old starved <=0.025
+    # The main TMI burn runs FULL throttle far from the node ...
     assert controller._maneuver_node_throttle(
         "trans_mun_injection",
         remaining_delta_v_mps=850.0,
         vessel_mass_kg=200_000.0,
         thrust_n=2_000_000.0,
     ) == 1.0
+    # ... and FEATHERS proportionally as it nears the node (small remaining Δv -> below full throttle).
+    near = controller._maneuver_node_throttle(
+        "trans_mun_injection",
+        remaining_delta_v_mps=2.0,
+        vessel_mass_kg=200_000.0,
+        thrust_n=2_000_000.0,
+    )
+    assert 0.05 <= near < 1.0
 
 
 def test_planned_safe_tmi_uses_wider_apoapsis_cap():

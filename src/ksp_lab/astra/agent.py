@@ -116,7 +116,7 @@ class AstraAgent:
             post_bridge_status(phase, message)
 
     # ---------- public ----------
-    def run(self, command: str) -> AstraResult:
+    def run(self, command: str, *, from_step: int = 1) -> AstraResult:
         # LIVE run: connect FIRST so the LLM mission-architect reasons over the LIVE universe state (vessel
         # orbits + resources/mass via the bridge), not just the static bodies+catalog — the user's "give the
         # LLM sufficient information". DRY-RUN: plan from the static context only (no connection needed).
@@ -193,8 +193,14 @@ class AstraAgent:
 
         # ctx is already connected above (live run).
 
+        from_step = max(1, int(from_step))
+        if from_step > 1:
+            _log(f"RESUME: skipping steps 1..{from_step - 1}; flying from step {from_step} against the live "
+                 f"active vessel {ctx.vessel_name!r} at {ctx.current_body}")
         overall = True
         for i, step in enumerate(plan.steps, start=1):
+            if i < from_step:
+                continue
             sr = self._run_step(command, ctx, i, step)
             result.step_results.append(sr)
             if not sr.success:
@@ -222,8 +228,14 @@ class AstraAgent:
                 ut_now = float(sc.ut)
             except Exception:
                 ut_now = 0.0
+        # The launch body is the HOME body KSC sits on (Kerbin in stock) — where the launch primitive flies
+        # FROM — NOT wherever a stray/active vessel happens to be. A stale active vessel left at the Mun must
+        # never make the agent plan a "launch from the Mun" (which yields nonsense transfers + a rejected
+        # plan). Only fall back to the live active-vessel body for a RESUME whose plan does NOT begin with a
+        # launch (the vehicle is already mid-mission at that body).
         launch_body = "Kerbin"
-        if ctx is not None and getattr(ctx, "current_body", None):
+        plan_starts_with_launch = bool(plan.steps) and plan.steps[0].get("primitive") == "launch"
+        if not plan_starts_with_launch and ctx is not None and getattr(ctx, "current_body", None):
             launch_body = str(ctx.current_body)
         graph = build_mission_graph(plan.steps, launch_body=launch_body,
                                     vehicle_dv=self.vehicle_dv, sc=sc, ut_now=ut_now)

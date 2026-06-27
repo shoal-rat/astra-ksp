@@ -63,14 +63,60 @@ def _is_vacuum_transfer_phase(phase: Phase) -> bool:
 
 def _mission_reserve_phase_name(phases: list[Phase]) -> str | None:
     """Pick the single phase that carries the whole-mission contingency reserve: the FIRST vacuum
-    transfer/capture leg (re-taskable propellant). Falls back to the last phase if none is a clean
-    vacuum leg, so the reserve is always banked SOMEWHERE on a real (non-empty) vehicle."""
+    transfer/capture leg (re-taskable propellant) that actually FLIES THE MISSION — NOT the Kerbin-ascent
+    booster or the LKO insertion stage, both of which are jettisoned BEFORE the deep-space legs (banking the
+    contingency there throws it away in parking orbit). On the SPLIT plan this puts the 5% cushion on the
+    droppable 'transfer' stage that does the eject+capture (where capture-overspend is absorbed), never on
+    the dropped insertion. Falls back to the last phase if none qualifies, so the reserve is always banked."""
     if not phases:
         return None
+    _LKO_PHASES = {"booster", "insertion"}     # Kerbin-ascent / parking-orbit stages, dropped before TMI
+    # Prefer the named DEEP-SPACE transfer/mission stage (droppable, re-taskable, where capture-overspend is
+    # absorbed) — even though the transfer carries a thrust floor (min_twr>0) so it is not a "vacuum" phase.
     for ph in phases:
-        if _is_vacuum_transfer_phase(ph):
+        if ph.name in ("transfer", "mission"):
+            return ph.name
+    for ph in phases:
+        if ph.name not in _LKO_PHASES and _is_vacuum_transfer_phase(ph):
             return ph.name
     return phases[-1].name
+
+
+def mission_upper_phases(*, mission_dv: float = 0.0, transfer_dv: float = 0.0,
+                         lander_dv: float = 0.0, lander_body_g: float = 0.0) -> list[Phase]:
+    """The vacuum UPPER phase(s) a deep-space mission appends ABOVE booster+insertion. ONE definition
+    shared by primitives._launch_requirements (the design-gate craft) and deploy_relay.launch_to_lko (the
+    flown craft) so the gated vehicle == the flown vehicle.
+
+    SPLIT path (transfer_dv>0 AND lander_dv>0 — a crewed land-and-RETURN on another body): a droppable
+    TRANSFER stage (trans-X ejection + capture) JETTISONED in orbit before descent, plus a SHORT, WIDE,
+    low-CoG LANDER stage (descent+ascend+return) carrying its OWN budget. The lander is forced onto a
+    >=2.5 m base (min_diameter_m) so it lands SQUAT + UPRIGHT (low CoG → the leg-span gate clears the
+    tip-over angle), and given min_twr=2.0 at the target's surface gravity so (a) it has real ascent thrust
+    and (b) it is NOT a vacuum-transfer phase — so the whole-mission contingency reserve banks on the
+    transfer/insertion legs, NEVER the lander. That makes the lander's descent+ascend+return budget
+    INDEPENDENT of however much the (variable) capture overspent: the transfer stage absorbs the slop and
+    is dropped. Fixes BOTH the tip-over (short lander) and the return-fuel shortfall (clean lander budget).
+
+    SINGLE path (mission_dv>0, the legacy Mun land-and-return): one tall vacuum 'mission' stage, no split.
+    EMPTY: relay / LKO-only launch (nothing appended)."""
+    phases: list[Phase] = []
+    if transfer_dv > 0.0 and lander_dv > 0.0:
+        # THRUST FLOOR on the transfer stage: it pushes the WHOLE upper (transfer+lander, ~25-30 t) through
+        # the trans-X ejection + capture. With no floor the sizer picks the lightest engine (a 60 kN Terrier)
+        # whose TWR on that stack is ~0.2 — the eject/capture burns then crawl, bleed huge gravity loss, and
+        # TIME OUT, which consumed the whole transfer stage before the ejection finished and stranded the
+        # mission in Kerbin orbit. min_twr=0.5 (ref g 9.81) forces ~5 m/s^2 burn accel (a ~1100 m/s burn in
+        # ~220 s, inside the node-executor budget). It is still the reserve-banking stage (picked by name).
+        phases.append(Phase("transfer", transfer_dv, twr_body_g=9.81, min_twr=0.5,
+                            reserve_frac=default_reserve_frac(0.0)))
+        phases.append(Phase("land_ascend_return", lander_dv,
+                            twr_body_g=max(0.0, float(lander_body_g)), min_twr=2.0, min_diameter_m=2.5,
+                            reserve_frac=default_reserve_frac(0.0, is_landing=True)))
+    elif mission_dv > 0.0:
+        phases.append(Phase("mission", mission_dv, twr_body_g=0.0, min_twr=0.0,
+                            reserve_frac=default_reserve_frac(0.0)))
+    return phases
 
 
 @dataclass(slots=True)
@@ -161,6 +207,16 @@ def _build_tanks_by_diameter() -> dict[float, list[str]]:
 MIN_BOOSTER_ASL_RATIO = 0.6
 
 
+# Engines that burn LiquidFuel but NO Oxidizer. The sizer's tank pool (TANKS_BY_DIAMETER) is every stock
+# LFO cylinder, so pairing an oxidizer-less engine with one loads ~55% Oxidizer the engine can NEVER burn:
+# dead weight, AND the LiquidFuel runs out at ~half the calculated Δv (the dV math assumes all propellant is
+# usable). Live proof — a crewed Mun lander on the nuclear LV-N fuel-starved mid-descent at 13 km
+# (fueled_active_engines dropped to 0 with the tanks still "55% full" of unusable Oxidizer) and crashed,
+# killing the kerbal. The pool is "chemical rocket engines" by design; keep oxidizer-less engines out until
+# LF-only tank loadouts are modelled. Stock's only such rocket engine is the LV-N (Nerv).
+_OXIDIZERLESS_ENGINES = {"nuclearEngine"}
+
+
 def _build_engine_pool(atmospheric: bool) -> list[str]:
     """Every stock chemical rocket engine in the standard stack diameters, ranked for the role (sea-level
     thrust ascending for boosters, vacuum Isp for upper stages). Drawn straight from the full catalog.
@@ -178,6 +234,8 @@ def _build_engine_pool(atmospheric: bool) -> list[str]:
     for dia in DIAMETERS:
         for p in catalog_engines(diameter_m=dia, atmospheric=atmospheric):
             if p.diameter_m < DIAMETERS[0] - 1e-6:      # sub-1.25 m micro-engine: renderer not built for it
+                continue
+            if p.name in _OXIDIZERLESS_ENGINES:         # LF-only engine can't use the all-LFO tank pool
                 continue
             if atmospheric and p.thrust_kn_vac > 0 and (p.thrust_kn_asl / p.thrust_kn_vac) < MIN_BOOSTER_ASL_RATIO:
                 continue                                # vacuum engine: wrong part to lift off the pad

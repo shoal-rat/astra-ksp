@@ -93,6 +93,10 @@ class CraftNode:
     # outer radius + the y it extends UP to (the upper tank base), so the chart draws the tube and the
     # geometry gate can confirm the exposed engine is housed, not naked. (h_top, r)
     interstage_shroud: tuple[float, float] | None = None
+    # The kept LEGGED LANDER engine: a bare bell + legs that fires only in vacuum. It is deliberately NOT
+    # shrouded (an interstage tube under the bell fires the plume back into the same vessel and cancels
+    # thrust), so the geometry gate exempts it from the interstage-shroud requirement.
+    lander_base_engine: bool = False
 
     @property
     def craft_id(self) -> str:
@@ -365,14 +369,26 @@ class CraftWriter:
         # vehicle. An uncrewed probe keeps the original nose-stacked first chute (its comsat rides in a
         # fairing, so the gate passes on the fairing branch regardless).
         stack_first_chute = (not design.crewed) and (not design.docking_port)
+        # KEEP THE EVA HATCH CLEAR. Packing chutes (and the utility bus) around the pod walls its hatch shut,
+        # so a crew member cannot EVA to plant a flag (FlightEVA spawnEVA returns null — "no free hatch") —
+        # this stranded the crew ON Duna unable to plant the flag. LIVE-MEASURED on the landed craft: the
+        # accessories spanned azimuth -180..0 deg yet the EVA still failed, so the Mk1 hatch sits in that
+        # -180..0 hemisphere. Cluster the radial chutes in the OPPOSITE (+Z) hemisphere, az +20..+160 (well
+        # clear of the +/-X boundaries), leaving the whole -180..0 hatch hemisphere open. (Uncrewed probe
+        # never EVAs.)
+        _PARTS_AZ = math.pi / 2.0          # +Z hemisphere centre (the measured-clear side)
+        _PARTS_SPAN = math.radians(140.0)  # +20..+160 deg — avoids the +/-X edges of the hatch hemisphere
         for i in range(n_chute):
             chute = new_node("parachuteSingle", 0)
             if i == 0 and stack_first_chute:
                 # First chute on the nose unless the docking port reserves it (uncrewed probe only).
                 self._attach(root, chute, "top", "bottom", up=True)
             else:
-                # Chutes distributed radially around the command pod (all of them on a crewed capsule).
-                ang = 2.0 * math.pi * i / max(1, n_chute)
+                # Crewed capsule: cluster chutes in the +Z hemisphere so the -180..0 hatch side stays clear.
+                if n_chute <= 1:
+                    ang = _PARTS_AZ
+                else:
+                    ang = _PARTS_AZ - _PARTS_SPAN / 2.0 + _PARTS_SPAN * i / (n_chute - 1)
                 self._attach_surface(root, chute, (chute_r * math.cos(ang), root.y, chute_r * math.sin(ang)))
             nodes.append(chute)
 
@@ -617,7 +633,18 @@ class CraftWriter:
             # of this stage's own tank). The lower stage is the NEXT one in the top-down render order, so its
             # diameter is rendered_stages[render_index].diameter_m. The lower stage decouples before this
             # engine fires (the inter-stage TD-12 below), so the shroud drops WITH the spent lower stage.
-            if render_index < n_stages:
+            #
+            # EXCEPTION — the KEPT LEGGED LANDER engine is NEVER shrouded. The shroud is surface-attached
+            # under the bell; a long lander engine (e.g. the high-Isp LV-N the vacuum sizer favours) fires
+            # its exhaust plume straight into that tube — which is part of the SAME vessel — so the reaction
+            # cancels the thrust to ZERO. Live proof: the crewed-Mun LV-N made NO net thrust at TMI (full
+            # throttle, fuel draining, g_force 0) until this shroud was removed. A bare lander bell is correct
+            # (it touches down on its legs). The design-chart gate exempts it via ``lander_base_engine``.
+            # Comsat upper engines (no legs, short bells) still get the shroud, which works for them.
+            is_legged_lander_engine = bool(getattr(design, "landing_legs", False)) and render_index == lander_render_index
+            if is_legged_lander_engine:
+                engine.lander_base_engine = True
+            if render_index < n_stages and not is_legged_lander_engine:
                 lower_dia = rendered_stages[render_index].diameter_m
                 shroud_r = max(part(stage.engine).diameter_m, lower_dia) / 2.0
                 shroud_top = engine.y + part(stage.engine).height_m / 2.0  # up to the tank base above
@@ -724,25 +751,42 @@ class CraftWriter:
         # radially on the command module so it adds negligible ascent drag.
         bus_radius = self._bus_mount_radius(root)
         bus_y = root.y - 0.05
-        bus_layout = [
-            # RA-100 relay (not the weak Communotron 16): keeps signal to Kerbin from Duna and lets the
-            # craft relay — the fix for no-signal-at-Duna. Falls back to longAntenna if RA-100 isn't
-            # in the part library.
-            ("RelayAntenna100" if (part_bodies is None or "RelayAntenna100" in part_bodies) else "longAntenna",
-             (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
-            # Z-1k battery buffers the bursty reaction-wheel drain; falls back to the Z-200 if unharvested.
-            ("batteryBank" if (part_bodies is None or "batteryBank" in part_bodies) else "batteryBankMini",
-             (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
-            ("solarPanels5", (0.0, bus_y, bus_radius), (0.0, 0.0, 0.0, 1.0)),
-            ("solarPanels5", (0.0, bus_y, -bus_radius), (0.0, 1.0, 0.0, 0.0)),
-            # RTG: continuous sun-independent power so the probe stays controllable through eclipse (the
-            # fix for the keo circularise burns dying on a flat battery in shadow). Mounted on a diagonal.
-            ("rtg", (bus_radius * 0.7, bus_y - 0.18, bus_radius * 0.7), (0.0, 0.0, 0.0, 1.0)),
-            # NOTE: a separate large reaction-wheel module was tried here but, surface-mounted on
-            # the small probe core, it clipped badly and destabilised the craft. Attitude authority
-            # for finite burns is instead handled in the controller: the TMI burn re-aligns and
-            # resumes at low throttle so the engine gimbal holds prograde (_execute_node).
-        ]
+        _ant = ("RelayAntenna100" if (part_bodies is None or "RelayAntenna100" in part_bodies) else "longAntenna")
+        _bat = ("batteryBank" if (part_bodies is None or "batteryBank" in part_bodies) else "batteryBankMini")
+        if design.crewed:
+            # CREWED LANDER: keep the EVA hatch clear (a kerbal must step out to plant a flag — see the chute
+            # placement). LIVE-MEASURED: the Mk1 hatch is in the -180..0 azimuth hemisphere, so cluster EVERY
+            # bus accessory in the OPPOSITE +Z hemisphere (az 45..135), matching the chutes — leaving the
+            # whole -180..0 hatch side open. (The stock bus put a panel on +Z and the RTG in the +Z quadrant
+            # but spread the rest across -X/-Z, walling the hatch shut.)
+            _r71 = bus_radius * 0.71    # cos/sin 45deg
+            _r42 = bus_radius * 0.42    # cos 65deg
+            _r91 = bus_radius * 0.91    # sin 65deg
+            bus_layout = [
+                (_ant, (_r71, bus_y, _r71), (0.0, 0.0, 0.0, 1.0)),                # ~45deg
+                (_bat, (-_r71, bus_y, _r71), (0.0, 0.0, 0.0, 1.0)),               # ~135deg
+                ("solarPanels5", (_r42, bus_y, _r91), (0.0, 0.0, 0.0, 1.0)),      # ~65deg
+                ("solarPanels5", (-_r42, bus_y, _r91), (0.0, 1.0, 0.0, 0.0)),     # ~115deg
+                ("rtg", (0.0, bus_y - 0.18, bus_radius), (0.0, 0.0, 0.0, 1.0)),   # +Z, opposite the hatch
+            ]
+        else:
+            bus_layout = [
+                # RA-100 relay (not the weak Communotron 16): keeps signal to Kerbin from Duna and lets the
+                # craft relay — the fix for no-signal-at-Duna. Falls back to longAntenna if RA-100 isn't
+                # in the part library.
+                (_ant, (bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
+                # Z-1k battery buffers the bursty reaction-wheel drain; falls back to the Z-200 if unharvested.
+                (_bat, (-bus_radius, bus_y, 0.0), (0.0, 0.0, 0.0, 1.0)),
+                ("solarPanels5", (0.0, bus_y, bus_radius), (0.0, 0.0, 0.0, 1.0)),
+                ("solarPanels5", (0.0, bus_y, -bus_radius), (0.0, 1.0, 0.0, 0.0)),
+                # RTG: continuous sun-independent power so the probe stays controllable through eclipse (the
+                # fix for the keo circularise burns dying on a flat battery in shadow). Mounted on a diagonal.
+                ("rtg", (bus_radius * 0.7, bus_y - 0.18, bus_radius * 0.7), (0.0, 0.0, 0.0, 1.0)),
+                # NOTE: a separate large reaction-wheel module was tried here but, surface-mounted on
+                # the small probe core, it clipped badly and destabilised the craft. Attitude authority
+                # for finite burns is instead handled in the controller: the TMI burn re-aligns and
+                # resumes at low throttle so the engine gimbal holds prograde (_execute_node).
+            ]
         for part_name, pos, rot in bus_layout:
             if can_emit(part_name):
                 acc = new_node(part_name, 0)
@@ -850,7 +894,12 @@ class CraftWriter:
             eng_h = part(lander_engine.part_name).height_m if lander_engine is not None else 1.0
             anchor = lander_engine if lander_engine is not None else lander_tank
             foot_y = anchor.y - eng_h * 0.5 - 0.2            # footpad plane just below the engine bell
-            kept = [n for n in nodes if not n.is_surface and getattr(n, "stage_index", 0) <= lander_render_index]
+            # LANDED kept-mass = only the bus/capsule (stage_index 0) + the LANDER stage itself. A droppable
+            # transfer stage (a HIGHER render_index, dropped in orbit before descent) must NOT count toward
+            # the landed CoG or the lander's leg span is computed for a tall stack that no longer exists. Use
+            # an exact membership (not <=) so any stage between is excluded too.
+            kept = [n for n in nodes if not n.is_surface
+                    and getattr(n, "stage_index", 0) in (0, lander_render_index)]
             mk = sum(part(n.part_name).wet_mass_t for n in kept) or 1.0
             cog_y = sum(part(n.part_name).wet_mass_t * n.y for n in kept) / mk
             h_cog = max(0.5, cog_y - foot_y)                 # CoG height above the footpad plane
@@ -1025,7 +1074,12 @@ class CraftWriter:
         if body and node.fairing_xsections:
             # Replace the harvested fairing's XSECTION shell (sized for the donor craft) with the
             # computed ogive that wraps THIS payload, keeping it inside the ModuleProceduralFairing.
-            body = re.sub(r"(?:\n\t\tXSECTION\n\t\t\{[^}]*\})+", "\n" + node.fairing_xsections, body, count=1)
+            # A donor XSECTION can contain nested ATTACHEDFLAG { ... } sub-blocks (e.g. the Ariane 5
+            # interstage fairing harvested for the shroud), so the run of XSECTIONs is removed with a
+            # BRACE-BALANCED scan — NOT a flat `[^}]*` regex, which stopped at the first nested `}` and
+            # left orphaned ATTACHEDFLAG blocks + stray closing braces that closed the PART early and
+            # null-ref'd KSPUtil.GetPartName on load (the legged-Mun launch failure).
+            body = self._replace_xsections(body, node.fairing_xsections)
         if body and node.part_name == "Size3To2Adapter.v2":
             # The ADTP-2-3 is used here as an aerodynamic structural adapter, not as unplanned fuel
             # storage. Remove stock RESOURCE blocks so the live vessel mass matches the calculated dry
@@ -1040,6 +1094,60 @@ class CraftWriter:
             lines.extend(self._resources(p))
         lines.append("}")
         return lines
+
+    @staticmethod
+    def _replace_xsections(body: str, new_xsections: str) -> str:
+        """Replace the harvested fairing's contiguous run of ``XSECTION { ... }`` blocks with the
+        computed ``new_xsections`` shell, using a BRACE-BALANCED scan so a donor XSECTION that nests
+        ``ATTACHEDFLAG { ... }`` sub-blocks (the Ariane 5 interstage fairing) is consumed whole.
+
+        The previous flat regex ``(?:\\n\\t\\tXSECTION\\n\\t\\t\\{[^}]*\\})+`` matched only up to the
+        FIRST ``}`` — the closing brace of the first nested ATTACHEDFLAG, not the XSECTION's own brace —
+        so it replaced one truncated XSECTION and left the rest of the donor serialization in place. The
+        orphaned tail had unbalanced braces that closed the ModuleProceduralFairing MODULE and the PART
+        early, leaving the remaining lines as junk PART fields: KSP then null-ref'd in
+        ``KSPUtil.GetPartName`` while ``ShipConstruct.LoadShip`` parsed the .craft, so the craft would
+        not load or launch. This scanner finds the start of the first ``XSECTION`` line, walks forward
+        counting ``{``/``}`` to swallow every consecutive XSECTION block (with any nested children), and
+        splices the computed shell in their place. Indentation (two tabs) matches the donor body so the
+        shell sits correctly inside the MODULE block. If no XSECTION is found the body is returned
+        unchanged."""
+        lines = body.split("\n")
+        start = None
+        for idx, ln in enumerate(lines):
+            if ln.strip() == "XSECTION":
+                start = idx
+                break
+        if start is None:
+            return body
+        i = start
+        end = start  # exclusive index just past the last consumed XSECTION block
+        n = len(lines)
+        while i < n and lines[i].strip() == "XSECTION":
+            # The next non-blank line must open the block. Walk braces to its matching close.
+            j = i + 1
+            depth = 0
+            opened = False
+            while j < n:
+                s = lines[j].strip()
+                if s == "{":
+                    depth += 1
+                    opened = True
+                elif s == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if not opened or j >= n:
+                break  # malformed donor — stop here rather than over-consume
+            end = j + 1
+            i = end
+        # Splice: keep everything before the first XSECTION and after the last consumed block, with the
+        # computed shell (no leading newline — it is inserted as its own joined lines) in between.
+        head = lines[:start]
+        tail = lines[end:]
+        replacement = new_xsections.split("\n")
+        return "\n".join(head + replacement + tail)
 
     @staticmethod
     def _node_position(part_name: str, node_name: str) -> str:
