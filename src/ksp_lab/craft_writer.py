@@ -708,35 +708,38 @@ class CraftWriter:
             for b in range(rb.count):
                 ang = 2.0 * math.pi * b / rb.count
                 px, pz = off * math.cos(ang), off * math.sin(ang)
-                # Build the pod bottom-up: a POWERED pod puts its engine at the bell plane first; a DROP
-                # TANK has no engine and starts its tanks at the bell plane. Then stack tank_count tanks.
+                # The pod (engine + tanks) MUST hang off its RADIAL DECOUPLER, not off the core directly, so
+                # firing the decoupler physically drops the whole pod as ONE piece. (BUG FIX 2026-06-27: the
+                # pod parts were each surface-attached to the core's bottom_tank with the decoupler a sibling
+                # LEAF — firing it separated only itself [1 part], so the spent boosters stayed bolted on and
+                # the interplanetary ejection dragged the dead mass and never escaped Kerbin. The pod must be
+                # the decoupler's CHILD.) So: create the decoupler FIRST (child of the core hull, at the pod's
+                # mid-height), then surface-attach the pod engine + tanks to the DECOUPLER.
+                eng_h = pod_eng.height_m if not _rb_is_drop_tank else 0.0
+                n_tanks = min(rb.tank_count, 60)
+                pod_h = eng_h + n_tanks * pod_tank.height_m
+                dec_y = pod_eng_y + pod_h / 2.0
+                dec_off = core_r + pod_dec.diameter_m * 0.5
+                dx, dz = dec_off * math.cos(ang), dec_off * math.sin(ang)
+                rot = (0.0, math.sin(ang / 2.0), 0.0, math.cos(ang / 2.0))   # face outward (yaw to azimuth)
+                dec_node = new_node(rb.decoupler, radial_istg)               # fires radial_istg -> pod drops first
+                self._attach_surface(bottom_tank, dec_node, (dx, dec_y, dz), rot)
+                nodes.append(dec_node)
+                # Build the pod bottom-up ON THE DECOUPLER: a POWERED pod puts its engine at the bell plane
+                # first; a DROP TANK has no engine and starts its tanks at the bell plane. Then stack the tanks.
                 if not _rb_is_drop_tank:
                     pod_eng_node = new_node(rb.engine, launch_istg)
-                    self._attach_surface(bottom_tank, pod_eng_node, (px, pod_eng_y, pz))
+                    self._attach_surface(dec_node, pod_eng_node, (px, pod_eng_y, pz))
                     nodes.append(pod_eng_node)
                     y_cursor = pod_eng_y + pod_eng.height_m / 2.0
                 else:
                     y_cursor = pod_eng_y
-                first_tank_node: CraftNode | None = None
-                for t in range(min(rb.tank_count, 60)):
+                for t in range(n_tanks):
                     ty = y_cursor + pod_tank.height_m / 2.0
                     pod_tank_node = new_node(rb.tank, launch_istg)
-                    self._attach_surface(bottom_tank, pod_tank_node, (px, ty, pz))
+                    self._attach_surface(dec_node, pod_tank_node, (px, ty, pz))
                     nodes.append(pod_tank_node)
-                    if first_tank_node is None:
-                        first_tank_node = pod_tank_node
                     y_cursor = ty + pod_tank.height_m / 2.0
-                # The RADIAL DECOUPLER mates the pod to the core's bottom tank at the pod's mid-height; it
-                # fires at radial_istg so the spent pod drops as one piece. Placed just inboard of the pod
-                # tank, surface-attached to the core hull at the same (px,pz) direction.
-                dec_y = (pod_eng_y + y_cursor) / 2.0
-                dec_off = core_r + pod_dec.diameter_m * 0.5
-                dx, dz = dec_off * math.cos(ang), dec_off * math.sin(ang)
-                # Orient the decoupler to face outward (yaw to the pod's azimuth).
-                rot = (0.0, math.sin(ang / 2.0), 0.0, math.cos(ang / 2.0))
-                dec_node = new_node(rb.decoupler, radial_istg)
-                self._attach_surface(bottom_tank, dec_node, (dx, dec_y, dz), rot)
-                nodes.append(dec_node)
 
         def can_emit(part_name: str) -> bool:
             # Only attach a part when a real serialization is available (or in minimal mode),

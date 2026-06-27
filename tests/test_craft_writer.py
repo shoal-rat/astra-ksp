@@ -140,6 +140,36 @@ def test_radial_boosters_ignite_with_core_and_decouple_first():
     assert launch_istg - 1 > 0
 
 
+def test_radial_booster_decoupler_actually_carries_the_pod():
+    # REGRESSION (2026-06-27 live failure): the pod (engine + tanks) must be the DECOUPLER's CHILDREN, not
+    # siblings hung off the core. The old writer surface-attached the pod engine, tanks AND the decoupler all
+    # to the core's bottom tank, so firing the radial decoupler dropped only itself (1 part) and the spent
+    # boosters stayed bolted on — the interplanetary ejection then dragged the dead mass and never escaped
+    # the departure SOI. Verify each radialDecoupler2 carries a FULL pod (its engine + every pod tank) in its
+    # child subtree, and that no pod part hangs off anything but a decoupler.
+    from ksp_lab.craft_writer import CraftWriter as CW
+    design = _eve_boosted_design()
+    rb = design.radial_boosters
+    nodes = CW()._build_nodes(design, part_bodies=None)
+    decs = [n for n in nodes if n.part_name == "radialDecoupler2"]
+    assert len(decs) == rb.count
+
+    def _subtree(n):
+        out = [n]
+        for ch in n.children:
+            out.extend(_subtree(ch))
+        return out
+
+    pod_engine_on_dec = 0
+    for dec in decs:
+        names = [c.part_name for c in _subtree(dec)]
+        assert names.count(rb.engine) == 1, f"decoupler must carry exactly 1 pod engine, got {names}"
+        assert names.count(rb.tank) == rb.tank_count, f"decoupler must carry all {rb.tank_count} pod tanks"
+        pod_engine_on_dec += 1
+    # every pod engine is accounted for under a decoupler (none left bolted directly to the core)
+    assert pod_engine_on_dec == rb.count
+
+
 def _crewed_design(name: str = "AI-Crew-Test"):
     """A crewed Eve-style vehicle (crew>=1, forward heat shield, Kerbin chutes) — the design the crewed
     launcher must WRITE so a kerbal can board. Built directly from ShipRequirements (no kRPC)."""
