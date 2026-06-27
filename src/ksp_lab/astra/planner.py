@@ -22,10 +22,11 @@ from ..bodies import synchronous_altitude_m
 # 0.13: a crewed interplanetary round-trip's capture (lowered-periapsis Oberth, still ~2x the nominal model)
 # + ascent + return runs the budget razor-thin; the extra reserve buys the margin to actually get home.
 _POST_LKO_MARGIN_FRAC = 0.13
-# The DROPPABLE TRANSFER stage absorbs ALL the capture variance (the relay-tuned capture lands 8k-40k km and
-# costs a variable ~1100-2400 m/s vs the ~600 nominal model), so size it GENEROUSLY — it is jettisoned in
-# orbit, so over-sizing it only costs a bigger dropped stage, never the lander's get-home budget.
-_TRANSFER_MARGIN_FRAC = 0.45
+# The DROPPABLE TRANSFER stage absorbs ALL of: the ejection, the MID-COURSE grid corrections (~900 m/s, not
+# in the nominal model), AND the variable capture+Hohmann (8k-40k km encounter -> ~1100-2400 m/s vs the ~600
+# nominal). Live runs put the real transfer cost ~3100 m/s vs the ~1688 model, so size it GENEROUSLY — it is
+# jettisoned in orbit, so over-sizing only costs a bigger dropped stage, never the lander's get-home budget.
+_TRANSFER_MARGIN_FRAC = 0.85
 
 
 def _has_atmosphere(body) -> bool:
@@ -243,10 +244,11 @@ def _apply_mission_aware_launch(steps: list[dict], *, launch_body: str = "Kerbin
             # gate (radial strap-on boosters FAIL that gate: "radial protrusions within ascent envelope").
             # design.py sizes the cluster within a 1.5x mounting plate.
             if is_split:
-                # The SPLIT round-trip carries a generously-sized droppable transfer stage on top of the
-                # lander, so the whole rocket is heavier (~430 t) — a 4-engine core hangs under TWR 1.2; give
-                # it a 6-engine cluster (still a clean no-protrusion core that passes the shape gate).
-                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 6)
+                # The SPLIT round-trip carries a generously-sized droppable transfer stage (sized for the real
+                # ~3100 m/s eject+corrections+capture) on top of the lander, so the whole rocket is heavy
+                # (~570 t) — give the core an 8-engine cluster to clear the liftoff TWR floor (still a clean
+                # no-protrusion core that passes the shape gate).
+                step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 8)
             elif post_lko_dv > 3200.0:
                 step["args"]["max_core_engines"] = max(int(step["args"].get("max_core_engines", 1)), 4)
             break
