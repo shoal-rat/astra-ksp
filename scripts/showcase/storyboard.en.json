@@ -1,0 +1,64 @@
+{
+ "title": "An AI Flies Kerbal Space Program: Mun and Mars Landings, No Scripts | ASTRA",
+ "voice": "en-US-AndrewNeural",
+ "rate": "+0%",
+ "badge": "Fully AI-operated · real in-game footage",
+ "segments": {
+  "hook": {
+   "narration": "An AI landed this astronaut on Mars. Okay, technically it's Duna, Kerbal Space Program's Mars. And every step, from designing the rocket to launch, flight and touchdown, was done by the AI itself.",
+   "chapter": "A Flag on Duna"
+  },
+  "title": {
+   "narration": "Welcome to ASTRA, an open-source project that turns an AI into the astronaut."
+  },
+  "concept": {
+   "narration": "ASTRA turns Kerbal Space Program into a set of tools and hands them to an AI, which becomes both the astronaut and mission control. It never writes a fixed program. At every step it reads the telemetry, works out orbits, thrust and timing on the spot with calculator tools, gives the command, and checks the result. And while it thinks, the game quietly pauses.",
+   "chapter": "What Is ASTRA?"
+  },
+  "think": {
+   "narration": "How does it think? Before every step, it writes in its flight log: the plan, the decision, the expected result, and when to abort. For Duna, it found the launch window with a Lambert solver, then refined the maneuver node on the game's own orbit prediction. The first mid-course correction was off by just 0.07 meters per second. More than three hundred days later, that would have put it 190 kilometers off target. So near Duna, it corrected again.",
+   "chapter": "How the AI Thinks",
+   "title": "The AI's own flight log (condensed, from the Duna mission)"
+  },
+  "design": {
+   "narration": "The mission starts with a blank page. The AI picks engines and tanks from the game's part catalog and writes the whole rocket as a part tree. Tools compute each stage's delta-v and thrust-to-weight, then generate a real craft file for the pad.",
+   "chapter": "The AI Designs a Rocket"
+  },
+  "launch": {
+   "narration": "For launch, the AI hands the stick to MechJeb's autopilot, but sets every parameter itself: an eighty kilometer orbit, angle of attack capped at five degrees, auto-staging only down to the transfer stage. More than two hundred seconds later, it's in a near-circular orbit.",
+   "chapter": "MechJeb Launch to Orbit"
+  },
+  "transfer": {
+   "narration": "Next, the AI computes a Hohmann transfer, keeps refining the node on the game's own orbit prediction, burns for the Mun, and brakes into orbit at closest approach.",
+   "chapter": "Bound for the Mun"
+  },
+  "landing": {
+   "narration": "The real boss fight? Landing. The AI refined ASTRA's landing guidance flight after flight. Every moment, it simulates a braking burn to predict how high it would stop. It scans the terrain ahead and brakes early for rising ground. Near the surface it hovers, kills its sideways drift, then sets straight down. Touchdown: 0.03 meters per second.",
+   "chapter": "Powered Landing"
+  },
+  "failures": {
+   "narration": "Of course, not everything worked the first time. Once, a part reported the wrong size, and the lander just hovered, thirteen kilometers up. Once, the hill ahead was taller than expected. A few times, the lander tipped over as the astronaut got out. Each failure became a lesson, and a fix in the code.",
+   "chapter": "Failures and Lessons"
+  },
+  "eva": {
+   "narration": "So the astronaut wouldn't tip the lander, the AI gave him a jetpack hop: out of the hatch, six meters clear, then down. Jebediah Kerman planted a flag on the Mun.",
+   "chapter": "A Flag on the Mun"
+  },
+  "return": {
+   "narration": "The lander lifts off to orbit, computes its window home, and breaks free of the Mun. On reentry the heat shield leads, the capsule wrapped in searing air. The parachute opens, and Jeb is safely home.",
+   "chapter": "Return and Reentry"
+  },
+  "duna": {
+   "narration": "The Mun was just the warm-up. Next stop: Duna, the game's Mars. The AI scans for a launch window with a Lambert solver, lifts off at dawn, and leaves Kerbin with a burn of 1,090 meters per second. Over a cruise of more than three hundred days, it makes two mid-course corrections, aiming for a pass sixty kilometers above Duna, then brakes and is captured. The landing works just like a real Mars mission: first slowing in the thin air, then under parachutes, and finally on engine power. Touchdown at 1.2 meters per second, the lander standing rock steady. Valentina Kerman steps out and plants a flag on Duna's red soil.",
+   "chapter": "Landing on Duna (Mars)"
+  },
+  "autonomous": {
+   "narration": "You can direct it step by step in a chat, or go hands-off with one command. Type astra mission and a goal, and Claude assembles a crew with nothing but these tools: it can't write or run a program. It designs, launches and flies, then writes the report. Its first solo mission: Valentina to orbit and safely home.",
+   "chapter": "One Command, Fully Autonomous"
+  },
+  "outro": {
+   "narration": "In every flight you just saw, there was no pre-written mission script. Every number was worked out by the AI, on the spot. ASTRA is open source on GitHub, link in the description. Want to see where it flies next? Subscribe. See you on the next mission.",
+   "chapter": "Open Source on GitHub"
+  }
+ }
+}
