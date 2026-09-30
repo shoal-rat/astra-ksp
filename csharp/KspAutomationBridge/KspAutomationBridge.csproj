@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  IDE project only. The real build is `astra bridge build` (src/astra/launcher.py), which compiles every
+  *.cs in this folder plus Properties/*.cs with the in-box .NET Framework csc (C# 5) against
+  KSP_x64_Data/Managed (Assembly-CSharp*, UnityEngine*) and GameData/MechJeb2/Plugins. Set KSP_MANAGED
+  to <KSP>\KSP_x64_Data\Managed to use this file. Tests/ holds the offline test host (not part of the DLL).
+-->
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
@@ -7,7 +13,7 @@
     <RootNamespace>KspAutomationBridge</RootNamespace>
     <AssemblyName>KspAutomationBridge</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
-    <LangVersion>7.3</LangVersion>
+    <LangVersion>5</LangVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
@@ -17,57 +23,25 @@
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="KspAutomationBridge.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="*.cs" />
+    <Compile Include="Properties\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="Assembly-CSharp">
-      <HintPath>$(KSP_MANAGED)\Assembly-CSharp.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.CoreModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.UI.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <!-- IMGUI (GUILayout/GUI), legacy Input (F8 hotkey), and the Animator type pulled in
-         transitively by ApplicationLauncher.AddModApplication. -->
-    <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.IMGUIModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.InputLegacyModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.AnimationModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>$(KSP_MANAGED)\UnityEngine.TextRenderingModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <!-- MechJeb2: drive its Rendezvous/Docking autopilots. Reference the installed plugin DLL
-         (under GameData, two levels up from KSP_x64_Data\Managed). Hard reference = compile-time
-         safety against dev-build member renames. Do NOT copy it (Private=false). -->
-    <Reference Include="MechJeb2">
-      <HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJeb2.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="MechJebLib">
-      <HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJebLib.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(KSP_MANAGED)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp-firstpass"><HintPath>$(KSP_MANAGED)\Assembly-CSharp-firstpass.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(KSP_MANAGED)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(KSP_MANAGED)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(KSP_MANAGED)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(KSP_MANAGED)\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AnimationModule"><HintPath>$(KSP_MANAGED)\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(KSP_MANAGED)\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(KSP_MANAGED)\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.ImageConversionModule"><HintPath>$(KSP_MANAGED)\UnityEngine.ImageConversionModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(KSP_MANAGED)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MechJeb2"><HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJeb2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MechJebLib"><HintPath>$(KSP_MANAGED)\..\..\GameData\MechJeb2\Plugins\MechJebLib.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

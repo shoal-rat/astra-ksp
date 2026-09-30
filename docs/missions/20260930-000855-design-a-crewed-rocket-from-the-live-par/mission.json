@@ -1,0 +1,7 @@
+{
+ "goal": "Design a crewed rocket from the live part catalog, launch it to a stable orbit around Kerbin (periapsis above the atmosphere), then bring the crew home safely.",
+ "started": "2026-09-30T00:08:55",
+ "status": "success",
+ "ended": "2026-09-30T02:18:18",
+ "summary": "Designed ASTRA Orbiter 3 from the live catalog: 24.2 t, 23 parts, 5,709 m/s vacuum Δv. Stages: Swivel core with 2 Hammer SRBs, then a Terrier service stage with batteries and solar panels, then a Mk1 pod with HeatShield1 and a Mk16 chute. Crew: Valentina Kerman. Hand-flew the ascent and circularization to an 79.97 x 81.66 km orbit, i=0.18 deg, periapsis above the 70 km atmosphere; this used ~3,440 m/s. Deorbited with -49 m/s to a 25 km periapsis, jettisoned the service module in vacuum, and entered shield-first (max temperature 32%). Chute staged at 4 km AGL and 249 m/s; landed at ~6 m/s in the Grasslands. Valentina was recovered to the space center. About 2,220 m/s was left unused in the service stage."
+}

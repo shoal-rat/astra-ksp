@@ -1,0 +1,7 @@
+{
+ "goal": "Land Valentina on Duna and plant a flag: one-way crewed landing. MechJeb ascent; ASTRA transfer, capture, parachute entry and powered touchdown; jetpack EVA and flag.",
+ "started": "2026-09-30T08:06:19",
+ "status": "success",
+ "ended": "2026-09-30T13:36:44",
+ "summary": "Valentina landed on Duna (Midland Sea, 6.97 N 39.95 W) and planted 'ASTRA Duna Base'. MechJeb ascent; Lambert window (ejection 1091 m/s applied), two mid-course corrections, capture 713 m/s into 63x52 km with auto-staging; aerobraking entry to 6 km/411 m/s, three parachutes, then the height-first fly_descent touched down at 1.22 m/s vertical, 0.01 m/s horizontal. The HECS2 probe core kept SAS on with the crew out and the lander stayed upright through the jetpack-hop EVA, the flag and boarding. One-way mission: the lander has ~1300 m/s but no ascent vehicle for Duna's gravity well."
+}

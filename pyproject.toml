@@ -3,25 +3,34 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ksp1-automation-lab"
-version = "0.1.0"
-description = "Closed-loop KSP1 rocket design, launch, telemetry, scoring, and optimization lab."
+name = "astra-ksp"
+version = "2.0.0"
+description = "Mission control for Kerbal Space Program 1: an AI flies the whole mission live through tools — it designs, builds, launches and pilots the rocket, computing every decision from telemetry."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "KSP1 Automation Lab" }]
+authors = [{ name = "shoal-rat" }]
 dependencies = [
-  "PyYAML>=6.0",
-  "requests>=2.31",
+  "krpc==0.5.4",
+  "mcp>=2.2",
+  "pydantic>=2",
+  "pillow>=10",
 ]
 
 [project.optional-dependencies]
-ksp = ["krpc>=0.5.4"]
+agent = ["claude-agent-sdk>=0.2.150"]
+media = ["imageio-ffmpeg>=0.5"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-ksp-lab = "ksp_lab.cli:main"
+astra = "astra.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+astra = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

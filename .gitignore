@@ -7,5 +7,10 @@ dist/
 *.egg-info/
 csharp/**/bin/
 csharp/**/obj/
-runs/
-work/
+csharp/build/
+
+# runtime state
+/missions/
+.cache/
+.scratch/
+recordings/

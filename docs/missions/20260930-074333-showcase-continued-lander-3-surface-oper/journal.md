@@ -1,0 +1,7 @@
+# Mission: Showcase, continued: Lander 3 surface operations and return, resumed from checkpoint mun3_landed (Farside Crater). Jebediah leaves by jetpack hop so he never stands on the lander, plants the flag, boards, lifts off and comes home.
+
+Started 2026-09-30 07:43
+
+- `07:46:51 · UT 1989079874 · MET 00:00:58` **result**: Flag 'ASTRA Mun Base' planted in Farside Crater (0.22 S 60.68 W). The jetpack hop carried Jebediah clear of the lander without touching it, but the lander still tipped within seconds of the pilot leaving (every tip-over coincided with an active-vessel change or reload). The return is flown from the pre-EVA checkpoint mun3_landed, lander upright with Jebediah aboard.
+- `07:52:31 · UT 1989080058 · MET 1d 01:32:06` **decision**: Trans-Kerbin injection 265.9 m/s at UT 1989080393 (seeded at the point where the orbital velocity opposes the Mun's motion; KSP patched conics: Kerbin periapsis 39.0 km for a heat-shield entry).
+- `08:04:14` **outcome**: **SUCCESS** — Jebediah flew Lander 3 back from Farside Crater and landed on Kerbin under the chute (1.1 m/s). Surface ops: the new predictor guidance landed at 0.86 m/s vertical / 0.05 m/s horizontal; the jetpack hop carried Jebediah clear of the lander and he planted 'ASTRA Mun Base'; the lander then tipped after the pilot left (KSP jolt on the active-vessel change), so the ascent and return were flown from the pre-EVA checkpoint with the lander upright.

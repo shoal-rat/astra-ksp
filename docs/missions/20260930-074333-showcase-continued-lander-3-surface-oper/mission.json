@@ -1,0 +1,7 @@
+{
+ "goal": "Showcase, continued: Lander 3 surface operations and return, resumed from checkpoint mun3_landed (Farside Crater). Jebediah leaves by jetpack hop so he never stands on the lander, plants the flag, boards, lifts off and comes home.",
+ "started": "2026-09-30T07:43:33",
+ "status": "success",
+ "ended": "2026-09-30T08:04:14",
+ "summary": "Jebediah flew Lander 3 back from Farside Crater and landed on Kerbin under the chute (1.1 m/s). Surface ops: the new predictor guidance landed at 0.86 m/s vertical / 0.05 m/s horizontal; the jetpack hop carried Jebediah clear of the lander and he planted 'ASTRA Mun Base'; the lander then tipped after the pilot left (KSP jolt on the active-vessel change), so the ascent and return were flown from the pre-EVA checkpoint with the lander upright."
+}

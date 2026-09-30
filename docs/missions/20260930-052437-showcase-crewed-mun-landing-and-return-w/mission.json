@@ -1,0 +1,7 @@
+{
+ "goal": "Showcase: crewed Mun landing and return with Lander 3 (wide 2.5 m base). MechJeb flies the ascent and trans-Mun injection; ASTRA fly_descent lands (cancelling drift before contact); Jebediah plants a flag and comes home.",
+ "started": "2026-09-30T05:24:37",
+ "status": "aborted",
+ "ended": "2026-09-30T06:13:51",
+ "summary": "Lander 3 (wide 2.5 m base): the new predictor guidance landed it perfectly (0.86 m/s vertical, 0.05 m/s horizontal, upright) after the old constant-deceleration model had crashed it at 118 m/s; but Jebediah exits onto the tank ledge and walking off it tipped the lander twice. Next: a ledge-free narrow lander with six legs."
+}

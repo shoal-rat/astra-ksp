@@ -1,0 +1,7 @@
+{
+ "goal": "Design a crewed rocket from the live part catalog, launch it to a stable Kerbin orbit above the atmosphere, then bring the crew home safely",
+ "started": "2026-09-29T23:35:47",
+ "status": "success",
+ "ended": "2026-09-30T00:06:22",
+ "summary": "AI-designed ASTRA Orbiter 2 reached an 80.3 x 79.6 km orbit (e=0.0005) and returned Jebediah (splashdown 3.9 m/s). Two anomalies handled in flight: Orbiter 1 could not steer (no gimbal on the booster) and was reverted to checkpoint and redesigned with a Swivel; Orbiter 2 ran out of ElectricCharge in orbit and deorbited on gimbal steering alone. Design checks for steering authority and power were added afterwards."
+}

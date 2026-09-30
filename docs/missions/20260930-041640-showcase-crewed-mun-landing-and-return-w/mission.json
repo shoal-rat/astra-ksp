@@ -1,0 +1,7 @@
+{
+ "goal": "Showcase: crewed Mun landing and return with the second, four-legged lander. MechJeb flies the ascent and trans-Mun injection; ASTRA's own fly_descent lands; Jebediah plants a flag and comes home.",
+ "started": "2026-09-30T04:16:40",
+ "status": "aborted",
+ "ended": "2026-09-30T05:23:59",
+ "summary": "Lander 2 (four legs, narrow) landed at 1.4 m/s in Farside Crater on the first attempt, then tipped over after touchdown (2.1 m/s drift on a 4 deg slope). Aborted in favour of Lander 3 (wide 2.5 m base) and a descent that cancels drift before contact."
+}

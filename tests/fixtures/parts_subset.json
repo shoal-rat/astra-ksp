@@ -1,0 +1,8484 @@
+{
+"built_at": 1790680988.3344328,
+"fingerprint": "fixture",
+"parts": {
+"Decoupler.1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+1.25,
+0.16,
+1.25
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "Decoupler_1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 200.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": true,
+"decoupler": {
+"ejection_force": 100.0,
+"explosive_node": "top",
+"is_omni": false,
+"radial": false
+},
+"engines": [],
+"loaded": null,
+"mass_t": 0.04,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDecouple",
+"ModuleToggleCrossfeed",
+"ModuleTestSubject",
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "Decoupler.1",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.05,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.05,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "decoupler",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "分离",
+"tech_required": "engineering101",
+"title": "TD-12分离器",
+"title_en": "TD-12 Decoupler",
+"variants": [],
+"wheel_type": ""
+},
+"Decoupler.2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+2.5,
+0.32,
+2.5
+]
+},
+"bulkhead": [
+"size2"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "Decoupler_2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 300.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": true,
+"decoupler": {
+"ejection_force": 150.0,
+"explosive_node": "top",
+"is_omni": false,
+"radial": false
+},
+"engines": [],
+"loaded": null,
+"mass_t": 0.16,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDecouple",
+"ModuleToggleCrossfeed",
+"ModuleTestSubject",
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "Decoupler.2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.1,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.1,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "decoupler",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "分离",
+"tech_required": "generalConstruction",
+"title": "TD-25分离器",
+"title_en": "TD-25 Decoupler",
+"variants": [],
+"wheel_type": ""
+},
+"GooExperiment": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.001271,
+0.0003214,
+-0.1677
+],
+"size": [
+0.2554,
+0.6975,
+0.3369
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Science",
+"cfg_mass_t": null,
+"cfg_name": "GooExperiment",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 800.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.05,
+"max_temp": 1200.0,
+"modules": [
+"ModuleAnimateGeneric",
+"ModuleScienceExperiment",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "GooExperiment",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "science",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+-0.09
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "实验 研究 科学",
+"tech_required": "start",
+"title": "神秘黏性物质™单元容器",
+"title_en": "Mystery Goo™ Containment Unit\\u0020",
+"variants": [],
+"wheel_type": ""
+},
+"HeatShield1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.005576,
+0.0
+],
+"size": [
+1.275,
+0.1702,
+1.275
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Thermal",
+"cfg_mass_t": null,
+"cfg_name": "HeatShield1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 300.0,
+"crash_tolerance": 9.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": false,
+"decoupler": {
+"ejection_force": 100.0,
+"explosive_node": "top",
+"is_omni": true,
+"radial": false
+},
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 3300.0,
+"modules": [
+"ModuleJettison",
+"ModuleAblator",
+"ModuleColorChanger",
+"ModuleDecouple",
+"ModuleTestSubject",
+"ModuleLiftingSurface",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "HeatShield1",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "direct",
+"known": true,
+"pos": [
+0.0,
+-0.0,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.17,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.022,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"Ablator": {
+"amount": 200.0,
+"density_t": 0.001,
+"max": 200.0
+}
+},
+"role": "heat_shield",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "烧蚀 阻力 再入 隔离 保护 再次 重新 火箭 热量",
+"tech_required": "survivability",
+"title": "热防护罩（1.25米）",
+"title_en": "Heat Shield (1.25m)",
+"variants": [],
+"wheel_type": ""
+},
+"HighGainAntenna5": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-0.5935,
+0.03406,
+0.006345
+],
+"size": [
+1.267,
+0.4622,
+0.517
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "none",
+"cfg_mass_t": null,
+"cfg_name": "HighGainAntenna5",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 600.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.07,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDeployableAntenna",
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "HighGainAntenna5",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "other",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "",
+"tech_required": "basicScience",
+"title": "HG-5高增益天线",
+"title_en": "HG-5 High Gain Antenna",
+"variants": [],
+"wheel_type": ""
+},
+"HighGainAntenna5.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-1.192e-07,
+0.07743,
+0.527
+],
+"size": [
+0.5003,
+0.1949,
+1.254
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Communication",
+"cfg_mass_t": null,
+"cfg_name": "HighGainAntenna5_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 600.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.07,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDeployableAntenna",
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "HighGainAntenna5.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "antenna",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "",
+"tech_required": "basicScience",
+"title": "HG-5高增益天线",
+"title_en": "HG-5 High Gain Antenna",
+"variants": [],
+"wheel_type": ""
+},
+"LgRadialSolarPanel": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-2.98e-08,
+0.0,
+0.08014
+],
+"size": [
+0.8,
+1.6,
+0.1631
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Electrical",
+"cfg_mass_t": null,
+"cfg_name": "LgRadialSolarPanel",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 600.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.04,
+"max_temp": 1200.0,
+"modules": [
+"ModuleDeployableSolarPanel",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "LgRadialSolarPanel",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "solar_panel",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "组 小行星 充电 白天 电能 电 能量 固定 平 生成 (光 光子 电源 太阳系 静态 太阳 伏特 瓦特",
+"tech_required": "advElectrics",
+"title": "OX-STAT-XL光伏板",
+"title_en": "OX-STAT-XL Photovoltaic Panels",
+"variants": [],
+"wheel_type": ""
+},
+"MK1Fuselage": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+1.25,
+1.938,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "MK1Fuselage",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 550.0,
+"crash_tolerance": 10.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.25,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "MK1Fuselage",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.9375,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.9375,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": 0.6161,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 400.0,
+"density_t": 0.005,
+"max": 400.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+-0.625
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "飞行器 灰机 燃料箱 喷气 飞机 推进 贮箱",
+"tech_required": "aviation",
+"title": "Mk1液体燃料罐",
+"title_en": "Mk1 Liquid Fuel Fuselage",
+"variants": [],
+"wheel_type": ""
+},
+"R8winglet": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.07445,
+-0.03369,
+-0.0001223
+],
+"size": [
+1.629,
+2.016,
+0.1065
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Aero",
+"cfg_mass_t": null,
+"cfg_name": "R8winglet",
+"com_offset": [
+-0.0745,
+-0.2,
+0.0
+],
+"command": null,
+"cost": 640.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2400.0,
+"modules": [
+"ModuleControlSurface",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "R8winglet",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "control_surface",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.540501,
+0.174731,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 飞行器 前翼 控制 (升降舵 尾翼 (头部 升力 飞机 火箭 )舵 稳定 后掠 尾",
+"tech_required": "flightControl",
+"title": "AV-R8小翼",
+"title_en": "AV-R8 Winglet",
+"variants": [],
+"wheel_type": ""
+},
+"RAPIER": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+-7.272e-05,
+0.3494,
+0.0002167
+],
+"size": [
+1.292,
+1.184,
+1.294
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "RAPIER",
+"com_offset": [
+0.0,
+2.6,
+0.0
+],
+"command": null,
+"cost": 6000.0,
+"crash_tolerance": 20.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "Turbine",
+"gimbal_deg": 3.0,
+"id": "AirBreathing",
+"isp_curve": [
+[
+0.0,
+3200.0,
+0.0,
+0.0
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEnginesFX",
+"propellants": [
+{
+"ignore_for_isp": true,
+"name": "IntakeAir",
+"ratio": 6.0
+},
+{
+"flow_mode": "STAGE_STACK_FLOW_BALANCE",
+"name": "LiquidFuel",
+"ratio": 1.0
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 105.0
+},
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 3.0,
+"id": "ClosedCycle",
+"isp_curve": [
+[
+0.0,
+305.0
+],
+[
+1.0,
+275.0
+],
+[
+9.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEnginesFX",
+"propellants": [
+{
+"flow_mode": "STAGE_STACK_FLOW_BALANCE",
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"flow_mode": "STAGE_STACK_FLOW_BALANCE",
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 180.0
+}
+],
+"loaded": null,
+"mass_t": 2.0,
+"max_temp": 2000.0,
+"modules": [
+"MultiModeEngine",
+"ModuleEnginesFX",
+"ModuleEnginesFX",
+"FXModuleAnimateThrottle",
+"ModuleGimbal",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"ModuleSurfaceFX",
+"KOSNameTag"
+],
+"name": "RAPIER",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.926931,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.25603,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "飞行器 升空 关闭 周期 双 燃料 混合 喷气机 液体 主要 模式 飞机 推进 剑桅式 火箭 单级",
+"tech_required": "aerospaceTech",
+"title": "CR-7 R.A.P.I.E.R.引擎",
+"title_en": "CR-7 R.A.P.I.E.R. Engine",
+"variants": [],
+"wheel_type": ""
+},
+"RCSBlock.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.06711,
+0.0001287,
+0.001504
+],
+"size": [
+0.2515,
+0.3904,
+0.3878
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Control",
+"cfg_mass_t": null,
+"cfg_name": "RCSBlock_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 45.0,
+"crash_tolerance": 15.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.04,
+"max_temp": 1500.0,
+"modules": [
+"ModulePartVariants",
+"ModuleRCSFX",
+"FXModuleAnimateRCS",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "RCSBlock.v2",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "rcs_thruster",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+-0.00875,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "集束 控制 入轨 变轨 机动 反应 集合 旋转 稳定 转向 转换",
+"tech_required": "advFlightControl",
+"title": "RV-105 RCS推进器",
+"title_en": "RV-105 RCS Thruster Block",
+"variants": [],
+"wheel_type": ""
+},
+"RCSFuelTank": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0005107,
+0.0
+],
+"size": [
+1.25,
+0.6096,
+1.25
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "RCSFuelTank",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 330.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.08,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "RCSFuelTank",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.285303,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.285303,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"MonoPropellant": {
+"amount": 120.0,
+"density_t": 0.004,
+"max": 120.0
+}
+},
+"role": "monoprop_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 单元 单组元 推进",
+"tech_required": "advFuelSystems",
+"title": "FL-R120 RCS燃料箱",
+"title_en": "FL-R120 RCS Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"Rockomax16.BW": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-1.907e-06,
+5.96e-07,
+-1.907e-06
+],
+"size": [
+2.5,
+1.921,
+2.5
+]
+},
+"bulkhead": [
+"size2",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "Rockomax16_BW",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 1550.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 1.0,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"KOSNameTag"
+],
+"name": "Rockomax16.BW",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.92,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.92,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 720.0,
+"density_t": 0.005,
+"max": 720.0
+},
+"Oxidizer": {
+"amount": 880.0,
+"density_t": 0.005,
+"max": 880.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+1.25,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "fuelSystems",
+"title": "极限火箭X200-16燃料箱",
+"title_en": "Rockomax X200-16 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"Rockomax32.BW": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-4.768e-07,
+0.0,
+1.192e-07
+],
+"size": [
+2.5,
+3.797,
+2.5
+]
+},
+"bulkhead": [
+"size2",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "Rockomax32_BW",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 3000.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 2.0,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"KOSNameTag"
+],
+"name": "Rockomax32.BW",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.86,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.86,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 1440.0,
+"density_t": 0.005,
+"max": 1440.0
+},
+"Oxidizer": {
+"amount": 1760.0,
+"density_t": 0.005,
+"max": 1760.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+1.25,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "fuelSystems",
+"title": "极限火箭X200-32燃料箱",
+"title_en": "Rockomax X200-32 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"Size2LFB.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.01967,
+-7.153e-07
+],
+"size": [
+2.586,
+8.716,
+3.637
+]
+},
+"bulkhead": [
+"size2",
+"srf"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "Size2LFB_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 17000.0,
+"crash_tolerance": 20.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 1.5,
+"id": "KSLFB",
+"isp_curve": [
+[
+0.0,
+300.0
+],
+[
+1.0,
+280.0
+],
+[
+9.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEnginesFX",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 2000.0
+}
+],
+"loaded": null,
+"mass_t": 10.5,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEnginesFX",
+"ModuleGimbal",
+"FXModuleAnimateThrottle",
+"FlagDecal",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"KOSNameTag"
+],
+"name": "Size2LFB.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+4.356,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 2880.0,
+"density_t": 0.005,
+"max": 2880.0
+},
+"Oxidizer": {
+"amount": 3520.0,
+"density_t": 0.005,
+"max": 3520.0
+}
+},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+1.304782,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "",
+"tags": "升空 (猪 助推器 主要 推进 火箭 (双",
+"tech_required": "heavierRocketry",
+"title": "LFB KR-1x2“双猪”液体燃料引擎",
+"title_en": "LFB KR-1x2 \"Twin-Boar\" Liquid Fuel Engine",
+"variants": [],
+"wheel_type": ""
+},
+"SurfAntenna": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+1.196,
+0.11,
+0.12
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Communication",
+"cfg_mass_t": null,
+"cfg_name": "SurfAntenna",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 300.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.015,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "SurfAntenna",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "antenna",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+-0.05,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 天线 无线电 信号 传输",
+"tech_required": "engineering101",
+"title": "通信者16-S",
+"title_en": "Communotron 16-S",
+"variants": [],
+"wheel_type": ""
+},
+"adapterSize2-Size1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+2.5,
+2.563,
+2.5
+]
+},
+"bulkhead": [
+"size1",
+"size2",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "adapterSize2-Size1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 800.0,
+"crash_tolerance": 20.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.57,
+"max_temp": 2300.0,
+"modules": [
+"KOSNameTag"
+],
+"name": "adapterSize2-Size1",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.25,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.25,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 360.0,
+"density_t": 0.005,
+"max": 360.0
+},
+"Oxidizer": {
+"amount": 440.0,
+"density_t": 0.005,
+"max": 440.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+1.25
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料 燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭 贮箱",
+"tech_required": "advFuelSystems",
+"title": "C7牌转接器 - 2.5米对1.25米",
+"title_en": "C7 Brand Adapter - 2.5m to 1.25m",
+"variants": [],
+"wheel_type": ""
+},
+"advSasModule": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+1.49e-08,
+0.0
+],
+"size": [
+1.351,
+0.3993,
+1.351
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Control",
+"cfg_mass_t": null,
+"cfg_name": "advSasModule",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 1200.0,
+"crash_tolerance": 9.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2000.0,
+"modules": [
+"ModuleReactionWheel",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "advSasModule",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.199027,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.199027,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 15.0,
+"roll_knm": 15.0,
+"yaw_knm": 15.0
+},
+"resources": {},
+"role": "reaction_wheel",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "方位 指令 控制 飞行 陀螺 动量 反应 稳定 转向 扭矩",
+"tech_required": "advFlightControl",
+"title": "高级轴向稳定器",
+"title_en": "Advanced Inline Stabilizer",
+"variants": [],
+"wheel_type": ""
+},
+"basicFin": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.1697,
+0.25,
+0.0
+],
+"size": [
+0.7607,
+1.25,
+0.05625
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Aero",
+"cfg_mass_t": null,
+"cfg_name": "basicFin",
+"com_offset": [
+-0.1696656,
+-0.05,
+0.0
+],
+"command": null,
+"cost": 25.0,
+"crash_tolerance": 4.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.01,
+"max_temp": 934.0,
+"modules": [
+"ModuleLiftingSurface",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "basicFin",
+"nodes": [],
+"outer_face_m": 0.5647,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "aero_surface",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 (空气 升力 火箭 稳定 后掠",
+"tech_required": "start",
+"title": "基本尾翼",
+"title_en": "Basic Fin",
+"variants": [],
+"wheel_type": ""
+},
+"batteryBankMini": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.001563,
+0.0
+],
+"size": [
+0.625,
+0.2094,
+0.625
+]
+},
+"bulkhead": [
+"size0"
+],
+"category": "Electrical",
+"cfg_mass_t": null,
+"cfg_name": "batteryBankMini",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 360.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.01,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "batteryBankMini",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.1,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.1,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"ElectricCharge": {
+"amount": 200.0,
+"density_t": 0.0,
+"max": 200.0
+}
+},
+"role": "battery",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.3125
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "电容 电池 充电 电能 电 电池组 电源 伏特 瓦特",
+"tech_required": "electrics",
+"title": "Z-200可充电电池组",
+"title_en": "Z-200 Rechargeable Battery Bank",
+"variants": [],
+"wheel_type": ""
+},
+"batteryPack": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+0.03356,
+-0.1084
+],
+"size": [
+0.2752,
+0.4126,
+0.2883
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Electrical",
+"cfg_mass_t": null,
+"cfg_name": "batteryPack",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 80.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 1200.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "batteryPack",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"ElectricCharge": {
+"amount": 100.0,
+"density_t": 0.0,
+"max": 100.0
+}
+},
+"role": "battery",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "电容 电池 充电 电能 电 电池组 电源 伏特 瓦特",
+"tech_required": "basicScience",
+"title": "Z-100可充电电池组",
+"title_en": "Z-100 Rechargeable Battery Pack",
+"variants": [],
+"wheel_type": ""
+},
+"commDish": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.02198,
+-2.98e-08
+],
+"size": [
+0.3264,
+0.5276,
+0.3264
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Communication",
+"cfg_mass_t": null,
+"cfg_name": "commDish",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 1500.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDeployableAntenna",
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "commDish",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.13,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "antenna",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+-0.13,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 天线 可动 直连 碟形 展开 折叠 无线电 信号 传输",
+"tech_required": "automation",
+"title": "通信者88-88",
+"title_en": "Communotron 88-88",
+"variants": [],
+"wheel_type": ""
+},
+"dockingPort2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.003925,
+0.0
+],
+"size": [
+1.151,
+0.5753,
+1.151
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "dockingPort2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 280.0,
+"crash_tolerance": 10.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.05,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDockingNode",
+"ModuleCargoPart",
+"ModuleColorChanger",
+"KOSNameTag"
+],
+"name": "dockingPort2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.282883,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "docking_port",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "DECOUPLER_VERT",
+"tags": "占位 捕捉 连接 对接 入轨 固定 接头 系 插口",
+"tech_required": "specializedConstruction",
+"title": "夹具装置对接口",
+"title_en": "Clamp-O-Tron Docking Port",
+"variants": [],
+"wheel_type": ""
+},
+"dockingPort3": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.008973,
+4.441e-05
+],
+"size": [
+0.6851,
+0.3161,
+0.6851
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "dockingPort3",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 800.0,
+"crash_tolerance": 10.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.02,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDockingNode",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "dockingPort3",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.147411,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "docking_port",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "DECOUPLER_VERT",
+"tags": "占位 捕捉 连接 对接 入轨 固定 接头 系 插口",
+"tech_required": "miniaturization",
+"title": "小型夹具装置对接口",
+"title_en": "Clamp-O-Tron Docking Port Jr.",
+"variants": [],
+"wheel_type": ""
+},
+"fairingSize1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.00875,
+-5.96e-08
+],
+"size": [
+1.313,
+0.4375,
+1.313
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Payload",
+"cfg_mass_t": null,
+"cfg_name": "fairingSize1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 300.0,
+"crash_tolerance": 9.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.075,
+"max_temp": 2600.0,
+"modules": [
+"ModuleProceduralFairing",
+"ModuleCargoBay",
+"ModuleTestSubject",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNode",
+"ModuleStructuralNodeToggle",
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "fairingSize1",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage01a",
+"known": true,
+"pos": [
+0.0,
+0.7,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage01b",
+"known": true,
+"pos": [
+0.0,
+0.74,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage02a",
+"known": true,
+"pos": [
+0.0,
+1.2,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage02b",
+"known": true,
+"pos": [
+0.0,
+1.24,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage03a",
+"known": true,
+"pos": [
+0.0,
+1.7,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage03b",
+"known": true,
+"pos": [
+0.0,
+1.74,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage04a",
+"known": true,
+"pos": [
+0.0,
+2.2,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage04b",
+"known": true,
+"pos": [
+0.0,
+2.24,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage05a",
+"known": true,
+"pos": [
+0.0,
+2.7,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage05b",
+"known": true,
+"pos": [
+0.0,
+2.74,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "interstage06a",
+"known": true,
+"pos": [
+0.0,
+3.2,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "interstage06b",
+"known": true,
+"pos": [
+0.0,
+3.24,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.22,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.2,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "fairing",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "航空 )运载 阻力 火箭 锥头 头锥 货舱 包含 整流 中空 内部 负荷 保护 护罩 阶段 (存 运输 3.75 庞大 超大 硕大 特大 5.0",
+"tech_required": "advConstruction",
+"title": "AE-FF1气流防护罩(1.25米)",
+"title_en": "AE-FF1 Airstream Protective Shell (1.25m)",
+"variants": [],
+"wheel_type": ""
+},
+"fuelTank": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+3.457e-06,
+0.03462,
+3.457e-06
+],
+"size": [
+1.25,
+1.949,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "fuelTank",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 500.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.25,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "fuelTank",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.981725,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.9125,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": 0.6191,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 180.0,
+"density_t": 0.005,
+"max": 180.0
+},
+"Oxidizer": {
+"amount": 220.0,
+"density_t": 0.005,
+"max": 220.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.625,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "advRocketry",
+"title": "FL-T400燃料箱",
+"title_en": "FL-T400 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"fuelTank.long": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.006252,
+5.364e-07
+],
+"size": [
+1.25,
+3.818,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "fuelTank_long",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 800.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.5,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"KOSNameTag"
+],
+"name": "fuelTank.long",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.875,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.8875,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": 0.6137,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 360.0,
+"density_t": 0.005,
+"max": 360.0
+},
+"Oxidizer": {
+"amount": 440.0,
+"density_t": 0.005,
+"max": 440.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.625,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "fuelSystems",
+"title": "FL-T800燃料箱",
+"title_en": "FL-T800 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"fuelTankSmall": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-2.98e-06,
+1.103e-05,
+3.457e-06
+],
+"size": [
+1.25,
+1.166,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "fuelTankSmall",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 275.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.125,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "fuelTankSmall",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.55525,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.55525,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": 0.5174,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 90.0,
+"density_t": 0.005,
+"max": 90.0
+},
+"Oxidizer": {
+"amount": 110.0,
+"density_t": 0.005,
+"max": 110.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.625,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "generalRocketry",
+"title": "FL-T200燃料箱",
+"title_en": "FL-T200 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"fuelTankSmallFlat": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+3.457e-06,
+1.049e-05,
+0.0
+],
+"size": [
+1.25,
+0.68,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "fuelTankSmallFlat",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 150.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.0625,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "fuelTankSmallFlat",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.3125,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.3125,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 45.0,
+"density_t": 0.005,
+"max": 45.0
+},
+"Oxidizer": {
+"amount": 55.0,
+"density_t": 0.005,
+"max": 55.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.625,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "basicRocketry",
+"title": "FL-T100燃料箱",
+"title_en": "FL-T100 Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"ionEngine": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.01502,
+0.0
+],
+"size": [
+0.625,
+0.3946,
+0.625
+]
+},
+"bulkhead": [
+"size0"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "ionEngine",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 8000.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "Electric",
+"gimbal_deg": 0.0,
+"id": "Ion",
+"isp_curve": [
+[
+0.0,
+4200.0
+],
+[
+1.0,
+100.0
+],
+[
+1.2,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEnginesFX",
+"propellants": [
+{
+"name": "ElectricCharge",
+"ratio": 1.8
+},
+{
+"name": "XenonGas",
+"ratio": 0.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 2.0
+}
+],
+"loaded": null,
+"mass_t": 0.25,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEnginesFX",
+"FXModuleAnimateThrottle",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "ionEngine",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.213556,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.187284,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "ion_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "(黎明 深 推进 高效 引擎 (离子 探测器 推进器 真空 氙",
+"tech_required": "ionPropulsion",
+"title": "IX-6315“黎明”电力推进系统",
+"title_en": "IX-6315 \"Dawn\" Electric Propulsion System",
+"variants": [],
+"wheel_type": ""
+},
+"kerbalEVA": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": false,
+"stack": false
+},
+"bounds": null,
+"bulkhead": [],
+"category": "",
+"cfg_mass_t": null,
+"cfg_name": "kerbalEVA",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 0.0,
+"crash_tolerance": 0.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.0,
+"max_temp": 0.0,
+"modules": [
+"ModuleScienceExperiment",
+"KOSNameTag"
+],
+"name": "kerbalEVA",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "science",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "",
+"tech_required": "",
+"title": "",
+"title_en": "",
+"variants": [],
+"wheel_type": ""
+},
+"landingLeg1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-1.49e-08,
+-0.8749,
+0.1349
+],
+"size": [
+0.3,
+2.206,
+0.5893
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Ground",
+"cfg_mass_t": null,
+"cfg_name": "landingLeg1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 440.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.05,
+"max_temp": 2000.0,
+"modules": [
+"ModuleWheelBase",
+"ModuleWheelSuspension",
+"ModuleWheelDeployment",
+"ModuleWheelLock",
+"ModuleWheelBogey",
+"ModuleWheelDamage",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "landingLeg1",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "landing_leg",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.375678,
+0.92675
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "地面 着陆 腿 支撑",
+"tech_required": "landing",
+"title": "LT-1着陆支架",
+"title_en": "LT-1 Landing Struts",
+"variants": [],
+"wheel_type": "LEG"
+},
+"landingLeg1-2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0001921,
+-0.7179,
+0.1662
+],
+"size": [
+1.017,
+3.025,
+0.6183
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Ground",
+"cfg_mass_t": null,
+"cfg_name": "landingLeg1-2",
+"com_offset": [
+0.0,
+0.0,
+0.1
+],
+"command": null,
+"cost": 340.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2000.0,
+"modules": [
+"ModuleWheelBase",
+"ModuleWheelSuspension",
+"ModuleWheelDeployment",
+"ModuleWheelLock",
+"ModuleWheelBogey",
+"ModuleWheelDamage",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "landingLeg1-2",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "landing_leg",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.573576,
+0.819152
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.533945,
+0.079074
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "地面 着陆 腿 支撑",
+"tech_required": "advLanding",
+"title": "LT-2着陆支架",
+"title_en": "LT-2 Landing Strut",
+"variants": [],
+"wheel_type": "LEG"
+},
+"largeAdapter2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+2.5,
+0.3817,
+2.5
+]
+},
+"bulkhead": [
+"size2",
+"size1"
+],
+"category": "Structural",
+"cfg_mass_t": null,
+"cfg_name": "largeAdapter2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 450.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.08,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "largeAdapter2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.189216,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.189216,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "adapter",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "锥头 截",
+"tech_required": "advConstruction",
+"title": "极限火箭牌转接器02",
+"title_en": "Rockomax Brand Adapter 02",
+"variants": [],
+"wheel_type": ""
+},
+"launchClamp1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+-0.9954,
+-0.3217
+],
+"size": [
+1.136,
+5.516,
+2.395
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Structural",
+"cfg_mass_t": null,
+"cfg_name": "launchClamp1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 200.0,
+"crash_tolerance": 100.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2000.0,
+"modules": [
+"LaunchClamp",
+"ModuleGenerator",
+"ModuleTestSubject",
+"KOSNameTag"
+],
+"name": "launchClamp1",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "launch_clamp",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+1.354437,
+0.806919
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "",
+"tags": "闭合 保持 )垫 火箭 稳定 塔",
+"tech_required": "generalConstruction",
+"title": "TT18-A发射稳定性增强器",
+"title_en": "TT18-A Launch Stability Enhancer",
+"variants": [],
+"wheel_type": ""
+},
+"liquidEngine2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.08432,
+5.96e-08
+],
+"size": [
+1.25,
+1.631,
+1.25
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "none",
+"cfg_mass_t": null,
+"cfg_name": "liquidEngine2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 1200.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 3.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+320.0
+],
+[
+1.0,
+250.0
+],
+[
+6.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 215.0
+}
+],
+"loaded": null,
+"mass_t": 1.5,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEngines",
+"ModuleJettison",
+"ModuleGimbal",
+"FXModuleAnimateThrottle",
+"ModuleAlternator",
+"ModuleSurfaceFX",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "liquidEngine2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.901826,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.717923,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "发射 推进 火箭 持久 (转轮",
+"tech_required": "basicRocketry",
+"title": "LV-T45“转轮”液体燃料引擎",
+"title_en": "LV-T45 \"Swivel\" Liquid Fuel Engine",
+"variants": [],
+"wheel_type": ""
+},
+"liquidEngine2.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.08432,
+5.96e-08
+],
+"size": [
+1.25,
+1.631,
+1.25
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "liquidEngine2_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 1200.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 3.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+320.0
+],
+[
+1.0,
+250.0
+],
+[
+6.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 215.0
+}
+],
+"loaded": null,
+"mass_t": 1.5,
+"max_temp": 2000.0,
+"modules": [
+"FXModuleLookAtConstraint",
+"ModulePartVariants",
+"ModuleEngines",
+"ModuleJettison",
+"ModuleGimbal",
+"FXModuleAnimateThrottle",
+"ModuleAlternator",
+"ModuleSurfaceFX",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "liquidEngine2.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.63,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "发射 推进 火箭 持久 (转轮",
+"tech_required": "basicRocketry",
+"title": "LV-T45“转轮”液体燃料引擎",
+"title_en": "LV-T45 \"Swivel\" Liquid Fuel Engine",
+"variants": [],
+"wheel_type": ""
+},
+"liquidEngine3.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.3757,
+4.768e-07
+],
+"size": [
+1.269,
+0.7756,
+1.269
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "liquidEngine3_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 390.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 4.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+345.0
+],
+[
+1.0,
+85.0
+],
+[
+3.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 60.0
+}
+],
+"loaded": null,
+"mass_t": 0.5,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEngines",
+"ModuleGimbal",
+"ModuleJettison",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"ModulePartVariants",
+"FXModuleAnimateThrottle",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "liquidEngine3.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.83,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "着陆器 轨道 推进 火箭 (猎犬 真空",
+"tech_required": "advRocketry",
+"title": "LV-909“猎犬”液体燃料引擎",
+"title_en": "LV-909 \"Terrier\" Liquid Fuel Engine",
+"variants": [
+{
+"name": "Shroud",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.81781,
+0.0
+],
+"size": 1
+}
+]
+},
+{
+"name": "TrussMount",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.8,
+0.0
+],
+"size": 1
+}
+]
+},
+{
+"name": "Bare",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.8,
+0.0
+],
+"size": 1
+}
+]
+}
+],
+"wheel_type": ""
+},
+"liquidEngineMainsail.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+-2.384e-07,
+-0.4577,
+1.192e-07
+],
+"size": [
+2.5,
+3.02,
+2.5
+]
+},
+"bulkhead": [
+"size2"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "liquidEngineMainsail_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 13000.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "LiquidFuel",
+"gimbal_deg": 2.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+310.0
+],
+[
+1.0,
+285.0
+],
+[
+9.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+},
+{
+"name": "Oxidizer",
+"ratio": 1.1
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 1500.0
+}
+],
+"loaded": null,
+"mass_t": 6.0,
+"max_temp": 2000.0,
+"modules": [
+"ModulePartVariants",
+"ModuleEngines",
+"ModuleJettison",
+"ModuleGimbal",
+"FXModuleAnimateThrottle",
+"ModuleAlternator",
+"ModuleSurfaceFX",
+"ModuleTestSubject",
+"FXModuleLookAtConstraint",
+"KOSNameTag"
+],
+"name": "liquidEngineMainsail.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.01359,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.95705,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "升空 发射 主要 (主帆 推进 火箭 (帆",
+"tech_required": "heavierRocketry",
+"title": "RE-M3“主帆”液体燃料引擎",
+"title_en": "RE-M3 \"Mainsail\" Liquid Fuel Engine",
+"variants": [
+{
+"name": "Bare",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.533,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.945,
+0.0
+],
+"size": 2
+}
+]
+}
+],
+"wheel_type": ""
+},
+"longAntenna": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.1766,
+-1.118e-08
+],
+"size": [
+0.078,
+0.418,
+0.06755
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Communication",
+"cfg_mass_t": null,
+"cfg_name": "longAntenna",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 300.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 2000.0,
+"modules": [
+"ModuleDeployableAntenna",
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "longAntenna",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "antenna",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 天线 无线电 信号 传输",
+"tech_required": "engineering101",
+"title": "通信者16",
+"title_en": "Communotron 16",
+"variants": [],
+"wheel_type": ""
+},
+"miniFuelTank": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-7.451e-08,
+0.0
+],
+"size": [
+0.625,
+0.3597,
+0.625
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "miniFuelTank",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 70.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.025,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "miniFuelTank",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.174274,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.174274,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"LiquidFuel": {
+"amount": 18.0,
+"density_t": 0.005,
+"max": 18.0
+},
+"Oxidizer": {
+"amount": 22.0,
+"density_t": 0.005,
+"max": 22.0
+}
+},
+"role": "fuel_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.3175,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 ?燃料氧化剂 液体 氧化 推进 火箭",
+"tech_required": "propulsionSystems",
+"title": "奥斯卡B型燃料箱",
+"title_en": "Oscar-B Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"mk1-3pod": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.3498,
+-1.192e-07
+],
+"size": [
+2.446,
+1.847,
+2.446
+]
+},
+"bulkhead": [
+"size2",
+"size1"
+],
+"category": "Pods",
+"cfg_mass_t": null,
+"cfg_name": "mk1-3pod",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": {
+"minimum_crew": 1
+},
+"cost": 3800.0,
+"crash_tolerance": 20.0,
+"crew": 3,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 2.6,
+"max_temp": 1400.0,
+"modules": [
+"ModuleCommand",
+"ModuleReactionWheel",
+"ModuleColorChanger",
+"ModuleScienceExperiment",
+"ModuleScienceContainer",
+"FlagDecal",
+"ModuleConductionMultiplier",
+"ModuleDataTransmitter",
+"ModuleProbeControlPoint",
+"ModuleLiftingSurface",
+"ModuleRCSFX",
+"ModuleInventoryPart",
+"MechJebCore",
+"KOSNameTag"
+],
+"name": "mk1-3pod",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.47924,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.19319,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 15.0,
+"roll_knm": 15.0,
+"yaw_knm": 15.0
+},
+"resources": {
+"ElectricCharge": {
+"amount": 150.0,
+"density_t": 0.0,
+"max": 150.0
+},
+"MonoPropellant": {
+"amount": 30.0,
+"density_t": 0.004,
+"max": 30.0
+}
+},
+"role": "command_pod",
+"skin_max_temp": 2400.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "太空舱 方位 控制 ?eva 飞行 陀螺 ?舱内 动量 飞行员 反应 火箭 太空 稳定 转向 扭矩",
+"tech_required": "commandModules",
+"title": "Mk1-3指令舱",
+"title_en": "Mk1-3 Command Pod",
+"variants": [],
+"wheel_type": ""
+},
+"mk1pod.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.09149,
+0.0
+],
+"size": [
+1.25,
+1.139,
+1.25
+]
+},
+"bulkhead": [
+"size1",
+"size0"
+],
+"category": "Pods",
+"cfg_mass_t": null,
+"cfg_name": "mk1pod_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": {
+"minimum_crew": 1
+},
+"cost": 600.0,
+"crash_tolerance": 14.0,
+"crew": 1,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.8,
+"max_temp": 1200.0,
+"modules": [
+"ModuleCommand",
+"ModuleReactionWheel",
+"ModuleColorChanger",
+"ModuleScienceExperiment",
+"ModuleScienceContainer",
+"ModuleConductionMultiplier",
+"ModuleDataTransmitter",
+"ModuleLiftingSurface",
+"FlagDecal",
+"ModulePartVariants",
+"ModuleCargoPart",
+"ModuleInventoryPart",
+"MechJebCore",
+"KOSNameTag"
+],
+"name": "mk1pod.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.405038,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.642376,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 5.0,
+"roll_knm": 5.0,
+"yaw_knm": 5.0
+},
+"resources": {
+"ElectricCharge": {
+"amount": 50.0,
+"density_t": 0.0,
+"max": 50.0
+},
+"MonoPropellant": {
+"amount": 10.0,
+"density_t": 0.004,
+"max": 10.0
+}
+},
+"role": "command_pod",
+"skin_max_temp": 2200.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "太空舱 方位 控制 ?eva 飞行 陀螺 ?舱内 动量 飞行员 反应 火箭 太空 稳定 转向 扭矩",
+"tech_required": "start",
+"title": "Mk1指令舱",
+"title_en": "Mk1 Command Pod",
+"variants": [],
+"wheel_type": ""
+},
+"mk2LanderCabin.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.2124,
+-0.01629
+],
+"size": [
+2.5,
+1.282,
+2.824
+]
+},
+"bulkhead": [
+"size2"
+],
+"category": "Pods",
+"cfg_mass_t": null,
+"cfg_name": "mk2LanderCabin_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": {
+"minimum_crew": 1
+},
+"cost": 3250.0,
+"crash_tolerance": 20.0,
+"crew": 2,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 1.355,
+"max_temp": 1200.0,
+"modules": [
+"ModuleCommand",
+"ModuleReactionWheel",
+"ModuleColorChanger",
+"ModuleScienceExperiment",
+"ModuleScienceContainer",
+"FlagDecal",
+"ModuleDataTransmitter",
+"ModuleProbeControlPoint",
+"ModulePartVariants",
+"ModuleAnimateGeneric",
+"ModuleCargoPart",
+"ModuleInventoryPart",
+"MechJebCore",
+"KOSNameTag"
+],
+"name": "mk2LanderCabin.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "hatch",
+"known": true,
+"pos": [
+0.0,
+0.174178,
+-1.32667
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "nose",
+"known": true,
+"pos": [
+0.0,
+0.174178,
+1.36707
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.403574,
+0.0
+],
+"size": 2
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.751929,
+0.0
+],
+"size": 2
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 15.0,
+"roll_knm": 15.0,
+"yaw_knm": 15.0
+},
+"resources": {
+"ElectricCharge": {
+"amount": 100.0,
+"density_t": 0.0,
+"max": 100.0
+},
+"MonoPropellant": {
+"amount": 40.0,
+"density_t": 0.004,
+"max": 40.0
+}
+},
+"role": "command_pod",
+"skin_max_temp": 2000.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "太空舱 方位 指令 控制 ?eva 飞行 陀螺 ?舱内 动量 飞行员 舱 反应 火箭 太空 稳定 转向 扭矩",
+"tech_required": "commandModules",
+"title": "Mk2着陆舱",
+"title_en": "Mk2 Lander Can",
+"variants": [],
+"wheel_type": ""
+},
+"noseCone": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+4.768e-07,
+0.3058,
+1.311e-06
+],
+"size": [
+1.25,
+0.6694,
+1.25
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Aero",
+"cfg_mass_t": null,
+"cfg_name": "noseCone",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 240.0,
+"crash_tolerance": 10.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.03,
+"max_temp": 2400.0,
+"modules": [
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "noseCone",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom01",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "nose_cone",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "航空 飞行器 助推器 )风帽 阻力 飞行 飞机 火箭 速度 稳定 气流",
+"tech_required": "stability",
+"title": "空气动力鼻锥",
+"title_en": "Aerodynamic Nose Cone",
+"variants": [],
+"wheel_type": ""
+},
+"nuclearEngine": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": null,
+"bulkhead": [
+"size1"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "nuclearEngine",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 10000.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "Nuclear",
+"gimbal_deg": 0.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+800.0
+],
+[
+1.0,
+185.0
+],
+[
+2.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "LiquidFuel",
+"ratio": 0.9
+}
+],
+"throttle_locked": false,
+"thrust_vac_kn": 60.0
+}
+],
+"loaded": null,
+"mass_t": 3.0,
+"max_temp": 2500.0,
+"modules": [
+"ModuleEngines",
+"ModuleJettison",
+"ModuleJettison",
+"ModuleAnimateHeat",
+"ModuleAlternator",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"KOSNameTag"
+],
+"name": "nuclearEngine",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.40383,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.778,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "liquid_engine",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": true,
+"staging_icon": "",
+"tags": "活跃 原子 高效 引擎 内部 液体 (神经元 核 核推 轨道 推进 辐射 反应堆 真空",
+"tech_required": "nuclearPropulsion",
+"title": "LV-N“神经元”原子火箭发动机",
+"title_en": "LV-N \"Nerv\" Atomic Rocket Motor",
+"variants": [],
+"wheel_type": ""
+},
+"parachuteSingle": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+6.735e-06,
+0.1034,
+0.01848
+],
+"size": [
+0.6307,
+0.3626,
+0.6124
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Utility",
+"cfg_mass_t": null,
+"cfg_name": "parachuteSingle",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 422.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2500.0,
+"modules": [
+"ModuleParachute",
+"ModuleTestSubject",
+"ModuleDragModifier",
+"ModuleDragModifier",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "parachuteSingle",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.015081,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": {
+"autoCutSpeed": 0.5,
+"chuteMaxTemp": 650.0,
+"deployAltitude": 1000.0,
+"fullyDeployedDrag": 500.0,
+"minAirPressureToOpen": 0.04,
+"semiDeployedDrag": 1.0,
+"stowedDrag": 0.22
+},
+"reaction_wheel": null,
+"resources": {},
+"role": "parachute",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+-0.015081,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "",
+"tags": "捕捉 遮盖 降落伞 减速 下降 阻力 进入 下落 着陆 回 返回 安全 慢 白色",
+"tech_required": "start",
+"title": "Mk16降落伞",
+"title_en": "Mk16 Parachute",
+"variants": [],
+"wheel_type": ""
+},
+"probeCoreOcto.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+1.788e-07,
+0.0,
+4.172e-07
+],
+"size": [
+0.6866,
+0.3848,
+0.6866
+]
+},
+"bulkhead": [
+"size0"
+],
+"category": "Pods",
+"cfg_mass_t": null,
+"cfg_name": "probeCoreOcto_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": {
+"minimum_crew": 0
+},
+"cost": 450.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 1200.0,
+"modules": [
+"ModuleCommand",
+"ModuleReactionWheel",
+"ModuleSAS",
+"ModuleKerbNetAccess",
+"ModuleDataTransmitter",
+"ModuleCargoPart",
+"MechJebCore",
+"KOSNameTag"
+],
+"name": "probeCoreOcto.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.187082,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.187082,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 0.3,
+"roll_knm": 0.3,
+"yaw_knm": 0.3
+},
+"resources": {
+"ElectricCharge": {
+"amount": 10.0,
+"density_t": 0.0,
+"max": 10.0
+}
+},
+"role": "probe_core",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "方位 指令 控制 (核心 飞行 陀螺 kerbnet 动量 八边形 探测器 反应 sas 卫星 太空 稳定 转向 扭矩",
+"tech_required": "electrics",
+"title": "探测动力-OKTO",
+"title_en": "Probodobodyne OKTO",
+"variants": [],
+"wheel_type": ""
+},
+"probeStackSmall": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+1.334,
+0.22,
+1.359
+]
+},
+"bulkhead": [
+"size1"
+],
+"category": "Pods",
+"cfg_mass_t": null,
+"cfg_name": "probeStackSmall",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": {
+"minimum_crew": 0
+},
+"cost": 2250.0,
+"crash_tolerance": 9.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.1,
+"max_temp": 2000.0,
+"modules": [
+"ModuleProbeControlPoint",
+"ModuleCommand",
+"ModuleReactionWheel",
+"ModuleSAS",
+"ModuleKerbNetAccess",
+"ModuleDataTransmitter",
+"ModuleScienceContainer",
+"ModuleCargoPart",
+"MechJebCore",
+"KOSNameTag"
+],
+"name": "probeStackSmall",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.1,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.1,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": {
+"pitch_knm": 0.5,
+"roll_knm": 0.5,
+"yaw_knm": 0.5
+},
+"resources": {
+"ElectricCharge": {
+"amount": 15.0,
+"density_t": 0.0,
+"max": 15.0
+}
+},
+"role": "probe_core",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "方位 指令 控制 (核心 飞行 陀螺 kerbnet 动量 探测器 反应 sas 卫星 太空 稳定 转向 扭矩",
+"tech_required": "advUnmanned",
+"title": "RC-001S远程控制单元",
+"title_en": "RC-001S Remote Guidance Unit",
+"variants": [],
+"wheel_type": ""
+},
+"radialDecoupler": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.08787,
+0.0,
+0.0
+],
+"size": [
+0.2782,
+1.134,
+0.3886
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "radialDecoupler",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 600.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": true,
+"decoupler": {
+"ejection_force": 250.0,
+"explosive_node": "srf",
+"is_omni": false,
+"radial": true
+},
+"engines": [],
+"loaded": null,
+"mass_t": 0.025,
+"max_temp": 2000.0,
+"modules": [
+"ModuleAnchoredDecoupler",
+"ModuleToggleCrossfeed",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "radialDecoupler",
+"nodes": [],
+"outer_face_m": 0.1617,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "radial_decoupler",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.01,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "DECOUPLER_HOR",
+"tags": "切断 脱离 分离 切分 分级",
+"tech_required": "stability",
+"title": "TT-38K径向分离器",
+"title_en": "TT-38K Radial Decoupler",
+"variants": [],
+"wheel_type": ""
+},
+"radialDecoupler2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.2764,
+0.01251,
+2.98e-08
+],
+"size": [
+0.8839,
+1.74,
+0.7032
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Coupling",
+"cfg_mass_t": null,
+"cfg_name": "radialDecoupler2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 700.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": true,
+"decoupler": {
+"ejection_force": 260.0,
+"explosive_node": "srf",
+"is_omni": false,
+"radial": true
+},
+"engines": [],
+"loaded": null,
+"mass_t": 0.05,
+"max_temp": 2000.0,
+"modules": [
+"ModuleAnchoredDecoupler",
+"ModuleToggleCrossfeed",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "radialDecoupler2",
+"nodes": [],
+"outer_face_m": 0.6176,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "radial_decoupler",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+-0.03,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "DECOUPLER_HOR",
+"tags": "切断 脱离 分离 切分 分级",
+"tech_required": "advConstruction",
+"title": "TT-70径向分离器",
+"title_en": "TT-70 Radial Decoupler",
+"variants": [],
+"wheel_type": ""
+},
+"radialRCSTank": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+-0.0001052,
+0.1108
+],
+"size": [
+0.5738,
+0.588,
+0.7822
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "radialRCSTank",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 200.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.02,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "radialRCSTank",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"MonoPropellant": {
+"amount": 20.0,
+"density_t": 0.004,
+"max": 20.0
+}
+},
+"role": "monoprop_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.22
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料 燃料箱 单元 推进 rcs",
+"tech_required": "advFlightControl",
+"title": "层云-V球形单组元推进剂箱",
+"title_en": "Stratus-V Roundified Monopropellant Tank",
+"variants": [],
+"wheel_type": ""
+},
+"rcsTankMini": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+0.625,
+0.375,
+0.625
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "rcsTankMini",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 200.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.02,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "rcsTankMini",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.1875,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.1875,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"MonoPropellant": {
+"amount": 20.0,
+"density_t": 0.004,
+"max": 20.0
+}
+},
+"role": "monoprop_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.25,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 单元 单组元 推进",
+"tech_required": "advFuelSystems",
+"title": "FL-R20 RCS燃料箱",
+"title_en": "FL-R20 RCS Fuel Tank",
+"variants": [],
+"wheel_type": ""
+},
+"rtg": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+0.3368,
+0.6564,
+0.3889
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Electrical",
+"cfg_mass_t": null,
+"cfg_name": "rtg",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 23300.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.08,
+"max_temp": 1200.0,
+"modules": [
+"ModuleGenerator",
+"ModuleCoreHeat",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "rtg",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.326802,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.326802,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "generator",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+-0.326802,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "活跃 原子 充电 电能 电 能量 生成 同位素 核 核弹 电源 辐射 同位电 热 伏特 瓦特",
+"tech_required": "experimentalElectrics",
+"title": "PB-NUK放射性同位素热发电机",
+"title_en": "PB-NUK Radioisotope Thermoelectric Generator",
+"variants": [],
+"wheel_type": ""
+},
+"sensorGravimeter": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-7.451e-09,
+0.008801,
+-0.06817
+],
+"size": [
+0.1402,
+0.2038,
+0.1636
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Science",
+"cfg_mass_t": null,
+"cfg_name": "sensorGravimeter",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 8800.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 1200.0,
+"modules": [
+"ModuleEnviroSensor",
+"ModuleScienceExperiment",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "sensorGravimeter",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "science",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "实验 重力 研究 重放 重-放 复用 复-用 重做 重-做 重置 重-置 科学 传感器",
+"tech_required": "advScienceTech",
+"title": "GRAVMAX负引力子探测器",
+"title_en": "GRAVMAX Negative Gravioli Detector",
+"variants": [],
+"wheel_type": ""
+},
+"sensorThermometer": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+-0.00171,
+-0.02128
+],
+"size": [
+0.09136,
+0.2696,
+0.07437
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Science",
+"cfg_mass_t": null,
+"cfg_name": "sensorThermometer",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 900.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 1200.0,
+"modules": [
+"ModuleEnviroSensor",
+"ModuleScienceExperiment",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "sensorThermometer",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "science",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+-1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "实验 热量 研究 重放 重-放 复用 复-用 重做 重-做 重置 重-置 科学 传感器 温度",
+"tech_required": "engineering101",
+"title": "2HOT温度计",
+"title_en": "2HOT Thermometer",
+"variants": [],
+"wheel_type": ""
+},
+"sepMotor1": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.0,
+-0.005828,
+0.09671
+],
+"size": [
+0.1782,
+0.5375,
+0.3409
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "sepMotor1",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 75.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "SolidBooster",
+"gimbal_deg": 0.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+154.0
+],
+[
+1.0,
+118.0
+],
+[
+6.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "SolidFuel",
+"ratio": 1.0
+}
+],
+"throttle_locked": true,
+"thrust_vac_kn": 18.0
+}
+],
+"loaded": null,
+"mass_t": 0.0125,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEngines",
+"ModuleTestSubject",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "sepMotor1",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"SolidFuel": {
+"amount": 8.0,
+"density_t": 0.0075,
+"max": 8.0
+}
+},
+"role": "solid_booster",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "SOLID_BOOSTER",
+"tags": "中止 助推器 紧急 爆炸 故障 加油 (更多 发动机 火箭 ?暴力 安全 分离 固体 助推器 生存 推进器 缺量",
+"tech_required": "precisionPropulsion",
+"title": "分离者一号",
+"title_en": "Sepratron I",
+"variants": [],
+"wheel_type": ""
+},
+"solarPanels5": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+1.49e-08,
+0.0,
+0.03411
+],
+"size": [
+0.3466,
+0.4747,
+0.06439
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Electrical",
+"cfg_mass_t": null,
+"cfg_name": "solarPanels5",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 75.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 1200.0,
+"modules": [
+"ModuleDeployableSolarPanel",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "solarPanels5",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "solar_panel",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "组 充电 电能 电 能量 固定 平 生成 (光 光子 电源 太阳系 静态 太阳 伏特 瓦特",
+"tech_required": "electrics",
+"title": "OX-STAT太阳能电池板",
+"title_en": "OX-STAT Photovoltaic Panels",
+"variants": [],
+"wheel_type": ""
+},
+"solidBooster.sm.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.08689,
+0.0
+],
+"size": [
+1.267,
+1.771,
+1.267
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "solidBooster_sm_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 200.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "SolidBooster",
+"gimbal_deg": 0.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+165.0
+],
+[
+1.0,
+140.0
+],
+[
+6.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "SolidFuel",
+"ratio": 1.0
+}
+],
+"throttle_locked": true,
+"thrust_vac_kn": 192.0
+}
+],
+"loaded": null,
+"mass_t": 0.45,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEngines",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"ModulePartVariants",
+"ModuleJettison",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "solidBooster.sm.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.9975,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.7575,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"SolidFuel": {
+"amount": 140.0,
+"density_t": 0.0075,
+"max": 140.0
+}
+},
+"role": "solid_booster",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+-0.625
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "SOLID_BOOSTER",
+"tags": "(跳蚤 加油 (更多 发动机 火箭 助推器",
+"tech_required": "start",
+"title": "RT-5“跳蚤”固体燃料助推器",
+"title_en": "RT-5 \"Flea\" Solid Fuel Booster",
+"variants": [],
+"wheel_type": ""
+},
+"solidBooster.v2": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+-0.122,
+0.0
+],
+"size": [
+1.267,
+2.86,
+1.267
+]
+},
+"bulkhead": [
+"size1",
+"srf"
+],
+"category": "Engine",
+"cfg_mass_t": null,
+"cfg_name": "solidBooster_v2",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 400.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [
+{
+"engine_type": "SolidBooster",
+"gimbal_deg": 0.0,
+"id": "",
+"isp_curve": [
+[
+0.0,
+195.0
+],
+[
+1.0,
+170.0
+],
+[
+7.0,
+0.001
+]
+],
+"min_thrust_kn": 0.0,
+"module": "ModuleEngines",
+"propellants": [
+{
+"name": "SolidFuel",
+"ratio": 1.0
+}
+],
+"throttle_locked": true,
+"thrust_vac_kn": 227.0
+}
+],
+"loaded": null,
+"mass_t": 0.75,
+"max_temp": 2000.0,
+"modules": [
+"ModuleEngines",
+"FXModuleAnimateThrottle",
+"ModuleTestSubject",
+"ModuleSurfaceFX",
+"ModulePartVariants",
+"ModuleJettison",
+"KOSNameTag"
+],
+"name": "solidBooster.v2",
+"nodes": [
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-1.56208,
+0.0
+],
+"size": 1
+},
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+1.281837,
+0.0
+],
+"size": 1
+}
+],
+"outer_face_m": 0.0169,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"SolidFuel": {
+"amount": 375.0,
+"density_t": 0.0075,
+"max": 375.0
+}
+},
+"role": "solid_booster",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+0.0,
+1.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+-0.625
+],
+"size": 1
+},
+"stageable": true,
+"staging_icon": "SOLID_BOOSTER",
+"tags": "(巨锤 加油 (更多 发动机 火箭 助推器",
+"tech_required": "basicRocketry",
+"title": "RT-10“巨锤”固体燃料助推器",
+"title_en": "RT-10 \"Hammer\" Solid Fuel Booster",
+"variants": [],
+"wheel_type": ""
+},
+"strutConnector": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+-0.6109,
+0.2873,
+-0.0007531
+],
+"size": [
+1.342,
+0.7592,
+0.1159
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Structural",
+"cfg_mass_t": null,
+"cfg_name": "strutConnector",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 42.0,
+"crash_tolerance": 12.0,
+"crew": 0,
+"crossfeed": false,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.05,
+"max_temp": 2000.0,
+"modules": [
+"CModuleLinkedMesh",
+"CModuleStrut",
+"ModulePartVariants",
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "strutConnector",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "structural",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "绑定 连接 接头 线 加油 (更多 固定 刚性 摇 力量 坚强 结构 支撑 打结 摆动",
+"tech_required": "generalConstruction",
+"title": "EAS-4支架连接器",
+"title_en": "EAS-4 Strut Connector",
+"variants": [],
+"wheel_type": ""
+},
+"strutCube": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": true,
+"stack": true
+},
+"bounds": {
+"center": [
+-2.98e-08,
+0.0001615,
+0.0
+],
+"size": [
+0.2201,
+0.2637,
+0.2201
+]
+},
+"bulkhead": [
+"size0",
+"srf"
+],
+"category": "Structural",
+"cfg_mass_t": null,
+"cfg_name": "strutCube",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 16.0,
+"crash_tolerance": 7.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.001,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "strutCube",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.128734,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.128734,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "structural",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+-0.128734,
+0.0
+],
+"size": 0
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "连接 立方体 框架 钢梁 脚手架 结构 捆绑",
+"tech_required": "precisionEngineering",
+"title": "立方八角钢架",
+"title_en": "Cubic Octagonal Strut",
+"variants": [],
+"wheel_type": ""
+},
+"telescopicLadderBay": {
+"attach_rules": {
+"allowCollision": true,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": false,
+"allowStack": false,
+"srfAttach": true,
+"stack": false
+},
+"bounds": {
+"center": [
+0.3686,
+0.09059,
+0.004056
+],
+"size": [
+0.9978,
+0.2298,
+0.5105
+]
+},
+"bulkhead": [
+"srf"
+],
+"category": "Utility",
+"cfg_mass_t": null,
+"cfg_name": "telescopicLadderBay",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 440.0,
+"crash_tolerance": 8.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.005,
+"max_temp": 2000.0,
+"modules": [
+"RetractableLadder",
+"ModuleCargoPart",
+"ModuleLight",
+"RetractableLadderLightController",
+"KOSNameTag"
+],
+"name": "telescopicLadderBay",
+"nodes": [],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {},
+"role": "ladder",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": {
+"dir": [
+1.0,
+0.0,
+0.0
+],
+"id": "srfAttach",
+"known": true,
+"pos": [
+0.0,
+0.0,
+0.0
+],
+"size": 1
+},
+"stageable": false,
+"staging_icon": "",
+"tags": "升空 爬升 下降 阶梯 横档 安全 台阶",
+"tech_required": "advExploration",
+"title": "克鲁斯LV扩展型垂直机动增强设备",
+"title_en": "Kelus-LV Bay Mobility Enhancer",
+"variants": [],
+"wheel_type": ""
+},
+"xenonTank": {
+"attach_rules": {
+"allowCollision": false,
+"allowDock": false,
+"allowRoot": true,
+"allowRotate": true,
+"allowSrfAttach": true,
+"allowStack": true,
+"srfAttach": false,
+"stack": true
+},
+"bounds": {
+"center": [
+0.0,
+0.0,
+0.0
+],
+"size": [
+0.625,
+0.2854,
+0.625
+]
+},
+"bulkhead": [
+"size0"
+],
+"category": "FuelTank",
+"cfg_mass_t": null,
+"cfg_name": "xenonTank",
+"com_offset": [
+0.0,
+0.0,
+0.0
+],
+"command": null,
+"cost": 3680.0,
+"crash_tolerance": 6.0,
+"crew": 0,
+"crossfeed": true,
+"crossfeed_toggle": false,
+"decoupler": null,
+"engines": [],
+"loaded": null,
+"mass_t": 0.024,
+"max_temp": 2000.0,
+"modules": [
+"ModuleCargoPart",
+"KOSNameTag"
+],
+"name": "xenonTank",
+"nodes": [
+{
+"dir": [
+0.0,
+1.0,
+0.0
+],
+"id": "top",
+"known": true,
+"pos": [
+0.0,
+0.140466,
+0.0
+],
+"size": 0
+},
+{
+"dir": [
+0.0,
+-1.0,
+0.0
+],
+"id": "bottom",
+"known": true,
+"pos": [
+0.0,
+-0.140466,
+0.0
+],
+"size": 0
+}
+],
+"outer_face_m": null,
+"parachute": null,
+"reaction_wheel": null,
+"resources": {
+"XenonGas": {
+"amount": 720.0,
+"density_t": 0.0001,
+"max": 720.0
+}
+},
+"role": "xenon_tank",
+"skin_max_temp": 0.0,
+"source": "cfg",
+"srf_node": null,
+"stageable": false,
+"staging_icon": "",
+"tags": "燃料箱 (离子 推进 贮箱",
+"tech_required": "ionPropulsion",
+"title": "PB-X150氙气罐",
+"title_en": "PB-X150 Xenon Container",
+"variants": [],
+"wheel_type": ""
+}
+},
+"resource_defs": {
+"AK20": {
+"density_t": 0.001499,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "AK20",
+"unit_cost": 0.2998
+},
+"AK27": {
+"density_t": 0.001494,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "AK27",
+"unit_cost": 0.2988
+},
+"Ablator": {
+"density_t": 0.001,
+"flow_mode": "NO_FLOW",
+"name": "Ablator",
+"unit_cost": 0.5
+},
+"Actinides": {
+"density_t": 0.01097,
+"flow_mode": "NO_FLOW",
+"name": "Actinides",
+"unit_cost": 0.0
+},
+"Aerozine50": {
+"density_t": 0.0009,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Aerozine50",
+"unit_cost": 1.35
+},
+"Alumina": {
+"density_t": 0.00398,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Alumina",
+"unit_cost": 0.5
+},
+"Aluminium": {
+"density_t": 0.00277,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Aluminium",
+"unit_cost": 1.5
+},
+"Ammonia": {
+"density_t": 7.69e-07,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Ammonia",
+"unit_cost": 0.00015
+},
+"Aniline": {
+"density_t": 0.00102,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Aniline",
+"unit_cost": 0.5213333
+},
+"AntiHydrogen": {
+"density_t": 8.6e-05,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "AntiHydrogen",
+"unit_cost": 8600000.0
+},
+"Antimatter": {
+"density_t": 1e-09,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Antimatter",
+"unit_cost": 100.0
+},
+"ArgonGas": {
+"density_t": 1.784e-06,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "ArgonGas",
+"unit_cost": 0.0105
+},
+"AvGas": {
+"density_t": 0.000719,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "AvGas",
+"unit_cost": 0.12
+},
+"Borate": {
+"density_t": 0.00173,
+"flow_mode": "ALL_VESSEL",
+"name": "Borate",
+"unit_cost": 0.02
+},
+"Boron": {
+"density_t": 0.00246,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Boron",
+"unit_cost": 0.851
+},
+"Caesium": {
+"density_t": 0.00193,
+"flow_mode": "ALL_VESSEL",
+"name": "Caesium",
+"unit_cost": 77.0
+},
+"Calcium": {
+"density_t": 0.00155,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Calcium",
+"unit_cost": 0.00015
+},
+"Carbon": {
+"density_t": 0.0021,
+"flow_mode": "NO_FLOW",
+"name": "Carbon",
+"unit_cost": 0.0
+},
+"CarbonDioxide": {
+"density_t": 1.951e-06,
+"flow_mode": "ALL_VESSEL",
+"name": "CarbonDioxide",
+"unit_cost": 2.8637e-06
+},
+"CarbonMonoxide": {
+"density_t": 1.25e-06,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "CarbonMonoxide",
+"unit_cost": 3.32e-06
+},
+"CaveaB": {
+"density_t": 0.001501,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "CaveaB",
+"unit_cost": 0.33022
+},
+"ChargedParticles": {
+"density_t": 0.0,
+"flow_mode": "ALL_VESSEL",
+"name": "ChargedParticles",
+"unit_cost": 0.0
+},
+"Chemicals": {
+"density_t": 0.0025,
+"flow_mode": "ALL_VESSEL",
+"name": "Chemicals",
+"unit_cost": 16.0
+},
+"Chlorine": {
+"density_t": 0.0032,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Chlorine",
+"unit_cost": 0.00015
+},
+"ClF3": {
+"density_t": 0.00177,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "ClF3",
+"unit_cost": 10.62
+},
+"ClF5": {
+"density_t": 0.0019,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "ClF5",
+"unit_cost": 15.2
+},
+"ColonySupplies": {
+"density_t": 0.001556,
+"flow_mode": "ALL_VESSEL",
+"name": "ColonySupplies",
+"unit_cost": 15.0
+},
+"CompressedAir": {
+"density_t": 1.283e-06,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "CompressedAir",
+"unit_cost": 4e-05
+},
+"Decaborane": {
+"density_t": 0.00094,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Decaborane",
+"unit_cost": 0.345
+},
+"DepletedFuel": {
+"density_t": 0.01097,
+"flow_mode": "NO_FLOW",
+"name": "DepletedFuel",
+"unit_cost": 0.0
+},
+"DepletedUranium": {
+"density_t": 0.01097,
+"flow_mode": "NO_FLOW",
+"name": "DepletedUranium",
+"unit_cost": 0.0
+},
+"Deuterium": {
+"density_t": 1.8e-07,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Deuterium",
+"unit_cost": 0.00028
+},
+"Diborane": {
+"density_t": 0.000421,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Diborane",
+"unit_cost": 4.21
+},
+"Dirt": {
+"density_t": 0.0016,
+"flow_mode": "ALL_VESSEL",
+"name": "Dirt",
+"unit_cost": 0.3
+},
+"EVA Propellant": {
+"density_t": 0.005,
+"flow_mode": "NO_FLOW",
+"name": "EVA Propellant",
+"unit_cost": 0.0
+},
+"ElectricCharge": {
+"density_t": 0.0,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "ElectricCharge",
+"unit_cost": 0.0
+},
+"EnrichedUranium": {
+"density_t": 0.01097,
+"flow_mode": "NO_FLOW",
+"name": "EnrichedUranium",
+"unit_cost": 865.0
+},
+"Ethane": {
+"density_t": 0.000544,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Ethane",
+"unit_cost": 0.09248
+},
+"Ethanol": {
+"density_t": 0.000789,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Ethanol",
+"unit_cost": 0.12624
+},
+"Ethanol75": {
+"density_t": 0.00084175,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Ethanol75",
+"unit_cost": 0.12624
+},
+"Ethanol90": {
+"density_t": 0.0008101,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Ethanol90",
+"unit_cost": 0.12624
+},
+"Ethylene": {
+"density_t": 0.000568,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Ethylene",
+"unit_cost": 0.09656
+},
+"ExoticMatter": {
+"density_t": 0.0,
+"flow_mode": "ALL_VESSEL",
+"name": "ExoticMatter",
+"unit_cost": 0.0
+},
+"ExoticMinerals": {
+"density_t": 0.0025,
+"flow_mode": "ALL_VESSEL",
+"name": "ExoticMinerals",
+"unit_cost": 160.0
+},
+"FLOX30": {
+"density_t": 0.0012517,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "FLOX30",
+"unit_cost": 2.403264
+},
+"FLOX70": {
+"density_t": 0.0013993,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "FLOX70",
+"unit_cost": 6.184906
+},
+"FLOX88": {
+"density_t": 0.0014657,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "FLOX88",
+"unit_cost": 8.134635
+},
+"Fertilizer": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "Fertilizer",
+"unit_cost": 2.0
+},
+"Fluorine": {
+"density_t": 1.696e-06,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Fluorine",
+"unit_cost": 0.010176
+},
+"Fluorite": {
+"density_t": 0.0032,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Fluorite",
+"unit_cost": 9.35
+},
+"Food": {
+"density_t": 0.00028102905982906,
+"flow_mode": "ALL_VESSEL",
+"name": "Food",
+"unit_cost": 0.238874700854701
+},
+"Furfuryl": {
+"density_t": 0.00113,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Furfuryl",
+"unit_cost": 0.1808
+},
+"FusionPellets": {
+"density_t": 0.000216,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "FusionPellets",
+"unit_cost": 150.0
+},
+"Glykerol": {
+"density_t": 0.0012,
+"flow_mode": "ALL_VESSEL",
+"name": "Glykerol",
+"unit_cost": 2.0
+},
+"Gypsum": {
+"density_t": 0.0055,
+"flow_mode": "ALL_VESSEL",
+"name": "Gypsum",
+"unit_cost": 0.01
+},
+"HNIW": {
+"density_t": 0.002044,
+"flow_mode": "NO_FLOW",
+"name": "HNIW",
+"unit_cost": 0.4504976
+},
+"HTP": {
+"density_t": 0.001431,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "HTP",
+"unit_cost": 2.1465
+},
+"HTPB": {
+"density_t": 0.00177,
+"flow_mode": "NO_FLOW",
+"name": "HTPB",
+"unit_cost": 1.8585
+},
+"HeavyWater": {
+"density_t": 0.001107,
+"flow_mode": "ALL_VESSEL",
+"name": "HeavyWater",
+"unit_cost": 1.0
+},
+"Helium": {
+"density_t": 1.786e-07,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Helium",
+"unit_cost": 9.1e-06
+},
+"Helium3": {
+"density_t": 1.25e-07,
+"flow_mode": "ALL_VESSEL",
+"name": "Helium3",
+"unit_cost": 0.11127
+},
+"Helium4": {
+"density_t": 1.786e-07,
+"flow_mode": "ALL_VESSEL",
+"name": "Helium4",
+"unit_cost": 1.33e-05
+},
+"Hexaborane": {
+"density_t": 0.00067,
+"flow_mode": "ALL_VESSEL",
+"name": "Hexaborane",
+"unit_cost": 0.25
+},
+"Hydrates": {
+"density_t": 0.0015,
+"flow_mode": "ALL_VESSEL",
+"name": "Hydrates",
+"unit_cost": 0.5
+},
+"Hydrazine": {
+"density_t": 0.001004,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Hydrazine",
+"unit_cost": 2.008
+},
+"Hydrogen": {
+"density_t": 8.99e-08,
+"flow_mode": "ALL_VESSEL",
+"name": "Hydrogen",
+"unit_cost": 5.5836e-05
+},
+"Hydyne": {
+"density_t": 0.00086,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Hydyne",
+"unit_cost": 0.688
+},
+"IRFNA-III": {
+"density_t": 0.001658,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "IRFNA-III",
+"unit_cost": 0.34818
+},
+"IRFNA-IV": {
+"density_t": 0.001995,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "IRFNA-IV",
+"unit_cost": 0.399
+},
+"IWFNA": {
+"density_t": 0.001513,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "IWFNA",
+"unit_cost": 0.31773
+},
+"IntakeAir": {
+"density_t": 0.005,
+"flow_mode": "ALL_VESSEL",
+"name": "IntakeAir",
+"unit_cost": 0.0
+},
+"IntakeAtm": {
+"density_t": 0.005,
+"flow_mode": "ALL_VESSEL",
+"name": "IntakeAtm",
+"unit_cost": 0.0
+},
+"IntakeLqd": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "IntakeLqd",
+"unit_cost": 0.0008
+},
+"Karbonite": {
+"density_t": 0.0025,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Karbonite",
+"unit_cost": 0.32
+},
+"Karborundum": {
+"density_t": 0.0058,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Karborundum",
+"unit_cost": 4000.0
+},
+"Kerosene": {
+"density_t": 0.00082,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Kerosene",
+"unit_cost": 0.041
+},
+"KryptonGas": {
+"density_t": 3.749e-06,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "KryptonGas",
+"unit_cost": 0.0068
+},
+"Lead": {
+"density_t": 0.01134,
+"flow_mode": "ALL_VESSEL",
+"name": "Lead",
+"unit_cost": 0.067392
+},
+"LeadBallast": {
+"density_t": 0.01134,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LeadBallast",
+"unit_cost": 0.067392
+},
+"LiquidFuel": {
+"density_t": 0.005,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LiquidFuel",
+"unit_cost": 0.8
+},
+"Lithium": {
+"density_t": 0.000534,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Lithium",
+"unit_cost": 0.6075
+},
+"Lithium6": {
+"density_t": 0.000458,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Lithium6",
+"unit_cost": 4.0
+},
+"LithiumDeuteride": {
+"density_t": 0.00082,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LithiumDeuteride",
+"unit_cost": 5.0
+},
+"LithiumHydride": {
+"density_t": 0.00078,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LithiumHydride",
+"unit_cost": 0.4
+},
+"LqdAmmonia": {
+"density_t": 0.0007021,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdAmmonia",
+"unit_cost": 0.142
+},
+"LqdArgon": {
+"density_t": 0.0013954,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdArgon",
+"unit_cost": 1.4
+},
+"LqdCO": {
+"density_t": 0.00079,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdCO",
+"unit_cost": 0.0021
+},
+"LqdCO2": {
+"density_t": 0.00117325,
+"flow_mode": "ALL_VESSEL",
+"name": "LqdCO2",
+"unit_cost": 0.0017247
+},
+"LqdDeuterium": {
+"density_t": 0.0001624,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdDeuterium",
+"unit_cost": 0.256
+},
+"LqdFluorine": {
+"density_t": 0.001505,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdFluorine",
+"unit_cost": 9.03
+},
+"LqdHe3": {
+"density_t": 5.9e-05,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdHe3",
+"unit_cost": 52.52
+},
+"LqdHelium": {
+"density_t": 0.0001786,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdHelium",
+"unit_cost": 0.0133
+},
+"LqdHydrogen": {
+"density_t": 7.085e-05,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdHydrogen",
+"unit_cost": 0.03675
+},
+"LqdKrypton": {
+"density_t": 0.002413,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdKrypton",
+"unit_cost": 1.0298
+},
+"LqdMethane": {
+"density_t": 0.00042561,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdMethane",
+"unit_cost": 0.45
+},
+"LqdNeon": {
+"density_t": 0.001207,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdNeon",
+"unit_cost": 2.1453
+},
+"LqdNitrogen": {
+"density_t": 0.000824907,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdNitrogen",
+"unit_cost": 0.000824
+},
+"LqdNitrogen15": {
+"density_t": 0.0008838,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdNitrogen15",
+"unit_cost": 0.0824
+},
+"LqdOxygen": {
+"density_t": 0.001141,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdOxygen",
+"unit_cost": 0.04564
+},
+"LqdOxygen18": {
+"density_t": 0.001284,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "LqdOxygen18",
+"unit_cost": 0.6
+},
+"LqdTritium": {
+"density_t": 0.00032,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdTritium",
+"unit_cost": 18.8
+},
+"LqdXenon": {
+"density_t": 0.002953,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "LqdXenon",
+"unit_cost": 118.12
+},
+"MMH": {
+"density_t": 0.00088,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MMH",
+"unit_cost": 1.748
+},
+"MON1": {
+"density_t": 0.001429,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON1",
+"unit_cost": 0.21435
+},
+"MON10": {
+"density_t": 0.001407,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON10",
+"unit_cost": 0.23919
+},
+"MON15": {
+"density_t": 0.001397,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON15",
+"unit_cost": 0.23749
+},
+"MON20": {
+"density_t": 0.00138,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON20",
+"unit_cost": 0.2484
+},
+"MON25": {
+"density_t": 0.00138,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON25",
+"unit_cost": 0.2484
+},
+"MON3": {
+"density_t": 0.001423,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "MON3",
+"unit_cost": 0.21345
+},
+"Machinery": {
+"density_t": 0.00378,
+"flow_mode": "ALL_VESSEL",
+"name": "Machinery",
+"unit_cost": 15.8
+},
+"Magnesium": {
+"density_t": 0.001738,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Magnesium",
+"unit_cost": 0.00015
+},
+"MaterialKits": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "MaterialKits",
+"unit_cost": 2.0
+},
+"Megajoules": {
+"density_t": 0.0,
+"flow_mode": "ALL_VESSEL",
+"name": "Megajoules",
+"unit_cost": 0.0
+},
+"MetallicOre": {
+"density_t": 0.0055,
+"flow_mode": "ALL_VESSEL",
+"name": "MetallicOre",
+"unit_cost": 1.76
+},
+"Metals": {
+"density_t": 0.0078,
+"flow_mode": "ALL_VESSEL",
+"name": "Metals",
+"unit_cost": 14.24
+},
+"Methane": {
+"density_t": 7.17e-07,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Methane",
+"unit_cost": 0.0018642
+},
+"Methanol": {
+"density_t": 0.0007918,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Methanol",
+"unit_cost": 0.126688
+},
+"Minerals": {
+"density_t": 0.0027,
+"flow_mode": "ALL_VESSEL",
+"name": "Minerals",
+"unit_cost": 0.8
+},
+"Monazite": {
+"density_t": 0.005,
+"flow_mode": "ALL_VESSEL",
+"name": "Monazite",
+"unit_cost": 0.1
+},
+"MonoPropellant": {
+"density_t": 0.004,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "MonoPropellant",
+"unit_cost": 1.2
+},
+"Mulch": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "Mulch",
+"unit_cost": 0.0
+},
+"N2F4": {
+"density_t": 0.001604,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "N2F4",
+"unit_cost": 24.06
+},
+"NGNC": {
+"density_t": 0.0016,
+"flow_mode": "NO_FLOW",
+"name": "NGNC",
+"unit_cost": 0.01
+},
+"NTO": {
+"density_t": 0.00145,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "NTO",
+"unit_cost": 0.2175
+},
+"NeonGas": {
+"density_t": 9.002e-07,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "NeonGas",
+"unit_cost": 0.0016
+},
+"Nitratine": {
+"density_t": 0.0024,
+"flow_mode": "ALL_VESSEL",
+"name": "Nitratine",
+"unit_cost": 0.001
+},
+"Nitrogen": {
+"density_t": 1.251e-06,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Nitrogen",
+"unit_cost": 5e-05
+},
+"NitrousOxide": {
+"density_t": 1.96e-06,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "NitrousOxide",
+"unit_cost": 0.000392
+},
+"OF2": {
+"density_t": 0.0019,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "OF2",
+"unit_cost": 28.5
+},
+"Ore": {
+"density_t": 0.01,
+"flow_mode": "ALL_VESSEL",
+"name": "Ore",
+"unit_cost": 0.02
+},
+"Organics": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "Organics",
+"unit_cost": 0.5
+},
+"Oxidizer": {
+"density_t": 0.005,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Oxidizer",
+"unit_cost": 0.18
+},
+"Oxygen": {
+"density_t": 1.41e-06,
+"flow_mode": "ALL_VESSEL",
+"name": "Oxygen",
+"unit_cost": 5.5836e-05
+},
+"PBAN": {
+"density_t": 0.001772,
+"flow_mode": "NO_FLOW",
+"name": "PBAN",
+"unit_cost": 1.593
+},
+"PSPC": {
+"density_t": 0.00174,
+"flow_mode": "NO_FLOW",
+"name": "PSPC",
+"unit_cost": 0.01
+},
+"Pentaborane": {
+"density_t": 0.000618,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Pentaborane",
+"unit_cost": 6.18
+},
+"Plutonium-238": {
+"density_t": 0.019816,
+"flow_mode": "NO_FLOW",
+"name": "Plutonium-238",
+"unit_cost": 4000.0
+},
+"Polymers": {
+"density_t": 0.00104,
+"flow_mode": "ALL_VESSEL",
+"name": "Polymers",
+"unit_cost": 8.0
+},
+"PolyvinylChloride": {
+"density_t": 0.00149,
+"flow_mode": "ALL_VESSEL",
+"name": "PolyvinylChloride",
+"unit_cost": 1.0
+},
+"Potassium": {
+"density_t": 0.000862,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Potassium",
+"unit_cost": 0.00015
+},
+"RareMetals": {
+"density_t": 0.0078,
+"flow_mode": "ALL_VESSEL",
+"name": "RareMetals",
+"unit_cost": 140.0
+},
+"Recyclables": {
+"density_t": 0.00378,
+"flow_mode": "ALL_VESSEL",
+"name": "Recyclables",
+"unit_cost": 7.0
+},
+"RefinedExotics": {
+"density_t": 0.0052,
+"flow_mode": "ALL_VESSEL",
+"name": "RefinedExotics",
+"unit_cost": 250.0
+},
+"Regolith": {
+"density_t": 0.002,
+"flow_mode": "ALL_VESSEL",
+"name": "Regolith",
+"unit_cost": 0.0
+},
+"ResourceLode": {
+"density_t": 0.005,
+"flow_mode": "ALL_VESSEL",
+"name": "ResourceLode",
+"unit_cost": 0.0
+},
+"Rock": {
+"density_t": 0.0025,
+"flow_mode": "ALL_VESSEL",
+"name": "Rock",
+"unit_cost": 1e-05
+},
+"RocketParts": {
+"density_t": 0.0025,
+"flow_mode": "ALL_VESSEL",
+"name": "RocketParts",
+"unit_cost": 1.5
+},
+"Salt": {
+"density_t": 0.002,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Salt",
+"unit_cost": 0.002
+},
+"Silicates": {
+"density_t": 0.0025,
+"flow_mode": "ALL_VESSEL",
+"name": "Silicates",
+"unit_cost": 0.01
+},
+"Silicon": {
+"density_t": 0.002329,
+"flow_mode": "ALL_VESSEL",
+"name": "Silicon",
+"unit_cost": 0.02
+},
+"Sodium": {
+"density_t": 0.000968,
+"flow_mode": "ALL_VESSEL",
+"name": "Sodium",
+"unit_cost": 1.4
+},
+"SolarWind": {
+"density_t": 1.24725e-06,
+"flow_mode": "ALL_VESSEL",
+"name": "SolarWind",
+"unit_cost": 0.001
+},
+"SolidFuel": {
+"density_t": 0.0075,
+"flow_mode": "NO_FLOW",
+"name": "SolidFuel",
+"unit_cost": 0.6
+},
+"SolidHydrogen": {
+"density_t": 8.6e-05,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "SolidHydrogen",
+"unit_cost": 0.0446
+},
+"SpareParts": {
+"density_t": 0.00378,
+"flow_mode": "NO_FLOW",
+"name": "SpareParts",
+"unit_cost": 12.6
+},
+"SpecializedParts": {
+"density_t": 0.00378,
+"flow_mode": "ALL_VESSEL",
+"name": "SpecializedParts",
+"unit_cost": 32.0
+},
+"Spodumene": {
+"density_t": 0.0031,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Spodumene",
+"unit_cost": 0.174
+},
+"StoredCharge": {
+"density_t": 0.0,
+"flow_mode": "NO_FLOW",
+"name": "StoredCharge",
+"unit_cost": 0.0
+},
+"Substrate": {
+"density_t": 0.0016,
+"flow_mode": "ALL_VESSEL",
+"name": "Substrate",
+"unit_cost": 0.3
+},
+"Sulphur": {
+"density_t": 0.00207,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Sulphur",
+"unit_cost": 0.00015
+},
+"Supplies": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "Supplies",
+"unit_cost": 2.5
+},
+"Syntin": {
+"density_t": 0.000851,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Syntin",
+"unit_cost": 0.4255
+},
+"TEATEB": {
+"density_t": 0.00070031,
+"flow_mode": "NO_FLOW",
+"name": "TEATEB",
+"unit_cost": 2.80124
+},
+"ThF4": {
+"density_t": 0.0063,
+"flow_mode": "ALL_VESSEL",
+"name": "ThF4",
+"unit_cost": 18.0
+},
+"ThermalPower": {
+"density_t": 0.0,
+"flow_mode": "ALL_VESSEL",
+"name": "ThermalPower",
+"unit_cost": 0.0
+},
+"Thorium": {
+"density_t": 0.0117,
+"flow_mode": "ALL_VESSEL",
+"name": "Thorium",
+"unit_cost": 46.8
+},
+"Tonka250": {
+"density_t": 0.000873,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Tonka250",
+"unit_cost": 0.4365
+},
+"Tonka500": {
+"density_t": 0.000811,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "Tonka500",
+"unit_cost": 0.44605
+},
+"Tritium": {
+"density_t": 2.705e-07,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "Tritium",
+"unit_cost": 0.016
+},
+"UDMH": {
+"density_t": 0.000791,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "UDMH",
+"unit_cost": 0.791
+},
+"UF4": {
+"density_t": 0.0067,
+"flow_mode": "ALL_VESSEL",
+"name": "UF4",
+"unit_cost": 72.0
+},
+"UH25": {
+"density_t": 0.000829,
+"flow_mode": "STACK_PRIORITY_SEARCH",
+"name": "UH25",
+"unit_cost": 1.03625
+},
+"Uraninite": {
+"density_t": 0.0075,
+"flow_mode": "ALL_VESSEL",
+"name": "Uraninite",
+"unit_cost": 0.7
+},
+"UraniumNitride": {
+"density_t": 0.0143,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "UraniumNitride",
+"unit_cost": 158.0
+},
+"VacuumPlasma": {
+"density_t": 0.005,
+"flow_mode": "ALL_VESSEL",
+"name": "VacuumPlasma",
+"unit_cost": 0.0
+},
+"Waste": {
+"density_t": 0.00075,
+"flow_mode": "ALL_VESSEL",
+"name": "Waste",
+"unit_cost": 0.0
+},
+"WasteHeat": {
+"density_t": 0.0,
+"flow_mode": "ALL_VESSEL",
+"name": "WasteHeat",
+"unit_cost": 0.0
+},
+"WasteWater": {
+"density_t": 0.001005,
+"flow_mode": "ALL_VESSEL",
+"name": "WasteWater",
+"unit_cost": 0.0
+},
+"Water": {
+"density_t": 0.001,
+"flow_mode": "ALL_VESSEL",
+"name": "Water",
+"unit_cost": 0.0008
+},
+"XenonGas": {
+"density_t": 0.0001,
+"flow_mode": "STAGE_PRIORITY_FLOW",
+"name": "XenonGas",
+"unit_cost": 4.0
+}
+},
+"source": "cfg",
+"version": 3
+}
