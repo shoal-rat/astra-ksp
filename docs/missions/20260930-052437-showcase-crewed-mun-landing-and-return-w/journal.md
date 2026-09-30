@@ -1,0 +1,10 @@
+# Mission: Showcase: crewed Mun landing and return with Lander 3 (wide 2.5 m base). MechJeb flies the ascent and trans-Mun injection; ASTRA fly_descent lands (cancelling drift before contact); Jebediah plants a flag and comes home.
+
+Started 2026-09-30 05:24
+
+- `05:25:00 · UT 1989052932 · MET 00:00:00` **plan**: Lander 3 (wide base). MechJeb ascent to 80 km with auto-staging down to stage 3; the Mainsail leaves ~250 m/s short of orbit, so MechJeb stages to the transfer Terrier to finish. Then MechJeb trans-Mun injection, ASTRA capture, drift-cancelling descent, EVA, flag, return.
+- `05:30:29 · UT 1989053175 · MET 00:04:03` **decision**: Trans-Mun injection 860.2 m/s prograde at UT 1989053720 (KSP patched conics: Mun periapsis 28.1 km). MechJeb node executor with auto-staging: the core's last ~100 m/s, then the transfer Terrier.
+- `05:38:51 · UT 1989077784 · MET 1d 00:54:11` **decision**: Deorbit 32.9 m/s at 61 E (UT 1989078820): ballistic contact 59.5 W, braking lands near 56 W in the flat band 52-60 W, sun ~50 deg up. Descent: terrain look-ahead, 20% reserve, terminal gate 150 m, touchdown 1.5 m/s, drift below 0.5 m/s before contact (tilt gain 10 deg per m/s, up to 30 deg).
+- `05:50:57 · UT 1989079500 · MET 1d 01:22:48` **decision**: Descent guidance now uses a suicide-burn predictor (integrates the retrograde burn with gravity and centrifugal relief; the old constant-deceleration model crashed this TWR-5.4 lander at 118 m/s). Same parameters: reserve 20%, gate 150 m over the terrain floor ahead, touchdown 1.5 m/s, drift below 0.5 m/s.
+- `06:10:16 · UT 1989079813 · MET 1d 01:28:00` **result**: Touchdown in Farside Crater, 0.22 S 60.68 W: vertical 0.86 m/s, horizontal 0.05 m/s, upright (89.8 deg) and steady with SAS damping. 248 LF left (~1500 m/s).
+- `06:13:51` **outcome**: **ABORTED** — Lander 3 (wide 2.5 m base): the new predictor guidance landed it perfectly (0.86 m/s vertical, 0.05 m/s horizontal, upright) after the old constant-deceleration model had crashed it at 118 m/s; but Jebediah exits onto the tank ledge and walking off it tipped the lander twice. Next: a ledge-free narrow lander with six legs.

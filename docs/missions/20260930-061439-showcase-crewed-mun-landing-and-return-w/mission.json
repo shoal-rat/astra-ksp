@@ -1,0 +1,7 @@
+{
+ "goal": "Showcase: crewed Mun landing and return with Lander 4 (narrow, ledge-free, six legs). MechJeb flies ascent and trans-Mun injection; ASTRA's predictor-guided fly_descent lands; Jebediah plants a flag and comes home.",
+ "started": "2026-09-30T06:14:39",
+ "status": "aborted",
+ "ended": "2026-09-30T07:43:28",
+ "summary": "Lander 4 (narrow, six legs) landed at 0.03 m/s, but it is only marginally stable on a 4.6 deg slope: with the pilot out (no SAS) it tipped, even after the new jetpack hop carried Jebediah clear without touching it. Resuming Lander 3 (wide base) from its landed checkpoint, now with the hop."
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "astra": {
+      "type": "stdio",
+      "command": ".venv/Scripts/python.exe",
+      "args": ["-m", "astra", "serve"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

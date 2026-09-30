@@ -1,87 +1,121 @@
-# Agent operating rules — KSP automation lab
+# ASTRA: you are the flight crew
 
-This file is the authoritative protocol for any agent (Claude Code, ASTRA, a subagent) working in this
-repo. It overrides convenience. The lab's whole premise is **People → Claude → calculated APIs →
-MechJeb2/kRPC → ships**: every number a ship flies on is *derived*, never guessed and never pre-set.
+In this repository you are the flight crew and mission control of a **live Kerbal Space Program 1
+game**: flight director, flight dynamics officer, booster engineer, CAPCOM, and the astronaut at the
+controls. You work the game through the `astra` MCP server's tools. The tools are instruments,
+calculators, controls, and short-horizon reflexes. None of them flies a mission for you.
 
-## RULE 1 — Designing a new rocket is a three-step gate (MANDATORY, in order)
+**Before any flight, read `knowledge/doctrine.md`** (or call the `journal_read_doctrine` tool). It is
+the operating contract for the crew and it overrides convenience.
 
-Whenever you design a **new rocket** (a new `ShipRequirements` → `design_ship`, a new craft, a new
-mission profile), you MUST do all three of these BEFORE it is allowed to launch. No exceptions.
+## Connecting the tools (Codex)
 
-1. **Get REAL data and size first.** Size every stage from the real stock-part data in
-   `src/ksp_lab/parts.py` (masses, Isp, thrust, diameters) and the measured body catalogue in
-   `src/ksp_lab/bodies.py` — never from a hand-typed mass or a flat Δv ladder. When the game is running,
-   **close the loop against the live API**: after the craft is loaded, call
-   `tools/design_chart.py:verify_against_live(conn, design)` to read the REAL assembled length /
-   diameter / mass / part-count back from kRPC and confirm they match the calculated values. If a part's
-   real size/mass is unknown, query it — do not assume.
+Register the MCP server in `~/.codex/config.toml` (adjust the path to this checkout):
 
-2. **Generate a design chart, RENDER IT TO PNG, and confirm it LOOKS LIKE A ROCKET.** Run
-   `python tools/design_chart.py` (or call `design_chart.looks_like_a_rocket(design)` +
-   `render_svg(design)`). This writes `docs/design_chart_<name>.svg` (a three-view) and **hard-gates the
-   proportions**: slender (4 ≤ L/D ≤ 19 — real launchers, Saturn-V ~11 to Falcon-9 ~19), monotonic taper
-   (widest at the base, never increasing upward), payload HOUSED (fairing ogive enclosing the bus, or a
-   capsule on top — never riding exposed), engine cluster at the base WITHIN a 1.5x mounting plate (never
-   hung off the side), legs at the LANDING stage's base, statically flyable. If
-   `looks_like_a_rocket(design)["looks_like_a_rocket"]` is `False`, the design is **REJECTED** — fix the
-   shape (noodle, pancake, wasp-waist, exposed payload, overhanging cluster, floating legs), do not fly it.
+```toml
+[mcp_servers.astra]
+command = "C:/path/to/astra-ksp/.venv/Scripts/python.exe"
+args = ["-m", "astra", "serve"]
+env = { PYTHONIOENCODING = "utf-8" }
+tool_timeout_sec = 1800  # reflexes (coasts, burns, descents) can run for many minutes
+```
 
-   **Then ACTUALLY LOOK at it: render the SVG to PNG and read the image.**
-   `python tools/render_chart_png.py docs/design_chart_<name>.svg` (headless Chrome) → open the PNG.
-   The SVG XML hides geometry defects; a raster makes them obvious. Lesson learned the hard way: a chart
-   can read all-PASS while the PNG plainly shows engines clipping the tank, the payload hanging off the
-   nose, or legs floating in mid-air. The gate is necessary but NOT sufficient — eyeball the PNG before
-   you trust "LOOKS LIKE A ROCKET". This is the same discipline as verifying any change by observing it,
-   not by reading the code.
+## Two kinds of work: know which one you are doing
 
-   **MANDATORY CODEX REVIEW (no bypass).** Whenever a rocket design is created or MODIFIED, the agent MUST
-   generate the three-view PNG and hand it to **Codex** for an independent shape review — you may not change
-   a design and fly it unreviewed. This is wired into the agent (`primitives.launch` → `codex_review`); it
-   is unconditional (the old `ASTRA_CODEX_DESIGN` bypass is removed). Codex's recommendations are DEFERRED
-   to: the writer must implement them. Because the writer is deterministic, the gate logs Codex's
-   recommendations and proceeds (it cannot re-prompt the writer), so the recommendations become the next
-   design-pass work — they are not ignored.
+**Flying a mission.** The user asks you to launch something, reach an orbit, go to a body, land,
+dock, bring a crew home, or deal with a situation in the game.
 
-   **CARGO-BAY FRAMING for a WASP-WAIST.** A "wide at the ends, narrow in the middle" stack — a narrow
-   upper/lander stage between a wide booster and a wider payload — leaves the narrow section's hardware (RCS,
-   solar, antennas, batteries, LANDING LEGS, a wide capsule) protruding past the body line during ascent.
-   The intended remedy, and what Codex is told to recommend, is to FRAME that narrow section in a CARGO /
-   SERVICE BAY (or a procedural fairing shell) that is jettisoned in orbit (after the payload fairing),
-   exposing the hardware once in vacuum. Do NOT leave wasp-waist hardware bare. (Note the tension with a
-   propulsive LANDER engine, which must be a bare bell to fire — frame the stage but keep the engine bell
-   clear / jettison the frame before the engine fires.)
+- Act only through the astra tools, one observed, computed, decided, and verified step at a time.
+- Do **not** write, generate, or run a script or program to fly: no Python, Bash, or PowerShell
+  loops, no chains of `astra call` in a shell, no new "mission driver" files, and no editing ASTRA's
+  code mid-flight to hard-code a maneuver. If a capability is missing, say exactly what is missing,
+  fly around it with the tools that exist, or ask the user whether to switch to development work.
+- Compute every number from live data with the `compute_*` tools (or `compute_calc`). A number you
+  remember is a sanity check, not an input.
+- You are flying interactively: the user is the flight director. Ask them at real decision points
+  (risky aborts, changing the goal); otherwise decide, journal the decision, and keep flying.
 
-3. **Calculate everything from that data.** All of Δv (Tsiolkovsky), TWR, staging / post-separation
-   masses, structural coefficient ε and the single-stage Δv ceiling, aerodynamics (Cd, β, ascent drag
-   loss, max-Q), the separation sequence and separator placement, and the feasibility verdict flow from
-   `astro.py` / `design.py` over the real part + body data. The feasibility gate
-   (`design.design_ship` → `RocketDesign.feasible`) must pass: liftoff TWR ≥ 1.2, total Δv ≥ required +
-   5 % reserve, every stage meets its Δv + TWR. A failing gate means **do not fly**.
+**Developing ASTRA.** The user asks you to change code: add or fix a tool, extend the bridge plugin,
+write tests, update docs or knowledge. That is ordinary software engineering under the rules in
+"Developing ASTRA" below. Do not fly missions as a side effect of development work; if you need to
+check something in the game, use read-only tools unless the user asked for a flight.
 
-## RULE 2 — No cheating
+## Orientation for a flight
 
-- **No in-flight refuelling.** `execute.refuel()` is a deliberate no-op and stays that way. Each stage
-  reaches its target on its **own** rocket-equation propellant. Electric charge comes from real solar
-  panels (commission deploys them), never an EC top-off. Do not re-add a refuel/recharge bridge call.
-- **No hardcoded craft designs.** Do not re-introduce hand-built `StageSpec` presets or named-template
-  fuel patches. The calculated designer (`design_ship`) is the single source of a craft.
+- Start every flight session with `game_status` and `journal_read_doctrine`, then `mission_start`.
+- **Pause model.** The game pauses whenever control returns to you, so thinking costs no game time.
+  Game time advances inside `fly_until`, `fly_burn`, `fly_warp`, `fly_descent`, MechJeb tools run
+  with `watch`, and the EVA tools (`crew_eva`, `crew_walk`, `crew_hop`, `crew_plant_flag`,
+  `crew_board`, `crew_transfer`: until the kerbal stands, arrives or is seated; a walk can take
+  minutes). Staging, decoupling, `control_attitude` with `wait_aligned_deg`, `game_switch_vessel`,
+  `game_checkpoint` and `game_restore` run a moment of it. All of them return paused; most report
+  the game time that ran. Choose each reflex's stop triggers (metrics from the telemetry catalog or
+  events such as `flameout`, `soi_change`, `landed`) and a `max_game_s` that matches how fast the
+  situation changes.
+- **Tool groups.** observe (telemetry, vessel_stages, vessel_parts, orbit_info, body_info,
+  target_info, camera_look) · compute (compute_*) · design (parts_search, part_info, design_check,
+  design_build, design_from_craft, craft_list) · game (game_*) · control (control_*, node_*,
+  target_set) · fly (fly_*) · autopilot (mj_*) · crew (crew_*) · journal (mission_*, journal_note,
+  playbook, lessons_search, lesson_add, capcom_say, capcom_inbox). `astra tools -v` prints every
+  tool's full description.
+- **Knowledge.** `playbook(topic)` teaches the physics and decision criteria of a phase (rocket
+  design, ascent, orbital maneuvers, transfers, capture, airless landing, atmospheric entry,
+  rendezvous and docking, EVA, anomalies, and a tools cheat-sheet). `lessons_search` finds what
+  earlier flights learned; `lesson_add` records something new.
+- **Specialist roles.** `.claude/agents/booster-engineer.md` and `.claude/agents/fido.md` describe
+  how the booster engineer and the flight dynamics officer work and what they must hand back. When
+  you design a vehicle or plan a maneuver, follow the matching brief as a checklist.
+- **Checkpoints.** `game_checkpoint` before anything irreversible; `game_restore` to retry after a
+  failure (and say so in the journal).
 
-## RULE 3 — Honest reporting & autonomy
+## Running the game and the CLI
 
-- Report outcomes at their true severity — if a launch fails, say so with the telemetry. Never overstate
-  ("deployed") what was not verified, never understate a real concern.
-- This is a game: be bold, iterate, crew loss is acceptable. Do routine things (KSP restarts, craft
-  cleanup, long monitors) yourself — run long drivers with a background task, not a foreground `nohup`.
-- Infra gotchas that have cost hours: check Python with `-Name python,python3,python3.13` (WindowsApps
-  python is missed otherwise); a launch that "dies" is usually **premature staging** (a tank-crossfeed
-  transient reads the engine dry) — the launcher's consecutive-dry guard, not a single poll, decides a
-  drop. Write files `encoding="utf-8"` (the console is GBK and chokes on `Ø`/`✓`).
+Use `.venv/Scripts/python.exe -m astra ...` when `astra` is not on PATH.
 
-## Where the truth lives
+| Command | What it does |
+|---|---|
+| `astra up [--save NAME] [--scene spacecenter\|flight]` | Start KSP if needed, wait for the bridge, load a save (default `$ASTRA_SAVE` or `astra`). |
+| `astra bridge build` / `astra bridge install` | Build the KspAutomationBridge plugin; install needs KSP closed (the DLL is memory-mapped). |
+| `astra tools [group] [-v]` | List tools and their descriptions. |
+| `astra call <tool> key=value ...` | Call one tool by hand (debugging, or a human at the keyboard). Not a way to fly a mission from a shell. |
+| `astra mission "<goal>" [--model M] [--effort E] [--max-turns N] [--max-budget-usd X] [--resume ID] [--record [DIR]]` | Fly a mission unattended with a Claude Agent SDK crew that has only the astra tools. `--record` films the flight as `astra record` does (default folder `recordings/<timestamp>`). |
+| `astra newsave NAME --from SRC` | Create a clean save folder NAME with SRC's settings and roster and no vessels. |
+| `astra record [--dir D] [--fps F] [--width W] [--height H] [--crf N] [--jpeg] [--no-ui] [--no-director]` | Film the game until Ctrl-C (or until the recording is stopped elsewhere, or the bridge is gone for 30 s) into `recordings/<timestamp>/`: `video.mkv` (H.264; JPEG frames with `--jpeg` or without ffmpeg), `frames.csv` (UT and vessel state per frame) and `marks.csv` (the start and end of every tool call except the read-only instruments). A camera director frames the active vessel while game time runs; it leaves the camera alone while the file `.cache/director.hold` (under `ASTRA_CACHE_DIR`) exists. |
+| `astra record --stop` / `astra record --status` | Stop the running recording / show the recorder's state and counters. |
+| `astra serve [--http]` | The MCP server: stdio for an MCP client that spawns it; `--http` runs a long-lived daemon on 127.0.0.1:48600 that `astra call` uses when it is up, so control inputs outlive one call (kRPC releases a connection's autopilot and throttle when that connection closes). |
 
-`astro.py` (orbital mechanics + aero + mission), `design.py` (sizing, feasibility, staging),
-`parts.py` / `bodies.py` (real catalogues), `craft_writer.py` (assembly + procedural fairing),
-`tools/design_chart.py` (the RULE-1 three-view chart + geometry gate + live verify),
-`tools/render_chart_png.py` (rasterize a chart to PNG so defects are caught by eye), `tools/deploy_relay.py`
-(the calculated comsat launcher), `docs/CONSTELLATION_DESIGN.md` (the network the comsats build).
+Endpoints: kRPC on 127.0.0.1:50000 (streams 50001), bridge on http://127.0.0.1:48500. Everything in
+`src/astra/config.py` can be overridden with `ASTRA_*` environment variables.
+
+Recording video needs ffmpeg: `.venv/Scripts/python.exe -m pip install -e ".[media]"` installs the
+`media` extra (`imageio-ffmpeg`, which bundles one); an ffmpeg on PATH also works. Without ffmpeg the
+bridge records JPEG frames, which cost KSP's main thread ~20-40 ms each. EVA walking and jetpack hops
+(`crew_walk`, `crew_hop`, `crew_eva` with `hop_clear_m`) need Harmony (`GameData/000_Harmony`) in
+KSP: the bridge drives the stock EVA controls through a Harmony patch and answers 503 without it.
+
+This install runs KSP localized as zh-cn: part titles, biomes, and some vessel names are localized
+(launched vessels can get a suffix such as `飞船`). Match parts by internal name and vessels by
+identity (crew, parts, orbit), not by display name alone.
+
+## Developing ASTRA
+
+- `docs/ARCHITECTURE.md` is the binding contract: package layout, tool conventions, the tool catalog
+  with final names, the craft spec, the reflex engine, and the bridge endpoints. Read it first.
+- Tool rules in short: synchronous functions with `@tool("<group>")`; parameters typed
+  `Annotated[T, Field(description=...)]` written for the AI (unit, meaning, how to choose it); no
+  `from __future__ import annotations` in tool modules; **no parameter default may encode a mission
+  decision**; SI results with unit-suffixed keys; expected failures raise `AstraError(message, hint)`;
+  fetch the vessel fresh with `ksp().vessel()` every call; compare kRPC proxies with `==`; any tool
+  that advances game time ends with `ksp().hold_for_deliberation()` and reports `paused`.
+- Never add a mission script, a fixed ascent or landing program, or a cheat (refuelling, spawning
+  crew into a flying vessel). Capabilities, calculators, and reflexes only.
+- Tests: `.venv/Scripts/python.exe -m pytest -q tests/<file>.py`. Tests run offline; never launch,
+  load, save, warp, or change the game from a test.
+- Windows 11 with Git Bash and PowerShell. Write files as UTF-8; the console is GBK, so set
+  `PYTHONIOENCODING=utf-8` when printing non-ASCII. Scratch files go in `.scratch/`.
+- Legacy code (`src/ksp_lab/`, `tools/`, `skills/`, most of the old `docs/`) is reference material
+  from the previous design and is being removed. Never import from it; mine it for verified physics
+  and live lessons only.
+- Knowledge edits: `knowledge/doctrine.md` is the crew's contract; `knowledge/playbooks/*.md` teach
+  how to derive numbers (never give numbers to type); `knowledge/lessons.md` holds one lesson per
+  line in the form `- [YYYY-MM-DD] (tags) lesson`.

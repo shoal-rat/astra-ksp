@@ -1,0 +1,9 @@
+{
+  "enabledMcpjsonServers": ["astra"],
+  "permissions": {
+    "allow": ["mcp__astra"]
+  },
+  "env": {
+    "MCP_TOOL_TIMEOUT": "1800000"
+  }
+}

@@ -1,0 +1,7 @@
+{
+ "goal": "Crewed Mun landing and return: land Jebediah on the Mun, plant a flag, bring him home. MechJeb flies the ascent; ASTRA's own powered-descent reflex lands.",
+ "started": "2026-09-30T02:57:06",
+ "status": "success",
+ "ended": "2026-09-30T04:14:59",
+ "summary": "Jebediah landed on the Mun (Midlands, 0.26 S 168.77 E), planted the flag 'ASTRA Mun Base 1', and splashed down at 4.4 m/s. MechJeb flew the ascent and trans-Mun injection; ASTRA's fly_descent landed at 1.5 m/s on the third attempt after two guidance fixes (broken Mk1-pod bounding box; terrain ahead). The narrow lander tipped over twice on a 5.7 deg slope: the next lander needs a wider stance."
+}

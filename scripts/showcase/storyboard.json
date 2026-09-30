@@ -1,0 +1,391 @@
+{
+ "title": "AI 全自动登陆月球和火星：ASTRA",
+ "voice": "zh-CN-YunxiNeural",
+ "rate": "+0%",
+ "badge": "AI 全自动操作 · 游戏实机录像",
+ "segments": [
+  {
+   "id": "hook",
+   "narration": "这是火星。准确地说，是坎巴拉宇宙里的杜娜。插下这面旗的宇航员，从火箭设计到发射、飞行、着陆，全部由 AI 独立完成。",
+   "visual": [
+    {
+     "photo": "docs/media/duna_flag.jpg",
+     "zoom": [
+      1.0,
+      1.08
+     ]
+    },
+    {
+     "clip": "duna1",
+     "from": 34080,
+     "to": 34283,
+     "speed": 2.0,
+     "keep": true
+    },
+    {
+     "clip": "mun3",
+     "from": 26775,
+     "to": 26835,
+     "speed": 1.0,
+     "keep": true
+    }
+   ],
+   "chapter": "开场：杜娜上的旗帜"
+  },
+  {
+   "id": "title",
+   "narration": "欢迎来到 ASTRA，一个让 AI 当宇航员的开源项目。",
+   "visual": [
+    {
+     "card": "title",
+     "name": "title"
+    }
+   ]
+  },
+  {
+   "id": "concept",
+   "narration": "ASTRA 把坎巴拉太空计划变成一套工具，交给 AI 使用。在这里，AI 既是宇航员，也是地面飞控中心。它不写任何固定程序：每一步都先读取遥测，再用计算工具临场算出轨道、推力和时机，然后下达指令、检查结果。AI 思考的时候，游戏会自动暂停。",
+   "visual": [
+    {
+     "card": "loop",
+     "name": "concept"
+    },
+    {
+     "clip": "mun3",
+     "from": 7144,
+     "to": 7300,
+     "speed": 1.0
+    }
+   ],
+   "chapter": "ASTRA 是什么"
+  },
+  {
+   "id": "think",
+   "narration": "AI 是怎么思考的？每做一步，它都会先写下飞行日志：计划、决策、预期的结果，以及什么情况下放弃。去杜娜时，它先用兰伯特方程找到发射窗口，再在游戏自己的轨道预测上反复修正机动节点。第一次中途修正差了零点零七米每秒，三百多天后的近火点就会偏出一百九十公里，于是它在接近杜娜时，又精修了一次。",
+   "visual": [
+    {
+     "card": "journal",
+     "name": "duna",
+     "title": "AI 的飞行日志（原文，节选自杜娜任务）",
+     "lines": [
+      [
+       "plan",
+       "Duna window is open and flat (ejection ~1077 m/s from an 80 km orbit, capture ~618 m/s, 329 days)."
+      ],
+      [
+       "decision",
+       "Duna ejection: 1058.2 m/s prograde + 147.7 m/s normal, refined on KSP patched conics from the Lambert seed."
+      ],
+      [
+       "observe",
+       "After the 16.5 m/s correction Duna periapsis is 250 km (a 0.07 m/s execution error at 370 days out)."
+      ],
+      [
+       "decision",
+       "Capture 707.2 m/s at periapsis; the transfer stage has 705 m/s, so the burn auto-stages to the lander."
+      ]
+     ]
+    },
+    {
+     "clip": "duna1",
+     "from": 12764,
+     "to": 13200,
+     "speed": 3.0
+    }
+   ],
+   "chapter": "AI 如何思考"
+  },
+  {
+   "id": "design",
+   "narration": "任务从一张白纸开始。AI 从游戏的零件库里挑选发动机和燃料罐，写出整枚火箭的零件树，由工具算出每一级的速度增量和推重比，再生成真正的飞船文件，送上发射台。",
+   "visual": [
+    {
+     "card": "design",
+     "name": "design"
+    },
+    {
+     "photo": "docs/media/launchpad.jpg",
+     "zoom": [
+      1.0,
+      1.1
+     ]
+    }
+   ],
+   "chapter": "AI 设计火箭"
+  },
+  {
+   "id": "liftoff",
+   "narration": "",
+   "duration": 8.0,
+   "visual": [
+    {
+     "clip": "mun3",
+     "from": 7150,
+     "to": 7270,
+     "speed": 1.0,
+     "keep": true
+    }
+   ]
+  },
+  {
+   "id": "launch",
+   "narration": "发射阶段，AI 把驾驶交给 MechJeb 自动驾驶仪，但每一个参数都是它自己定的：目标轨道八十公里，攻角限制五度，自动分离只到转移级为止。两百多秒后，飞船进入近圆轨道。",
+   "hud": true,
+   "visual": [
+    {
+     "clip": "mun2",
+     "from": 28,
+     "to": 287,
+     "speed": 1.0
+    },
+    {
+     "clip": "mun3",
+     "from": 7300,
+     "to": 7500,
+     "speed": 1.0
+    },
+    {
+     "clip": "mun3",
+     "from": 7500,
+     "to": 10563,
+     "speed": 9.0
+    }
+   ],
+   "chapter": "MechJeb 发射入轨"
+  },
+  {
+   "id": "transfer",
+   "narration": "接下来，AI 计算霍曼转移，在游戏自己的轨道预测上反复修正机动节点，点火奔向月球，并在近月点制动入轨。",
+   "visual": [
+    {
+     "clip": "mun3",
+     "from": 13500,
+     "to": 14127,
+     "speed": 4.0
+    },
+    {
+     "clip": "mun3",
+     "from": 18000,
+     "to": 18685,
+     "speed": 4.0
+    }
+   ],
+   "chapter": "奔月"
+  },
+  {
+   "id": "landing",
+   "narration": "真正的难点是着陆。ASTRA 的着陆制导，是 AI 在飞行中一次次修出来的：每一刻都数值积分一次减速燃烧，预测停下来的高度；同时扫描前方地形，遇到上坡就提前点火；接近地面时先悬停，消除横向漂移，再竖直落地。触地速度，每秒零点零三米。",
+   "hud": true,
+   "visual": [
+    {
+     "clip": "mun3",
+     "from": 20878,
+     "to": 26300,
+     "speed": 8.0
+    },
+    {
+     "clip": "mun3",
+     "from": 26300,
+     "to": 26835,
+     "speed": 1.5,
+     "keep": true
+    }
+   ],
+   "chapter": "动力着陆"
+  },
+  {
+   "id": "failures",
+   "narration": "当然，它不是一次成功的。有一次，一个零件报告了错误的尺寸，着陆器在十三公里高空悬停；有一次，前方的山坡比预想的高；还有几次，着陆器在宇航员出舱时翻倒。每一次失败都被记成教训，写进了下一版代码。",
+   "visual": [
+    {
+     "clip": "mun3",
+     "from": 6155,
+     "to": 6420,
+     "speed": 1.2
+    },
+    {
+     "clip": "mun4",
+     "from": 725,
+     "to": 1000,
+     "speed": 1.5
+    },
+    {
+     "card": "lessons",
+     "name": "failures"
+    }
+   ],
+   "chapter": "失败与教训"
+  },
+  {
+   "id": "eva",
+   "narration": "为了不踩翻着陆器，AI 给宇航员加上了背包喷气：出舱瞬间就飞到六米外再落地。杰布·坎巴拉在月球上插下了旗帜。",
+   "visual": [
+    {
+     "clip": "mun4",
+     "from": 645,
+     "to": 725,
+     "speed": 1.0
+    },
+    {
+     "clip": "mun4",
+     "from": 1391,
+     "to": 1511,
+     "speed": 1.0
+    },
+    {
+     "photo": "docs/media/mun_flag.jpg",
+     "zoom": [
+      1.0,
+      1.12
+     ]
+    }
+   ],
+   "chapter": "出舱插旗"
+  },
+  {
+   "id": "return",
+   "narration": "随后着陆器升空入轨，计算返航窗口，脱离月球引力。重返大气层时，隔热罩在前，炽热的气流包裹着返回舱，降落伞打开，平安回家。",
+   "hud": true,
+   "visual": [
+    {
+     "clip": "mun5",
+     "from": 125,
+     "to": 792,
+     "speed": 3.0
+    },
+    {
+     "clip": "mun5",
+     "from": 4419,
+     "to": 8600,
+     "speed": 12.0
+    }
+   ],
+   "chapter": "返航与再入"
+  },
+  {
+   "id": "duna",
+   "narration": "月球只是开始。下一站是杜娜，也就是游戏里的火星。AI 用兰伯特方程扫描发射窗口，在清晨发射，出发速度一千零九十米每秒。三百多天的航程里，它做了两次中途修正，把近火点调到六十公里，点火制动，被杜娜捕获。着陆方式和真实的火星任务一样：先在稀薄大气中减速，再打开降落伞，最后由发动机完成动力着陆。触地速度一点二米每秒，着陆器稳稳站立。瓦伦蒂娜·坎巴拉走出舱门，在杜娜的红色大地上插下了旗帜。",
+   "hud": true,
+   "visual": [
+    {
+     "clip": "duna1",
+     "from": 0,
+     "to": 364,
+     "speed": 1.0
+    },
+    {
+     "clip": "duna1",
+     "from": 364,
+     "to": 3780,
+     "speed": 10.0
+    },
+    {
+     "clip": "duna1",
+     "from": 8300,
+     "to": 9446,
+     "speed": 6.0
+    },
+    {
+     "clip": "duna1",
+     "from": 12764,
+     "to": 13200,
+     "speed": 3.0
+    },
+    {
+     "clip": "duna1",
+     "from": 16500,
+     "to": 17333,
+     "speed": 5.0
+    },
+    {
+     "clip": "duna1",
+     "from": 27602,
+     "to": 32460,
+     "speed": 9.0
+    },
+    {
+     "clip": "duna1",
+     "from": 32460,
+     "to": 34283,
+     "speed": 3.0
+    },
+    {
+     "clip": "duna1",
+     "from": 34700,
+     "to": 35178,
+     "speed": 1.5
+    },
+    {
+     "photo": "docs/media/duna_flag.jpg",
+     "zoom": [
+      1.0,
+      1.08
+     ]
+    }
+   ],
+   "chapter": "登陆杜娜（火星）"
+  },
+  {
+   "id": "duna_flag",
+   "narration": "",
+   "duration": 7.0,
+   "visual": [
+    {
+     "photo": "docs/media/duna_flag_closeup.jpg",
+     "zoom": [
+      1.0,
+      1.1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "autonomous",
+   "narration": "除了在对话里一步步指挥，ASTRA 还可以一条命令放手：输入 astra mission，加上任务目标，Claude 就会组建一个只拿到这些工具的机组，自己设计、发射、飞行，最后写下任务报告。它第一次独立完成的任务，是把瓦伦蒂娜送上轨道，再平安溅落回家。",
+   "visual": [
+    {
+     "card": "terminal",
+     "name": "mission",
+     "lines": [
+      "$ astra mission \"Design a crewed rocket from the live part catalog,",
+      "    launch it to a stable orbit around Kerbin, then bring the crew home safely.\"",
+      "ASTRA mission control · model claude-opus-5-5 · tools: astra MCP only",
+      "[crew] game_status · journal_read_doctrine · lessons_search",
+      "[crew] parts_search · design_check · design_build · game_launch",
+      "[crew] fly_until (pitch program, approach apoapsis 80 km)",
+      "[crew] fly_burn circularize  ->  79.97 x 81.66 km, i = 0.18 deg",
+      "[crew] fly_burn deorbit -49.4 m/s · heat shield first · Mk16 chute",
+      "[crew] game_recover  ->  Valentina Kerman recovered",
+      "mission ... : outcome success"
+     ]
+    },
+    {
+     "photo": "docs/media/launchpad.jpg",
+     "zoom": [
+      1.1,
+      1.0
+     ]
+    }
+   ],
+   "chapter": "一条命令全自动"
+  },
+  {
+   "id": "outro",
+   "narration": "整个过程中，没有一行预先写好的任务脚本，每一个数字都是 AI 当场算出来的。ASTRA 已经在 GitHub 开源，链接在简介里。如果你觉得有意思，欢迎点赞、投币、关注，我们下次任务见。",
+   "visual": [
+    {
+     "card": "outro",
+     "name": "outro"
+    },
+    {
+     "photo": "docs/media/duna_lander.jpg",
+     "zoom": [
+      1.05,
+      1.0
+     ]
+    }
+   ],
+   "chapter": "开源地址"
+  }
+ ]
+}
