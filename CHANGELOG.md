@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **README rewrite:** the README is now in English, with a Chinese version in `README.zh-CN.md`.
+  It adds a hero banner, a loop diagram, a video thumbnail, and a call-by-call excerpt of the Duna
+  landing log. Every figure was re-checked against the flight logs. Two corrections: Duna took 377
+  Kerbin days from launch to touchdown (329 was the planned transfer), and only the 0.86 and
+  0.03 m/s Mun landings used the new predictor guidance. `scripts/showcase/readme_art.py` renders
+  the artwork.
+- **English showcase video (YouTube):** `make_video.py --lang en` builds the English cut from the
+  same footage. It uses the narration in `storyboard.en.json` and adds English cards, HUD,
+  thumbnail and chapters. Subtitles are timed word by word. The Chinese cut is unchanged, and
+  `docs/video/YOUTUBE.md` has the upload notes.
+
 ## v2.0.0: the AI is the crew (2026-09-30)
 
 A ground-up rewrite. The previous design had the AI write fixed mission programs. ASTRA 2 turns the
